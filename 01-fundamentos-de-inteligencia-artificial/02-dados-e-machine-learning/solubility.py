@@ -20,11 +20,9 @@ teste2 = [0, 1, 1]
 teste3 = [1, 0, 1]
 
 dados_teste = [teste1, teste2, teste3]
-rotulos_teste = ['S', 'S', 'S']
+rotulos_teste = ['S', 'N', 'S']
 
 previsoes = modelo.predict(dados_teste)
 
 taxa_acerto = accuracy_score(rotulos_teste, previsoes)
 print("Taxa de acerto: %.2f%%" % (taxa_acerto * 100))
-
-#TODO: 09:54 https://on.fiap.com.br/mod/conteudoshtml/view.php?id=536600&c=14529&sesskey=w0jJj6nUPg
