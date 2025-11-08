@@ -27,4 +27,18 @@ class Net(nn.Module):
 model = Net()
 
 criterion = nn.MSELoss()
-# TODO 4:15 https://on.fiap.com.br/mod/conteudoshtml/view.php?id=536601&c=14529&sesskey=egZAAHCu4h
+optimizer = optim.SGD(model.parameters(), lr=0.001)
+
+for epoch in range(1000):
+    optimizer.zero_grad()
+    outputs = model(x)
+    loss = criterion(outputs, y)
+    loss.backward()
+    optimizer.step()
+
+    if epoch % 100 == 99:
+        print(f'Epoch {epoch+1}, Loss: {loss.item()}')
+
+with torch.no_grad():
+    predicted = model(torch.tensor([[10.0]], dtype=torch.float32))
+    print(f'Previsão de tempo de conclusão: {predicted.item()} minutos')
