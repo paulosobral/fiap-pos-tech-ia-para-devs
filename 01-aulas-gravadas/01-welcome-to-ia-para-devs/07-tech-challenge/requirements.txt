@@ -1,2 +1,4 @@
+jupyter
+ipykernel
 pandas==2.3.3
 missingno==0.5.2
