@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 
 app = FastAPI()
-modelo_salvo = pickle.load(open("pipe_lr_model.pkl", "rb"))
+modelo_salvo = pickle.load(open("pipe_model.pkl", "rb"))
 
 class HealthData(BaseModel):
     age: int
