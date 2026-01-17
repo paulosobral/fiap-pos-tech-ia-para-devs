@@ -5,11 +5,14 @@
 Este projeto implementa um sistema inteligente de suporte ao diagnóstico para auxiliar na identificação de pacientes com risco de **Acidente Vascular Cerebral (AVC)** utilizando dados estruturados do NHANES (National Health and Nutrition Examination Survey). O foco é construir uma solução inicial baseada em **Machine Learning** que classifique pacientes como tendo ou não AVC, apoiando (mas não substituindo) decisões clínicas.
 
 ### Objetivo
+
 Construir uma solução com foco em IA para processamento de dados médicos, aplicando fundamentos essenciais de Machine Learning (ML) e análise exploratória de dados (EDA), demonstrando:
 - Exploração e tratamento de dados médicos reais
 - Pipeline robusto de pré-processamento
 - Modelagem com múltiplas técnicas de classificação
 - Interpretação e comunicação de resultados
+
+* [Vídeo de apresentação do projeto](https://youtu.be/twPY-lL5yYM "Tech Challenge - Fase 1 AVC")
 
 ---
 
@@ -219,7 +222,7 @@ O notebook carrega os dados automaticamente via URLs do CDC. **Sem necessidade d
 
 ### Tamanho e Prevalência
 - **Amostra inicial:** ~20,000+ participantes (múltiplos ciclos)
-- **Amostra final (após limpeza):** ~14,000+ registros válidos
+- **Amostra final (após limpeza):** ~30,000+ registros válidos
 - **Prevalência de AVC:** ~4–5% (classe minoritária — desbalanceada)
 
 ---
@@ -228,7 +231,7 @@ O notebook carrega os dados automaticamente via URLs do CDC. **Sem necessidade d
 
 ### Resumo Executivo
 
-- **Dataset**: Carregado, explorado e limpo com sucesso (~14,000+ registros válidos)
+- **Dataset**: Carregado, explorado e limpo com sucesso (~30,000+ registros válidos)
 - **EDA**: Visualizações de correlação, distribuições, taxas por grupo
 - **Pré-processamento**: Pipeline robusto implementado (imputação + scaling + encoding)
 - **Modelos**: Regressão Logística e Random Forest treinados e avaliados
@@ -321,13 +324,13 @@ A ausência de correlações fortes (>0.70) entre features sugere que cada vari�
 
 **Análise do Desbalanceamento Inicial da Classe Alvo:**
 
-O gráfico revela um alto desbalanceamento. Aproximadamente 99% dos registros (cerca de 18.265 pacientes) não possuem histórico de AVC, enquanto apenas 1% (aproximadamente 188 pacientes) reportam AVC. Essa situação justifica a necessidade de estratégias de balanceamento como undersampling.
+O gráfico revela um alto desbalanceamento. Aproximadamente 99% dos registros (cerca de 30,254 pacientes) não possuem histórico de AVC, enquanto apenas 1% (aproximadamente 1201 pacientes) reportam AVC. Essa situação justifica a necessidade de estratégias de balanceamento como undersampling.
 
 ![Texto alternativo](./assets/barplot-3.png "Visualização desbalanceamento da classe alvo")
 
 **Análise do Balanceamento Pós Undersampling:**
 
-Após aplicar undersampling na classe majoritária, o gráfico mostra uma distribuição praticamente 50/50 entre pacientes sem AVC e com AVC (aproximadamente 94 casos cada). 
+Após aplicar undersampling na classe majoritária, o gráfico mostra uma distribuição praticamente 50/50 entre pacientes sem AVC e com AVC (aproximadamente 1201 casos cada). 
 
 Este balanceamento artificial permite que o modelo aprenda padrões das duas classes com peso igual durante o treinamento, evitando viés para a classe majoritária. O ponto negativo é a redução de 18.265 para cerca de 188 registros totais, sacrificando volume de dados pela oportunidade de aprender melhor a classe minoritária. Este dataset balanceado foi utilizado para treinar os modelos finais reportados.
 
@@ -356,7 +359,7 @@ O gráfico de barras horizontais apresenta as 20 features mais importantes ident
 - **Modelo escolhido para produção** (API FastAPI)
 
 **Random Forest (Melhor desempenho - Base Balanceada):**
-- ROC AUC: ~0.82 (**MELHOR**!)
+- ROC AUC: ~0.82
 - Recall: ~0.72 (captura ~72% dos AVC verdadeiros)
 - Precisão: ~0.18 (melhorado vs. LR)
 - F1-score: ~0.30
@@ -364,7 +367,7 @@ O gráfico de barras horizontais apresenta as 20 features mais importantes ident
 **Estratégia de Balanceamento:**
 - **Método:** Undersampling da classe majoritária (sem AVC)
 - **Justificativa:** Dataset original tinha ~95% sem AVC, ~5% com AVC (desbalanceamento extremo)
-- **Impacto:** Redução de ~14,000 para ~600 registros, mas melhoria significativa em Recall
+- **Impacto:** Redução de ~30,000 para ~600 registros, mas melhoria significativa em Recall
 - **Alternativa aplicada:** `class_weight='balanced'` nos modelos para ajuste automático
 
 **⚠️ Nota sobre Undersampling:**
@@ -397,10 +400,10 @@ O gráfico de barras horizontais apresenta as 20 features mais importantes ident
 **RF vs. LR:**
 ```
             Logistic Regression    Random Forest
-ROC AUC              0.78              0.82  (MELHOR!)
-Recall               0.68              0.72  (MELHOR!)
-Precisão             0.14              0.18  (MELHOR!)
-F1-score             0.25              0.30  (MELHOR!)
+ROC AUC              0.81              0.75
+Recall               0.74              0.73
+Precisão             0.74              0.72
+F1-score             0.74              0.72
 ```
 
 **RF é superior** em todas as métricas. Ganho de ROC AUC de +0.04 é relevante em diagnóstico médico.
