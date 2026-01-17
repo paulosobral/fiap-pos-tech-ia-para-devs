@@ -245,19 +245,19 @@ O notebook carrega os dados automaticamente via URLs do CDC. **Sem necessidade d
 
 **Análise da Matriz de Valores Ausentes (Pré-limpeza):** 
 
-A visualização mostra o padrão de dados faltantes nas 12 colunas selecionadas do dataset NHANES inicial (~70.000+ registros). As linhas brancas representam valores presentes, enquanto as linhas pretas indicam dados ausentes (NaN). Observa-se que as colunas biomédicas (`LBXGH_hba1c`, `BPXSY1_sbp`, `BMXBMI_bmi`) apresentam padrões estruturais de missingness. Alguns participantes não realizaram exames laboratoriais ou medidas físicas. 
+A visualização mostra o padrão de dados faltantes nas 12 colunas selecionadas do dataset NHANES inicial (~70.000+ registros). As linhas brancas representam valores presentes, enquanto as linhas pretas indicam dados ausentes (NaN). Ao observar as colunas biomédicas (`LBXGH_hba1c`, `BPXSY1_sbp`, `BMXBMI_bmi`) podemos crer que alguns participantes não realizaram exames laboratoriais ou medidas físicas. 
 
-As variáveis categóricas (`BPQ020_high_bp`, `MCQ160B_chf`, `MCQ160F_stroke`) têm completude superior, pois derivam de questionários autodeclarados. Este padrão é esperado em estudos populacionais como o NHANES, onde nem todos os participantes completam todas as etapas do protocolo. 
+As variáveis categóricas (`BPQ020_high_bp`, `MCQ160B_chf`, `MCQ160F_stroke`) têm completude um pouco melhor, pois derivam de questionários autodeclarados. Este padrão é esperado em estudos populacionais como o NHANES, onde nem todos os participantes completam todas as etapas dos questionários. 
 
 ![Texto alternativo](./assets/heatmap-1.png "Visualização do mapa de calor dos valores ausentes")
 
-**Análise do Heatmap de Correlação de Missingness:**
+**Análise do Heatmap de Correlação de Missingness (faltantes):**
 
 O mapa de calor revela padrões de co-ocorrência entre valores ausentes. Células mais claras indicam alta correlação (quando uma variável está ausente, a outra também tende a estar).
 
-Destaca-se forte correlação entre `LBXGH_hba1c` (hemoglobina glicada) e `BPXSY1_sbp` (pressão arterial), sugerindo que participantes que não realizaram exames laboratoriais frequentemente também não tiveram medidas físicas coletadas.
+Destacaque entre a correlação entre `LBXGH_hba1c` (hemoglobina glicada) e `BPXSY1_sbp` (pressão arterial), sugerindo que participantes que não realizaram exames laboratoriais também não tiveram medidas físicas coletadas.
 
-A variável `MCQ160F_stroke` (alvo) apresenta baixa correlação com outras missingness, indicando que o histórico de AVC foi reportado independentemente da realização de exames. Este padrão justifica a estratégia de **complete case analysis** (dropna), pois a impuação poderia introduzir viés sistemático em variáveis biomédicas estruturalmente relacionadas.
+A variável `MCQ160F_stroke` (alvo) apresenta baixa correlação com outras missingness (faltantes), indicando que o histórico de AVC foi reportado independentemente da realização de exames.
 
 ![Texto alternativo](./assets/matrix-2.png "Visualização dos valores ausentes no DataFrame")
 
@@ -279,19 +279,19 @@ A matriz de correlação revela relações lineares entre as variáveis após tr
 
 **(1)** `MCQ160F_stroke_bin` (alvo) apresenta correlações moderadas-baixas com as features `RIDAGEYR_age` (~0.09), `BPQ020_high_bp_bin` (~0.09) e `MCQ160B_chf_bin` (~0.10) são os preditores com maior correlação individual. Confirmando que a idade, hipertensão e insuficiência cardíaca são fatores de risco clássicos para AVC; 
 
-**(2)** Correlações inter-features são geralmente baixas (<0.35), indicando **baixa multicolinearidade**, exceção é `BPQ020_high_bp_bin` × `RIDAGEYR_age` (~0.35), esperado pois hipertensão aumenta com idade;
+**(2)** Correlações inter-features são geralmente baixas (<0.35), indicando **baixa multicolinearidade (baixa correlação)**, exceção é `BPQ020_high_bp_bin` × `RIDAGEYR_age` (~0.35), esperado pois hipertensão aumenta com idade;
 
 ![Texto alternativo](./assets/barplot-1.png "Visualização da taxa de AVC por faixa etária")
 
 **Análise da Taxa de AVC por Faixa Etária:**
 
-O gráfico de barras revela uma **relação exponencial entre idade e ocorrências de AVC**, padrão bem conhecido na literatura médica.
+O gráfico de barras revela uma **relação exponencial entre idade e ocorrências de AVC**, padrão bem conhecido na literatura médica sobre AVC.
 
 **(1)** Faixas etárias jovens (0-30 anos) apresentam taxa de AVC **próxima de zero** (~0.002), confirmando que AVC é raro em populações jovens sem comorbidades severas; 
 
-**(2)** A partir dos **40 anos** há aceleração notável, taxa salta de ~0.004 (30-40 anos) para ~0.009 (40-50 anos), dobrando a cada década; 
+**(2)** A partir dos **40 anos** há aceleração visível, a taxa salta de ~0.004 (30-40 anos) para ~0.009 (40-50 anos), dobrando a cada década; 
 
-**(3)** Faixas **60-70 anos** (~0.025) e **70-80 anos** (~0.040) concentram a maior incidência, com **4% de prevalência** na população idosa, justifica o foco clínico em prevenção nesta coorte; 
+**(3)** Faixas **60-70 anos** (~0.025) e **70-80 anos** (~0.040) concentram a maior incidência, com **4% de prevalência** na população idosa, justifica o foco clínico em prevenção nesta faixa; 
 
 **(4)** Faixas 80+ e 90+ apresentam dados esparsos (barras ausentes/muito baixas), possivelmente devido a **viés de sobrevivência** e tamanho amostral reduzido. **Implicação para ML:** este padrão explica por que `RIDAGEYR_age` emerge como **feature mais importante** nos modelos, a idade captura ~70% da variância do risco de AVC sozinha, funcionando como proxy para envelhecimento vascular, acúmulo de comorbidades e fragilidade fisiológica.
 
@@ -320,11 +320,13 @@ A ausência de correlações fortes (>0.70) entre features sugere que cada vari�
 ![Texto alternativo](./assets/barplot-2.png "Visualização desbalanceamento da classe alvo")
 
 **Análise do Desbalanceamento Inicial da Classe Alvo:**
+
 O gráfico revela um alto desbalanceamento. Aproximadamente 99% dos registros (cerca de 18.265 pacientes) não possuem histórico de AVC, enquanto apenas 1% (aproximadamente 188 pacientes) reportam AVC. Essa situação justifica a necessidade de estratégias de balanceamento como undersampling.
 
 ![Texto alternativo](./assets/barplot-3.png "Visualização desbalanceamento da classe alvo")
 
 **Análise do Balanceamento Pós Undersampling:**
+
 Após aplicar undersampling na classe majoritária, o gráfico mostra uma distribuição praticamente 50/50 entre pacientes sem AVC e com AVC (aproximadamente 94 casos cada). 
 
 Este balanceamento artificial permite que o modelo aprenda padrões das duas classes com peso igual durante o treinamento, evitando viés para a classe majoritária. O ponto negativo é a redução de 18.265 para cerca de 188 registros totais, sacrificando volume de dados pela oportunidade de aprender melhor a classe minoritária. Este dataset balanceado foi utilizado para treinar os modelos finais reportados.
@@ -354,7 +356,7 @@ O gráfico de barras horizontais apresenta as 20 features mais importantes ident
 - **Modelo escolhido para produção** (API FastAPI)
 
 **Random Forest (Melhor desempenho - Base Balanceada):**
-- ROC AUC: ~0.82 ⭐
+- ROC AUC: ~0.82 (**MELHOR**!)
 - Recall: ~0.72 (captura ~72% dos AVC verdadeiros)
 - Precisão: ~0.18 (melhorado vs. LR)
 - F1-score: ~0.30
@@ -371,6 +373,7 @@ O gráfico de barras horizontais apresenta as 20 features mais importantes ident
 - Produção: Modelo treinado em base balanceada foi serializado em `pipe_lr_model.pkl`
 
 #### 6. **Importância das Features**
+
 **Top 5 features mais importantes (por permutação):**
 1. Idade (RIDAGEYR_age) — 0.032
 2. Pressão arterial sistólica (BPXSY1_sbp) — 0.025
@@ -379,6 +382,7 @@ O gráfico de barras horizontais apresenta as 20 features mais importantes ident
 5. Histórico de hipertensão (BPQ020_high_bp) — 0.014
 
 #### 7. **Implicações Clínicas**
+
 - **Modelo é viável para triagem inicial**: Recall ~72% significa capturar ~7 em 10 pacientes com AVC
 - **Precisão baixa**: Muitos falsos positivos (necessário confirmar com especialista)
 - **Uso recomendado**: **Ferramenta de apoio à decisão clínica, não substituição** do julgamento médico
@@ -393,10 +397,10 @@ O gráfico de barras horizontais apresenta as 20 features mais importantes ident
 **RF vs. LR:**
 ```
             Logistic Regression    Random Forest
-ROC AUC              0.78              0.82  ⭐
-Recall               0.68              0.72  ⭐
-Precisão             0.14              0.18  ⭐
-F1-score             0.25              0.30  ⭐
+ROC AUC              0.78              0.82  (MELHOR!)
+Recall               0.68              0.72  (MELHOR!)
+Precisão             0.14              0.18  (MELHOR!)
+F1-score             0.25              0.30  (MELHOR!)
 ```
 
 **RF é superior** em todas as métricas. Ganho de ROC AUC de +0.04 é relevante em diagnóstico médico.
@@ -421,9 +425,9 @@ F1-score             0.25              0.30  ⭐
    - Interpretação: Auto-relato confirma a importância de BP
 
 **Insights:**
-- Features biomédicas (idade, pressão, glicemia) dominam
-- Fatores sociodemográficos (gênero, estado civil) têm impacto menor
-- Combinar idade + pressão + glicemia captura ~70% da importância total
+- Features biomédicas (idade, pressão, glicemia) dominam;
+- Fatores demográficos (gênero, estado civil) têm impacto menor;
+- Combinar idade + pressão + glicemia captura ~70% da importância total;
 
 ---
 
