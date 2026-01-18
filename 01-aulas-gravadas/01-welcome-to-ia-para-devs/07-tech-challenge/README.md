@@ -405,7 +405,7 @@ O gráfico de barras horizontais apresenta as 20 features mais importantes ident
 ## Relatório Técnico
 
 
-#### 3.2 Interpretação de Resultados
+#### 8.1 Interpretação de Resultados
 
 **RF vs. LR:**
 ```
@@ -418,7 +418,7 @@ F1-score             0.74              0.72
 
 **LR é superior** em todas as métricas. Ganho de ROC AUC de +0.01 é relevante em diagnóstico médico.
 
-#### 3.3 Importância de Features (Top 10)
+#### 8.2 Importância de Features (Top 10)
 
 **Método:** Permutação importance com 30 repetiçõesScoring: ROC AUC (alinhado com métrica principal)
 

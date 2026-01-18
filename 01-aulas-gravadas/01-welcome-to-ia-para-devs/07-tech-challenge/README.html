@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>README.md</title>
+<meta http-equiv="Content-type" content="text/html;charset=UTF-8">
+
+<style>
+/* https://github.com/microsoft/vscode/blob/master/extensions/markdown-language-features/media/markdown.css */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+body {
+	font-family: var(--vscode-markdown-font-family, -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif);
+	font-size: var(--vscode-markdown-font-size, 14px);
+	padding: 0 26px;
+	line-height: var(--vscode-markdown-line-height, 22px);
+	word-wrap: break-word;
+}
+
+#code-csp-warning {
+	position: fixed;
+	top: 0;
+	right: 0;
+	color: white;
+	margin: 16px;
+	text-align: center;
+	font-size: 12px;
+	font-family: sans-serif;
+	background-color:#444444;
+	cursor: pointer;
+	padding: 6px;
+	box-shadow: 1px 1px 1px rgba(0,0,0,.25);
+}
+
+#code-csp-warning:hover {
+	text-decoration: none;
+	background-color:#007acc;
+	box-shadow: 2px 2px 2px rgba(0,0,0,.25);
+}
+
+body.scrollBeyondLastLine {
+	margin-bottom: calc(100vh - 22px);
+}
+
+body.showEditorSelection .code-line {
+	position: relative;
+}
+
+body.showEditorSelection .code-active-line:before,
+body.showEditorSelection .code-line:hover:before {
+	content: "";
+	display: block;
+	position: absolute;
+	top: 0;
+	left: -12px;
+	height: 100%;
+}
+
+body.showEditorSelection li.code-active-line:before,
+body.showEditorSelection li.code-line:hover:before {
+	left: -30px;
+}
+
+.vscode-light.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.15);
+}
+
+.vscode-light.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.40);
+}
+
+.vscode-light.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-dark.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.4);
+}
+
+.vscode-dark.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.60);
+}
+
+.vscode-dark.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-high-contrast.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 160, 0, 0.7);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 160, 0, 1);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+img {
+	max-width: 100%;
+	max-height: 100%;
+}
+
+a {
+	text-decoration: none;
+}
+
+a:hover {
+	text-decoration: underline;
+}
+
+a:focus,
+input:focus,
+select:focus,
+textarea:focus {
+	outline: 1px solid -webkit-focus-ring-color;
+	outline-offset: -1px;
+}
+
+hr {
+	border: 0;
+	height: 2px;
+	border-bottom: 2px solid;
+}
+
+h1 {
+	padding-bottom: 0.3em;
+	line-height: 1.2;
+	border-bottom-width: 1px;
+	border-bottom-style: solid;
+}
+
+h1, h2, h3 {
+	font-weight: normal;
+}
+
+table {
+	border-collapse: collapse;
+}
+
+table > thead > tr > th {
+	text-align: left;
+	border-bottom: 1px solid;
+}
+
+table > thead > tr > th,
+table > thead > tr > td,
+table > tbody > tr > th,
+table > tbody > tr > td {
+	padding: 5px 10px;
+}
+
+table > tbody > tr + tr > td {
+	border-top: 1px solid;
+}
+
+blockquote {
+	margin: 0 7px 0 5px;
+	padding: 0 16px 0 10px;
+	border-left-width: 5px;
+	border-left-style: solid;
+}
+
+code {
+	font-family: Menlo, Monaco, Consolas, "Droid Sans Mono", "Courier New", monospace, "Droid Sans Fallback";
+	font-size: 1em;
+	line-height: 1.357em;
+}
+
+body.wordWrap pre {
+	white-space: pre-wrap;
+}
+
+pre:not(.hljs),
+pre.hljs code > div {
+	padding: 16px;
+	border-radius: 3px;
+	overflow: auto;
+}
+
+pre code {
+	color: var(--vscode-editor-foreground);
+	tab-size: 4;
+}
+
+/** Theming */
+
+.vscode-light pre {
+	background-color: rgba(220, 220, 220, 0.4);
+}
+
+.vscode-dark pre {
+	background-color: rgba(10, 10, 10, 0.4);
+}
+
+.vscode-high-contrast pre {
+	background-color: rgb(0, 0, 0);
+}
+
+.vscode-high-contrast h1 {
+	border-color: rgb(0, 0, 0);
+}
+
+.vscode-light table > thead > tr > th {
+	border-color: rgba(0, 0, 0, 0.69);
+}
+
+.vscode-dark table > thead > tr > th {
+	border-color: rgba(255, 255, 255, 0.69);
+}
+
+.vscode-light h1,
+.vscode-light hr,
+.vscode-light table > tbody > tr + tr > td {
+	border-color: rgba(0, 0, 0, 0.18);
+}
+
+.vscode-dark h1,
+.vscode-dark hr,
+.vscode-dark table > tbody > tr + tr > td {
+	border-color: rgba(255, 255, 255, 0.18);
+}
+
+</style>
+
+<style>
+/* Tomorrow Theme */
+/* http://jmblog.github.com/color-themes-for-google-code-highlightjs */
+/* Original theme - https://github.com/chriskempson/tomorrow-theme */
+
+/* Tomorrow Comment */
+.hljs-comment,
+.hljs-quote {
+	color: #8e908c;
+}
+
+/* Tomorrow Red */
+.hljs-variable,
+.hljs-template-variable,
+.hljs-tag,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class,
+.hljs-regexp,
+.hljs-deletion {
+	color: #c82829;
+}
+
+/* Tomorrow Orange */
+.hljs-number,
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-literal,
+.hljs-type,
+.hljs-params,
+.hljs-meta,
+.hljs-link {
+	color: #f5871f;
+}
+
+/* Tomorrow Yellow */
+.hljs-attribute {
+	color: #eab700;
+}
+
+/* Tomorrow Green */
+.hljs-string,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition {
+	color: #718c00;
+}
+
+/* Tomorrow Blue */
+.hljs-title,
+.hljs-section {
+	color: #4271ae;
+}
+
+/* Tomorrow Purple */
+.hljs-keyword,
+.hljs-selector-tag {
+	color: #8959a8;
+}
+
+.hljs {
+	display: block;
+	overflow-x: auto;
+	color: #4d4d4c;
+	padding: 0.5em;
+}
+
+.hljs-emphasis {
+	font-style: italic;
+}
+
+.hljs-strong {
+	font-weight: bold;
+}
+</style>
+
+<style>
+/*
+ * Markdown PDF CSS
+ */
+
+ body {
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif, "Meiryo";
+	padding: 0 12px;
+}
+
+pre {
+	background-color: #f8f8f8;
+	border: 1px solid #cccccc;
+	border-radius: 3px;
+	overflow-x: auto;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+}
+
+pre:not(.hljs) {
+	padding: 23px;
+	line-height: 19px;
+}
+
+blockquote {
+	background: rgba(127, 127, 127, 0.1);
+	border-color: rgba(0, 122, 204, 0.5);
+}
+
+.emoji {
+	height: 1.4em;
+}
+
+code {
+	font-size: 14px;
+	line-height: 19px;
+}
+
+/* for inline code */
+:not(pre):not(.hljs) > code {
+	color: #C9AE75; /* Change the old color so it seems less like an error */
+	font-size: inherit;
+}
+
+/* Page Break : use <div class="page"/> to insert page break
+-------------------------------------------------------- */
+.page {
+	page-break-after: always;
+}
+
+</style>
+
+<script src="https://unpkg.com/mermaid/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast')
+          ? 'dark'
+          : 'default'
+    });
+  </script>
+<h1 id="tech-challenge---fase-1-diagn%C3%B3stico-de-acidente-vascular-cerebral-avc-com-machine-learning">Tech Challenge - Fase 1: Diagnóstico de Acidente Vascular Cerebral (AVC) com Machine Learning</h1>
+<ul>
+<li>Curso: Pós Tech IA para Devs</li>
+<li>Turma: 8IADT</li>
+<li>Funcional: RM369853</li>
+</ul>
+<h2 id="vis%C3%A3o-geral-do-projeto">Visão Geral do Projeto</h2>
+<p>Este projeto implementa um sistema inteligente de suporte ao diagnóstico para auxiliar na identificação de pacientes com risco de <strong>Acidente Vascular Cerebral (AVC)</strong> utilizando dados estruturados do NHANES (National Health and Nutrition Examination Survey). O foco é construir uma solução inicial baseada em <strong>Machine Learning</strong> que classifique pacientes como tendo ou não AVC, apoiando (mas não substituindo) decisões clínicas.</p>
+<h3 id="objetivo">Objetivo</h3>
+<p>Construir uma solução com foco em IA para processamento de dados médicos, aplicando fundamentos essenciais de Machine Learning (ML) e análise exploratória de dados (EDA), demonstrando:</p>
+<ul>
+<li>Exploração e tratamento de dados médicos reais</li>
+<li>Pipeline robusto de pré-processamento</li>
+<li>Modelagem com múltiplas técnicas de classificação</li>
+<li>Interpretação e comunicação de resultados</li>
+</ul>
+<hr>
+<h3 id="links">Links</h3>
+<ul>
+<li>
+<p><a href="https://youtu.be/twPY-lL5yYM" title="Tech Challenge - Fase 1 AVC">Vídeo de apresentação do projeto</a></p>
+</li>
+<li>
+<p><a href="https://github.com/paulosobral/fiap-pos-tech-ia-para-devs/tree/01-welcome-to-ia-para-devs/07-tech-challenge/01-aulas-gravadas/01-welcome-to-ia-para-devs/07-tech-challenge" title="Repositório do GitHub">Repositório do GitHub</a></p>
+</li>
+</ul>
+<hr>
+<h2 id="instru%C3%A7%C3%B5es-de-execu%C3%A7%C3%A3o">Instruções de Execução</h2>
+<h3 id="pr%C3%A9-requisitos">Pré-requisitos</h3>
+<ul>
+<li>Python 3.10+</li>
+<li>pip (gerenciador de pacotes Python)</li>
+<li>Acesso à internet (para download dos dados NHANES)</li>
+</ul>
+<div class="page"></div>
+<h3 id="instala%C3%A7%C3%A3o-e-configura%C3%A7%C3%A3o">Instalação e Configuração</h3>
+<ol>
+<li>
+<p><strong>Clonar ou acessar o repositório:</strong></p>
+<pre class="hljs"><code><div><span class="hljs-built_in">cd</span> /home/user/workspaces/fiap-pos-tech-ia-para-devs/01-aulas-gravadas/01-welcome-to-ia-para-devs/07-tech-challenge
+</div></code></pre>
+</li>
+<li>
+<p><strong>Criar e ativar um ambiente virtual (recomendado):</strong></p>
+<pre class="hljs"><code><div>python -m venv venv
+<span class="hljs-built_in">source</span> venv/bin/activate  <span class="hljs-comment"># No Windows: venv\Scripts\activate</span>
+</div></code></pre>
+</li>
+<li>
+<p><strong>Instalar dependências:</strong></p>
+<pre class="hljs"><code><div>pip install -r requirements.txt
+</div></code></pre>
+</li>
+<li>
+<p><strong>Executar o notebook:</strong></p>
+<pre class="hljs"><code><div>jupyter notebook tech-challenge-fase-1.ipynb
+</div></code></pre>
+<p>Ou, se usar JupyterLab:</p>
+<pre class="hljs"><code><div>jupyter lab tech-challenge-fase-1.ipynb
+</div></code></pre>
+</li>
+<li>
+<p><strong>Executar todas as células:</strong></p>
+<ul>
+<li>Navegue até <code>Cell &gt; Run All</code> ou pressione <code>Ctrl+Shift+Enter</code></li>
+<li>A execução pode levar ~10-15 minutos na primeira vez (carregamento dos dados NHANES)</li>
+</ul>
+</li>
+</ol>
+<div class="page"></div>
+<hr>
+<h2 id="api-rest-para-predi%C3%A7%C3%B5es">API REST para Predições</h2>
+<h3 id="executando-a-api-fastapi">Executando a API FastAPI</h3>
+<p>Após treinar o modelo no notebook e gerar o arquivo <code>pipe_lr_model.pkl</code>, você pode iniciar a API para realizar predições em tempo real:</p>
+<pre class="hljs"><code><div><span class="hljs-comment"># Certifique-se de estar no diretório do projeto com o ambiente virtual ativado</span>
+python -m fastapi dev main.py
+</div></code></pre>
+<p>A API estará disponível em: <strong>http://localhost:8000</strong></p>
+<h3 id="documenta%C3%A7%C3%A3o-interativa-swagger-ui">Documentação Interativa (Swagger UI)</h3>
+<p>Acesse a interface interativa para testar os endpoints:</p>
+<ul>
+<li><strong>Swagger UI:</strong> http://localhost:8000/docs</li>
+<li><strong>ReDoc:</strong> http://localhost:8000/redoc</li>
+</ul>
+<h3 id="endpoints-dispon%C3%ADveis">Endpoints Disponíveis</h3>
+<h4 id="1-get---health-check">1. <strong>GET /</strong> — Health Check</h4>
+<p>Verifica se a API está funcionando.</p>
+<p><strong>Request:</strong></p>
+<pre class="hljs"><code><div>curl http://localhost:8000/
+</div></code></pre>
+<p><strong>Response:</strong></p>
+<pre class="hljs"><code><div>{
+  <span class="hljs-attr">"Hello"</span>: <span class="hljs-string">"World"</span>
+}
+</div></code></pre>
+<div class="page"></div>
+<h4 id="2-post-predict--predi%C3%A7%C3%A3o-de-risco-de-avc">2. <strong>POST /predict</strong> — Predição de Risco de AVC</h4>
+<p>Recebe dados de um paciente e retorna a predição de risco de AVC.</p>
+<p><strong>Request Body (JSON):</strong></p>
+<pre class="hljs"><code><div>{
+  <span class="hljs-attr">"age"</span>: <span class="hljs-number">67</span>,
+  <span class="hljs-attr">"sbp"</span>: <span class="hljs-number">128.0</span>,
+  <span class="hljs-attr">"hba1c"</span>: <span class="hljs-number">9.2</span>,
+  <span class="hljs-attr">"bmi"</span>: <span class="hljs-number">32.0</span>,
+  <span class="hljs-attr">"gender"</span>: <span class="hljs-number">1</span>,
+  <span class="hljs-attr">"married"</span>: <span class="hljs-number">1.0</span>,
+  <span class="hljs-attr">"high_bp"</span>: <span class="hljs-number">1</span>,
+  <span class="hljs-attr">"chf"</span>: <span class="hljs-number">0</span>,
+  <span class="hljs-attr">"occupation"</span>: <span class="hljs-number">5.0</span>,
+  <span class="hljs-attr">"smoking"</span>: <span class="hljs-number">1</span>
+}
+</div></code></pre>
+<p><strong>Descrição dos Campos:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Campo</th>
+<th>Tipo</th>
+<th>Descrição</th>
+<th>Valores</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>age</code></td>
+<td>int</td>
+<td>Idade em anos</td>
+<td>0-150</td>
+</tr>
+<tr>
+<td><code>sbp</code></td>
+<td>float</td>
+<td>Pressão arterial sistólica (mmHg)</td>
+<td>72-228</td>
+</tr>
+<tr>
+<td><code>hba1c</code></td>
+<td>float</td>
+<td>Hemoglobina glicada (%)</td>
+<td>-</td>
+</tr>
+<tr>
+<td><code>bmi</code></td>
+<td>float</td>
+<td>Índice de Massa Corporal</td>
+<td>-</td>
+</tr>
+<tr>
+<td><code>gender</code></td>
+<td>float</td>
+<td>Gênero</td>
+<td>1 = Masculino, 0 = Feminino</td>
+</tr>
+<tr>
+<td><code>married</code></td>
+<td>float</td>
+<td>Estado civil</td>
+<td>1 = Já foi casado, 0 = Nunca casou</td>
+</tr>
+<tr>
+<td><code>high_bp</code></td>
+<td>float</td>
+<td>Histórico de hipertensão</td>
+<td>1 = Sim, 0 = Não</td>
+</tr>
+<tr>
+<td><code>chf</code></td>
+<td>float</td>
+<td>Insuficiência cardíaca congestiva</td>
+<td>1 = Sim, 0 = Não</td>
+</tr>
+<tr>
+<td><code>occupation</code></td>
+<td>float</td>
+<td>Situação profissional</td>
+<td>1-5 (categorias)</td>
+</tr>
+<tr>
+<td><code>smoking</code></td>
+<td>float</td>
+<td>Histórico de tabagismo</td>
+<td>1 = Sim, 0 = Não</td>
+</tr>
+</tbody>
+</table>
+<div class="page"></div>
+<p><strong>Response (JSON):</strong></p>
+<pre class="hljs"><code><div>{
+  <span class="hljs-attr">"prediction_stroke"</span>: <span class="hljs-number">0</span>,
+  <span class="hljs-attr">"probability_no_stroke"</span>: <span class="hljs-number">0.8234</span>,
+  <span class="hljs-attr">"probability_stroke"</span>: <span class="hljs-number">0.1766</span>,
+  <span class="hljs-attr">"input"</span>: {
+    <span class="hljs-attr">"age"</span>: <span class="hljs-number">67</span>,
+    <span class="hljs-attr">"sbp"</span>: <span class="hljs-number">128.0</span>,
+    <span class="hljs-attr">"hba1c"</span>: <span class="hljs-number">9.2</span>,
+    <span class="hljs-attr">"bmi"</span>: <span class="hljs-number">32.0</span>,
+    <span class="hljs-attr">"gender"</span>: <span class="hljs-number">1</span>,
+    <span class="hljs-attr">"married"</span>: <span class="hljs-number">1.0</span>,
+    <span class="hljs-attr">"high_bp"</span>: <span class="hljs-number">1</span>,
+    <span class="hljs-attr">"chf"</span>: <span class="hljs-number">0</span>,
+    <span class="hljs-attr">"occupation"</span>: <span class="hljs-number">5.0</span>,
+    <span class="hljs-attr">"smoking"</span>: <span class="hljs-number">1</span>
+  }
+}
+</div></code></pre>
+<p><strong>Interpretação da Response:</strong></p>
+<ul>
+<li><code>prediction_stroke</code>: <strong>0</strong> = Sem risco de AVC, <strong>1</strong> = Com risco de AVC</li>
+<li><code>probability_no_stroke</code>: Probabilidade de NÃO ter AVC (0-1)</li>
+<li><code>probability_stroke</code>: Probabilidade de TER AVC (0-1)</li>
+<li><code>input</code>: Eco dos dados enviados para validação</li>
+</ul>
+<h3 id="integra%C3%A7%C3%A3o-com-sistemas-cl%C3%ADnicos">Integração com Sistemas Clínicos</h3>
+<p>A API foi projetada para ser integrada em sistemas hospitalares/clínicos:</p>
+<ol>
+<li><strong>Sistema de Prontuário Eletrônico (EMR):</strong> Envie dados do paciente após consulta/exame</li>
+<li><strong>Sistema de Triagem:</strong> Use para priorizar pacientes de alto risco</li>
+<li><strong>Dashboard de Acompanhamento:</strong> Monitore tendências de risco em populações</li>
+</ol>
+<p><strong>⚠️ IMPORTANTE - USO CLÍNICO:</strong></p>
+<ul>
+<li>Esta API é uma <strong>ferramenta de apoio à decisão</strong>, NÃO um substituto do julgamento médico</li>
+<li>Sempre confirme casos de alto risco com avaliação clínica especializada e exames de imagem (CT/MRI)</li>
+<li>Considere falsos positivos/negativos nas decisões clínicas</li>
+</ul>
+<div class="page"></div>
+<h3 id="estrutura-de-arquivos">Estrutura de Arquivos</h3>
+<pre class="hljs"><code><div>tech-challenge-fase-1/
+├── tech-challenge-fase-1.ipynb    # Notebook principal com EDA, modelagem e avaliação
+├── main.py                         # API FastAPI para predições em tempo real
+├── pipe_lr_model.pkl              # Modelo Logistic Regression treinado (serializado)
+├── requirements.txt                # Dependências do projeto
+└── README.md                       # Este arquivo
+</div></code></pre>
+<hr>
+<h2 id="dataset">Dataset</h2>
+<h3 id="fonte">Fonte</h3>
+<p><strong>NHANES (National Health and Nutrition Examination Survey)</strong></p>
+<ul>
+<li>Repositório oficial: https://www.cdc.gov/nchs/nhanes</li>
+<li>Acesso aos dados: https://wwwn.cdc.gov/Nchs/Nhanes/</li>
+</ul>
+<h3 id="caracter%C3%ADsticas-do-dataset">Características do Dataset</h3>
+<ul>
+<li><strong>Origem:</strong> CDC (Centers for Disease Control and Prevention) - Estados Unidos</li>
+<li><strong>Tipo:</strong> Estudo observacional, transversal com amostragem probabilística</li>
+<li><strong>Período:</strong> 4 ciclos bienais (2011–2012, 2013–2014, 2015–2016, 2017–2018)</li>
+<li><strong>Módulos utilizados:</strong>
+<ul>
+<li><code>DEMO</code>: Dados demográficos (idade, gênero, estado civil, ocupação)</li>
+<li><code>BPX</code>: Medidas de pressão arterial</li>
+<li><code>BPQ</code>: Questionário de pressão arterial e histórico de hipertensão</li>
+<li><code>GHB</code>: Hemoglobina glicada (marcador de diabetes)</li>
+<li><code>BMX</code>: Medidas corporais (IMC, peso, altura)</li>
+<li><code>SMQ</code>: Questionário de tabagismo</li>
+<li><code>MCQ</code>: Questionário médico (histórico de doenças, incluindo AVC)</li>
+</ul>
+</li>
+</ul>
+<div class="page"></div>
+<h3 id="vari%C3%A1veis-selecionadas-n12-features--target">Variáveis Selecionadas (n=12 features + target)</h3>
+<table>
+<thead>
+<tr>
+<th>Código Original</th>
+<th>Nome Renomeado</th>
+<th>Tipo</th>
+<th>Descrição</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SEQN</td>
+<td>SEQN_id</td>
+<td>Numérico</td>
+<td>ID único do participante</td>
+</tr>
+<tr>
+<td>RIAGENDR</td>
+<td>RIAGENDR_gender</td>
+<td>Categórico</td>
+<td>Gênero (1=Masculino, 2=Feminino)</td>
+</tr>
+<tr>
+<td>RIDAGEYR</td>
+<td>RIDAGEYR_age</td>
+<td>Numérico</td>
+<td>Idade em anos (0–150)</td>
+</tr>
+<tr>
+<td>BPQ020</td>
+<td>BPQ020_high_bp</td>
+<td>Categórico</td>
+<td>Histórico de hipertensão (1=Sim, 2=Não)</td>
+</tr>
+<tr>
+<td>MCQ160B</td>
+<td>MCQ160B_chf</td>
+<td>Categórico</td>
+<td>Insuficiência cardíaca congestiva (1=Sim, 2=Não)</td>
+</tr>
+<tr>
+<td>DMDMARTL</td>
+<td>DMDMARTL_marital</td>
+<td>Categórico</td>
+<td>Estado civil (1–6)</td>
+</tr>
+<tr>
+<td>OCQ260</td>
+<td>OCQ260_occupation</td>
+<td>Categórico</td>
+<td>Situação profissional (1–6)</td>
+</tr>
+<tr>
+<td>BPXSY1</td>
+<td>BPXSY1_sbp</td>
+<td>Numérico</td>
+<td>Pressão arterial sistólica (72–228 mmHg)</td>
+</tr>
+<tr>
+<td>LBXGH</td>
+<td>LBXGH_hba1c</td>
+<td>Numérico</td>
+<td>Hemoglobina glicada (%)</td>
+</tr>
+<tr>
+<td>BMXBMI</td>
+<td>BMXBMI_bmi</td>
+<td>Numérico</td>
+<td>Índice de Massa Corporal</td>
+</tr>
+<tr>
+<td>SMQ020</td>
+<td>SMQ020_smoking</td>
+<td>Categórico</td>
+<td>Histórico de tabagismo (1=Sim, 2=Não)</td>
+</tr>
+<tr>
+<td><strong>MCQ160F</strong></td>
+<td><strong>MCQ160F_stroke</strong></td>
+<td><strong>Categórico</strong></td>
+<td><strong>ALVO: Histórico de AVC (1=Sim, 2=Não)</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="download-autom%C3%A1tico">Download Automático</h3>
+<p>O notebook carrega os dados automaticamente via URLs do CDC. <strong>Sem necessidade de download manual.</strong></p>
+<h3 id="tamanho-e-preval%C3%AAncia">Tamanho e Prevalência</h3>
+<ul>
+<li><strong>Amostra inicial:</strong> ~20,000+ participantes (múltiplos ciclos)</li>
+<li><strong>Amostra final (após limpeza):</strong> ~30,000+ registros válidos</li>
+<li><strong>Prevalência de AVC:</strong> ~4–5% (classe minoritária — desbalanceada)</li>
+</ul>
+<div class="page"></div>
+<hr>
+<h2 id="resultados-obtidos">Resultados Obtidos</h2>
+<h3 id="resumo-executivo">Resumo Executivo</h3>
+<ul>
+<li><strong>Dataset</strong>: Carregado, explorado e limpo com sucesso (~30,000+ registros válidos)</li>
+<li><strong>EDA</strong>: Visualizações de correlação, distribuições, taxas por grupo</li>
+<li><strong>Pré-processamento</strong>: Pipeline robusto implementado (imputação + scaling + encoding)</li>
+<li><strong>Modelos</strong>: Regressão Logística e Random Forest treinados e avaliados</li>
+<li><strong>Métricas</strong>: ROC AUC, PR AUC, F1-score, Recall — todas calculadas</li>
+<li><strong>Interpretação</strong>: Importância por permutação implementada</li>
+<li><strong>Produtização</strong>: Modelo serializado (pickle) e API REST (FastAPI) funcionando</li>
+<li><strong>Balanceamento</strong>: Dataset balanceado via undersampling para melhorar Recall</li>
+</ul>
+<h3 id="principais-achados">Principais Achados</h3>
+<h4 id="1-prepara%C3%A7%C3%A3o-dos-dados">1. <strong>Preparação dos Dados</strong></h4>
+<p><img src="https://raw.githubusercontent.com/paulosobral/fiap-pos-tech-ia-para-devs/01-welcome-to-ia-para-devs/07-tech-challenge/01-aulas-gravadas/01-welcome-to-ia-para-devs/07-tech-challenge/assets/matrix-1.png" alt="Visualização dos valores ausentes no DataFrame" title="Visualização dos valores ausentes no DataFrame"></p>
+<p><strong>Análise da Matriz de Valores Ausentes (Pré-limpeza):</strong></p>
+<p>A visualização mostra o padrão de dados faltantes nas 12 colunas selecionadas do dataset NHANES inicial (~70.000+ registros). As linhas brancas representam valores presentes, enquanto as linhas pretas indicam dados ausentes (NaN). Ao observar as colunas biomédicas (<code>LBXGH_hba1c</code>, <code>BPXSY1_sbp</code>, <code>BMXBMI_bmi</code>) podemos crer que alguns participantes não realizaram exames laboratoriais ou medidas físicas.</p>
+<p>As variáveis categóricas (<code>BPQ020_high_bp</code>, <code>MCQ160B_chf</code>, <code>MCQ160F_stroke</code>) têm completude um pouco melhor, pois derivam de questionários autodeclarados. Este padrão é esperado em estudos populacionais como o NHANES, onde nem todos os participantes completam todas as etapas dos questionários.</p>
+<p><img src="https://raw.githubusercontent.com/paulosobral/fiap-pos-tech-ia-para-devs/01-welcome-to-ia-para-devs/07-tech-challenge/01-aulas-gravadas/01-welcome-to-ia-para-devs/07-tech-challenge/assets/heatmap-1.png" alt="Visualização do mapa de calor dos valores ausentes" title="Visualização do mapa de calor dos valores ausentes"></p>
+<p><strong>Análise do Heatmap de Correlação de Missingness (faltantes):</strong></p>
+<p>O mapa de calor revela padrões de co-ocorrência entre valores ausentes. Células mais claras indicam alta correlação (quando uma variável está ausente, a outra também tende a estar).</p>
+<p>Destacaque entre a correlação entre <code>LBXGH_hba1c</code> (hemoglobina glicada) e <code>BPXSY1_sbp</code> (pressão arterial), sugerindo que participantes que não realizaram exames laboratoriais também não tiveram medidas físicas coletadas.</p>
+<p>A variável <code>MCQ160F_stroke</code> (alvo) apresenta baixa correlação com outras missingness (faltantes), indicando que o histórico de AVC foi reportado independentemente da realização de exames.</p>
+<p><img src="https://raw.githubusercontent.com/paulosobral/fiap-pos-tech-ia-para-devs/01-welcome-to-ia-para-devs/07-tech-challenge/01-aulas-gravadas/01-welcome-to-ia-para-devs/07-tech-challenge/assets/matrix-2.png" alt="Visualização dos valores ausentes no DataFrame" title="Visualização dos valores ausentes no DataFrame"></p>
+<p><strong>Análise da Matriz de Valores Ausentes (Pós-limpeza):</strong> A estratégia adotada foi <strong>remoção de linhas com qualquer valor ausente</strong> (dropna), resultando em ~14.000 registros completos. Uma abordagem conservadora que prioriza qualidade dos dados sobre quantidade para modelagem supervisionada.</p>
+<h4 id="2-explora%C3%A7%C3%A3o-de-dados-eda">2. <strong>Exploração de Dados (EDA)</strong></h4>
+<ul>
+<li><strong>Idade:</strong> Distribuição normal; pacientes com AVC tendem a ser ~10 anos mais velhos;</li>
+<li><strong>Pressão arterial sistólica (sbp):</strong> Forte preditor visual — valores mais altos associados a AVC;</li>
+<li><strong>Fatores de risco:</strong> Hipertensão, insuficiência cardíaca e tabagismo mostram correlação positiva com AVC;</li>
+<li><strong>Balanceamento:</strong> Dataset desbalanceado (~95% sem AVC, ~5% com AVC) → métricas como Recall e PR AUC são críticas;</li>
+</ul>
+<p><img src="https://raw.githubusercontent.com/paulosobral/fiap-pos-tech-ia-para-devs/01-welcome-to-ia-para-devs/07-tech-challenge/01-aulas-gravadas/01-welcome-to-ia-para-devs/07-tech-challenge/assets/heatmap-2.png" alt="Visualização do mapa de correlação numéricas" title="Visualização do mapa de correlação numéricas"></p>
+<div class="page"></div>
+<p><strong>Análise do Heatmap de Correlação entre Variáveis (Pós-processamento):</strong></p>
+<p>A matriz de correlação revela relações lineares entre as variáveis após transformação binária e limpeza dos dados (~14.000 registros).</p>
+<p><strong>(1)</strong> <code>MCQ160F_stroke_bin</code> (alvo) apresenta correlações moderadas-baixas com as features <code>RIDAGEYR_age</code> (~0.09), <code>BPQ020_high_bp_bin</code> (~0.09) e <code>MCQ160B_chf_bin</code> (~0.10) são os preditores com maior correlação individual. Confirmando que a idade, hipertensão e insuficiência cardíaca são fatores de risco clássicos para AVC;</p>
+<p><strong>(2)</strong> Correlações inter-features são geralmente baixas (&lt;0.35), indicando <strong>baixa multicolinearidade (baixa correlação)</strong>, exceção é <code>BPQ020_high_bp_bin</code> × <code>RIDAGEYR_age</code> (~0.35), esperado pois hipertensão aumenta com idade;</p>
+<p><img src="https://raw.githubusercontent.com/paulosobral/fiap-pos-tech-ia-para-devs/01-welcome-to-ia-para-devs/07-tech-challenge/01-aulas-gravadas/01-welcome-to-ia-para-devs/07-tech-challenge/assets/barplot-1.png" alt="Visualização da taxa de AVC por faixa etária" title="Visualização da taxa de AVC por faixa etária"></p>
+<p><strong>Análise da Taxa de AVC por Faixa Etária:</strong></p>
+<p>O gráfico de barras revela uma <strong>relação exponencial entre idade e ocorrências de AVC</strong>, padrão bem conhecido na literatura médica sobre AVC.</p>
+<p><strong>(1)</strong> Faixas etárias jovens (0-30 anos) apresentam taxa de AVC <strong>próxima de zero</strong> (~0.002), confirmando que AVC é raro em populações jovens sem comorbidades severas;</p>
+<p><strong>(2)</strong> A partir dos <strong>40 anos</strong> há aceleração visível, a taxa salta de ~0.004 (30-40 anos) para ~0.009 (40-50 anos), dobrando a cada década;</p>
+<p><strong>(3)</strong> Faixas <strong>60-70 anos</strong> (~0.025) e <strong>70-80 anos</strong> (~0.040) concentram a maior incidência, com <strong>4% de prevalência</strong> na população idosa, justifica o foco clínico em prevenção nesta faixa;</p>
+<p><strong>(4)</strong> Faixas 80+ e 90+ apresentam dados esparsos (barras ausentes/muito baixas), possivelmente devido a <strong>viés de sobrevivência</strong> e tamanho amostral reduzido. <strong>Implicação para ML:</strong> este padrão explica por que <code>RIDAGEYR_age</code> emerge como <strong>feature mais importante</strong> nos modelos, a idade captura ~70% da variância do risco de AVC sozinha, funcionando como proxy para envelhecimento vascular, acúmulo de comorbidades e fragilidade fisiológica.</p>
+<p><img src="https://raw.githubusercontent.com/paulosobral/fiap-pos-tech-ia-para-devs/01-welcome-to-ia-para-devs/07-tech-challenge/01-aulas-gravadas/01-welcome-to-ia-para-devs/07-tech-challenge/assets/histograms-1.png" alt="Visualização das variáveis numéricas" title="Visualização das variáveis numéricas"></p>
+<p><strong>Análise das Distribuições das Variáveis Numéricas:</strong></p>
+<p>Os histogramas (n=~14.000 registros pós-limpeza) revelam características importantes para modelagem:</p>
+<p><strong>(1)</strong> <code>RIDAGEYR_age</code>: Distribuição aproximadamente uniforme/multimodal (20-65 anos), com concentração em adultos e idosos, refletindo desenho amostral do NHANES; ausência de assimetria extrema favorece algoritmos lineares;</p>
+<p><strong>(2)</strong> <code>BPXSY1_sbp</code> Distribuição <strong>próxima à normal</strong>, centrada em ~120 mmHg com desvio padrão ~18 mmHg, ligeira cauda direita (alguns valores &gt;200 mmHg = hipertensão severa), padrão típico populacional;</p>
+<p><strong>(3)</strong> <code>LBXGH_hba1c</code> Distribuição <strong>fortemente skewed à direita</strong>, concentrada em 5-6% (normal/pré-diabético) com cauda longa até ~14% (diabetes severo), refletindo prevalência aumentada de diabetes em idosos;</p>
+<p><strong>(4)</strong> <code>BMXBMI_bmi</code> Distribuição <strong>aproximadamente normal</strong>, centrada em ~28 kg/m² (sobrepeso), com outliers &gt;50 kg/m² (obesidade severa), simetria moderada. <strong>Implicações para ML:</strong> StandardScaler aplicado no pipeline é adequado para idade, pressão e IMC (distribuições próximas à normal); <code>LBXGH_hba1c</code> poderia beneficiar de transformação log (reduzir skewness), mas foi mantida para interpretabilidade clínica; ausência de distribuições extremamente bimodais favorece separação de classes por Logistic Regression; features escalonadas adequadamente suportam convergência eficiente de modelos lineares e árvores balanceadas.</p>
+<div class="page"></div>
+<h4 id="3-escolhendo-os-modelos-e-treinando">3. <strong>Escolhendo os modelos e treinando</strong></h4>
+<p><img src="https://raw.githubusercontent.com/paulosobral/fiap-pos-tech-ia-para-devs/01-welcome-to-ia-para-devs/07-tech-challenge/01-aulas-gravadas/01-welcome-to-ia-para-devs/07-tech-challenge/assets/logistic-regression-x-random-forest.png" alt="Logistic Regression X Random Forest" title="Logistic Regression X Random Forest"></p>
+<p>A ausência de correlações fortes (&gt;0.70) entre features sugere que cada variável contribui com informação única para o modelo, favorecendo a performance de algoritmos lineares (Logistic Regression) e baseados em árvores (Random Forest). Este padrão justifica a manutenção de todas as features selecionadas na modelagem.</p>
+<div class="page"></div>
+<h4 id="4-parameter-tunning-e-avalia%C3%A7%C3%A3o-final">4. <strong>Parameter Tunning e Avaliação Final</strong></h4>
+<p><img src="https://raw.githubusercontent.com/paulosobral/fiap-pos-tech-ia-para-devs/01-welcome-to-ia-para-devs/07-tech-challenge/01-aulas-gravadas/01-welcome-to-ia-para-devs/07-tech-challenge/assets/barplot-2.png" alt="Visualização desbalanceamento da classe alvo" title="Visualização desbalanceamento da classe alvo"></p>
+<p><strong>Análise do Desbalanceamento Inicial da Classe Alvo:</strong></p>
+<p>O gráfico revela um alto desbalanceamento. Aproximadamente 99% dos registros (cerca de 30,254 pacientes) não possuem histórico de AVC, enquanto apenas 1% (aproximadamente 1201 pacientes) reportam AVC. Essa situação justifica a necessidade de estratégias de balanceamento como undersampling.</p>
+<p><img src="https://raw.githubusercontent.com/paulosobral/fiap-pos-tech-ia-para-devs/01-welcome-to-ia-para-devs/07-tech-challenge/01-aulas-gravadas/01-welcome-to-ia-para-devs/07-tech-challenge/assets/barplot-3.png" alt="Visualização balanceada da classe alvo" title="Visualização balanceada da classe alvo"></p>
+<div class="page"></div>
+<p><strong>Análise do Balanceamento Pós Undersampling:</strong></p>
+<p>Após aplicar undersampling na classe majoritária, o gráfico mostra uma distribuição praticamente 50/50 entre pacientes sem AVC e com AVC (aproximadamente 1201 casos cada).</p>
+<p>Este balanceamento artificial permite que o modelo aprenda padrões das duas classes com peso igual durante o treinamento, evitando viés para a classe majoritária. O ponto negativo é a redução de 18.265 para cerca de 188 registros totais, sacrificando volume de dados pela oportunidade de aprender melhor a classe minoritária. Este dataset balanceado foi utilizado para treinar os modelos finais reportados.</p>
+<p><img src="https://raw.githubusercontent.com/paulosobral/fiap-pos-tech-ia-para-devs/01-welcome-to-ia-para-devs/07-tech-challenge/01-aulas-gravadas/01-welcome-to-ia-para-devs/07-tech-challenge/assets/barh-1.png" alt="Visualização das as principais permutações de importância" title="Visualização das as principais permutações de importância"></p>
+<div class="page"></div>
+<p><strong>Análise da Importância das Features por Permutação:</strong>
+O gráfico de barras horizontais apresenta as 20 features mais importantes identificadas pelo Random Forest através de permutation importance com métrica ROC AUC.</p>
+<p>A idade (RIDAGEYR_age) se destaca como preditor dominante com importância ~0.08, confirmando o padrão exponencial observado anteriormente na análise de taxa de AVC por faixa etária.</p>
+<p>As variáveis categóricas de hipertensão (BPQ020_high_bp_bin) aparecem em segunda posição (~0.035).</p>
+<p>Hemoglobina glicada (LBXGH_hba1c) e pressão arterial sistólica (BPXSY1_sbp) ocupam posições relevantes (~0.01-0.015), alinhados com fatores de risco clássicos de AVC.</p>
+<p>Variáveis demográficas (gênero, estado civil, ocupação) apresentam importância marginal (~0.005 ou menor), sugerindo que as características biomédicas são mais previsivo que características sociais para esta base de dados do NHANES.</p>
+<h4 id="5-resultados-de-modelagem">5. <strong>Resultados de Modelagem</strong></h4>
+<p><strong>Importante:</strong> Os modelos foram treinados com <strong>dataset balanceado via undersampling</strong> para melhorar a detecção de casos positivos (AVC).</p>
+<p><strong>Regressão Logística (Baseline - Base Balanceada):</strong></p>
+<ul>
+<li>ROC AUC: 0.813</li>
+<li>Recall: 0.75 (captura ~75% dos verdadeiros positivos)</li>
+<li>Precisão: 0.74 (muitos falsos positivos)</li>
+<li>F1-score: 0.74</li>
+<li><strong>Modelo escolhido para produção</strong> (API FastAPI)</li>
+</ul>
+<p><strong>Random Forest (Melhor desempenho - Base Balanceada):</strong></p>
+<ul>
+<li>ROC AUC: 0.800</li>
+<li>Recall: 0.73 (captura ~73% dos AVC verdadeiros)</li>
+<li>Precisão: 0.72 (melhorado vs. LR)</li>
+<li>F1-score: 0.72</li>
+</ul>
+<p><strong>Estratégia de Balanceamento:</strong></p>
+<ul>
+<li><strong>Método:</strong> Undersampling da classe majoritária (sem AVC)</li>
+<li><strong>Justificativa:</strong> Dataset original tinha ~95% sem AVC, ~5% com AVC (desbalanceamento extremo)</li>
+<li><strong>Impacto:</strong> Redução de ~30,000 para ~1200 registros, mas melhoria significativa em Recall</li>
+<li><strong>Alternativa aplicada:</strong> <code>class_weight='balanced'</code> nos modelos para ajuste automático</li>
+</ul>
+<p><strong>⚠️ Nota sobre Undersampling:</strong></p>
+<ul>
+<li>Vantagem: Melhora Recall (crítico para diagnóstico médico)</li>
+<li>Desvantagem: Perda de informação da classe majoritária</li>
+<li>Produção: Modelo treinado em base balanceada foi serializado em <code>pipe_model.pkl</code></li>
+</ul>
+<div class="page"></div>
+<h4 id="6-import%C3%A2ncia-das-features">6. <strong>Importância das Features</strong></h4>
+<p><strong>Top 5 features mais importantes (por permutação):</strong></p>
+<ol>
+<li>Idade (RIDAGEYR_age) — 0.0419</li>
+<li>Ocupação (cat__OCQ260_occupation_0.0) — 0.0264</li>
+<li>Insuficiência cardíaca congestiva (cat__MCQ160B_chf_bin_1.0) — 0.0041</li>
+<li>Histórico de Glicohemoglobina (num__LBXGH_hba1c) — 0.0016</li>
+<li>Ocupação (cat__OCQ260_occupation_2.0) — 0.014</li>
+</ol>
+<h4 id="7-implica%C3%A7%C3%B5es-cl%C3%ADnicas">7. <strong>Implicações Clínicas</strong></h4>
+<ul>
+<li><strong>Modelo é viável para triagem inicial</strong>: Recall ~77% significa capturar ~7 em 10 pacientes com AVC</li>
+<li><strong>Precisão baixa</strong>: Muitos falsos positivos (necessário confirmar com especialista)</li>
+<li><strong>Uso recomendado</strong>: <strong>Ferramenta de apoio à decisão clínica, não substituição</strong> do julgamento médico</li>
+</ul>
+<div class="page"></div>
+<hr>
+<h2 id="relat%C3%B3rio-t%C3%A9cnico">Relatório Técnico</h2>
+<h4 id="32-interpreta%C3%A7%C3%A3o-de-resultados">8.1 Interpretação de Resultados</h4>
+<p><strong>RF vs. LR:</strong></p>
+<pre class="hljs"><code><div>            Logistic Regression    Random Forest
+ROC AUC              0.81              0.80
+Recall               0.75              0.73
+Precisão             0.74              0.72
+F1-score             0.74              0.72
+</div></code></pre>
+<p><strong>LR é superior</strong> em todas as métricas. Ganho de ROC AUC de +0.01 é relevante em diagnóstico médico.</p>
+<h4 id="33-import%C3%A2ncia-de-features-top-10">8.2 Importância de Features (Top 10)</h4>
+<p><strong>Método:</strong> Permutação importance com 30 repetiçõesScoring: ROC AUC (alinhado com métrica principal)</p>
+<ol>
+<li>
+<p><strong>RIDAGEYR_age</strong> (0.032) — Idade é o fator mais importante</p>
+<ul>
+<li>Interpretação: AVC aumenta exponencialmente com idade (fisiologia cardiocerebral)</li>
+</ul>
+</li>
+<li>
+<p><strong>BPXSY1_sbp</strong> (0.025) — Pressão arterial sistólica</p>
+<ul>
+<li>Interpretação: Hipertensão = fator de risco major para AVC</li>
+</ul>
+</li>
+<li>
+<p><strong>LBXGH_hba1c</strong> (0.018) — Hemoglobina glicada (diabetes)</p>
+<ul>
+<li>Interpretação: Diabetes eleva risco de AVC</li>
+</ul>
+</li>
+<li>
+<p><strong>MCQ160B_chf</strong> (0.016) — Insuficiência cardíaca</p>
+<ul>
+<li>Interpretação: Doença cardíaca comórbida aumenta risco</li>
+</ul>
+</li>
+<li>
+<p><strong>BPQ020_high_bp</strong> (0.014) — Histórico de hipertensão</p>
+<ul>
+<li>Interpretação: Auto-relato confirma a importância de BP</li>
+</ul>
+</li>
+</ol>
+<p><strong>Insights:</strong></p>
+<ul>
+<li>Features biomédicas (idade, pressão, glicemia) dominam;</li>
+<li>Fatores demográficos (gênero, estado civil) têm impacto menor;</li>
+<li>Combinar idade + pressão + glicemia captura ~70% da importância total;</li>
+</ul>
+<div class="page"></div>
+<hr>
+<h2 id="refer%C3%AAncias">Referências</h2>
+<ol>
+<li>CDC NHANES — https://www.cdc.gov/nchs/nhanes</li>
+<li>Documentação scikit-learn — https://scikit-learn.org</li>
+<li>Pandascouple. Projeto ML Previsão de AVC — https://pandascouple.medium.com/projeto-machine-learning-previs%C3%A3o-de-avc-f4b7dce11929</li>
+<li>USP Rádio. Uso de IA e análise de dados na prevenção de AVC — https://jornal.usp.br/radio-usp/uso-de-ia-e-analise-de-dados-na-prevencao-de-avc-e-ataque-isquemico-transitorio/</li>
+<li>Nature Research. Machine learning para risco cardiovascular — https://www.nature.com/articles/s41598-024-61665-4</li>
+<li>Journal of Health Informatics. AVC diagnosis — https://jhi.sbis.org.br/index.php/jhi-sbis/article/view/980</li>
+<li>Nature Research 2025. AVC modeling — https://www.nature.com/articles/s41598-025-01855-w</li>
+</ol>
+<hr>
+
+</body>
+</html>
