@@ -5,3 +5,4 @@ matplotlib==3.10.8
 scikit-learn==1.7.2
 tensorflow==2.20.0
 torchvision==0.24.1
+opencv-python-headless==4.13.0.90
