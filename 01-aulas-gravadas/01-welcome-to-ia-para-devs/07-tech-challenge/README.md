@@ -444,6 +444,76 @@ F1-score             0.74              0.72
 
 ---
 
+## Extra: Classificação de AVC em Tomografias (CT) com Visão Computacional
+
+### Descrição
+
+O notebook [`tech-challenge-fase-1-extra.ipynb`](cnn-computer-vision/tech-challenge-fase-1-extra.ipynb) implementa um sistema de **classificação binária de AVC a partir de imagens de tomografia computadorizada (CT)** utilizando técnicas de visão computacional e deep learning. Este projeto complementa a análise de dados estruturados do projeto principal, explorando a aplicação de Machine Learning em dados não estruturados (imagens médicas).
+
+**Base de dados:** Kaggle Brain Stroke CT Image Dataset (`afridirahman/brain-stroke-ct-image-dataset`)
+
+### Bibliotecas Utilizadas
+
+| Biblioteca | Versão | Função |
+|---|---|---|
+| `numpy` | 2.3.5 | Processamento de arrays e operações numéricas |
+| `matplotlib` | 3.10.8 | Visualização de dados e gráficos |
+| `opencv-python-headless` | 4.13.0.90 | Processamento de imagens (filtros Blur, Sobel) |
+| `Pillow` | 12.1.0 | Manipulação e carregamento de imagens |
+| `scikit-learn` | 1.7.2 | Modelo RandomForest e métricas de avaliação |
+| `tensorflow-cpu` | 2.20.0 | Redes neurais (MLP e CNN) |
+| `kagglehub` | 0.4.0 | Download automático do dataset do Kaggle |
+
+### Algoritmos de Treinamento
+
+1. **RandomForestClassifier (scikit-learn):** Ensemble de árvores de decisão com 300 estimadores e balanceamento automático de classes. As imagens são achatadas (flatten) para vetores de 16.384 features (128×128 pixels).
+
+2. **Rede Neural Tradicional MLP/Dense (TensorFlow):** Arquitetura fully-connected com 3 camadas densas (256→128→64 neurônios) e ativação ReLU, otimizada com Adam e função de perda binary_crossentropy.
+
+3. **Rede Neural Convolucional CNN (TensorFlow):** Arquitetura com 3 blocos convolucionais (32→64→128 filtros 3×3) intercalados com MaxPooling 2×2, seguidos de camada densa de 128 neurônios. Processa imagens em formato (128, 128, 1) preservando informação espacial.
+
+### Interpretação de Resultados (Extra)
+
+```
+==================================================
+COMPARAÇÃO DE ACURÁCIA - Classificação de AVC (CT)
+==================================================
+RandomForest:                    0.9701
+Rede Neural Tradicional (MLP):   0.9042
+Rede Neural Convolucional (CNN): 0.9541
+==================================================
+```
+
+**Análise Comparativa:**
+
+| Modelo | Acurácia | Observações |
+|---|---|---|
+| **RandomForest** | **97.01%** | Melhor desempenho geral |
+| CNN | 95.41% | Segundo melhor, próximo ao RF |
+| MLP/Dense | 90.42% | Performance inferior às demais |
+
+**Insights:**
+
+1. **RandomForest lidera com 97.01%:** Resultado notável, considerando que CNNs são tipicamente superiores em tarefas de visão computacional. Possíveis explicações:
+   - Dataset relativamente pequeno favorece modelos com menos parâmetros
+   - Imagens de CT podem ter padrões texturais que árvores capturam bem via features achatadas
+   - O balanceamento de classes (`class_weight='balanced'`) beneficiou o RF
+   - 300 estimadores proporcionam robustez e reduzem overfitting
+
+2. **CNN supera MLP significativamente (+4.99%):** Após 50 épocas de treinamento, a CNN demonstrou sua capacidade de extrair features espaciais relevantes das tomografias:
+   - Camadas convolucionais capturam bordas, texturas e padrões característicos de lesões cerebrais
+   - MaxPooling preserva as features mais importantes enquanto reduz dimensionalidade
+   - A arquitetura hierárquica (32→64→128 filtros) permite aprender representações cada vez mais abstratas
+
+3. **MLP com menor acurácia (90.42%):** A rede densa tradicional não consegue explorar a estrutura espacial das imagens:
+   - Flatten das imagens perde informação de vizinhança entre pixels
+   - 10 épocas podem ser insuficientes para convergência completa
+   - Arquitetura mais simples limita capacidade de representação
+
+4. **Acurácia geral elevada (~90-97%):** Indica que as imagens de CT possuem características visuais distintas entre casos de AVC e não-AVC, permitindo boa separação mesmo com modelos relativamente simples.
+
+---
+
 ## Referências
 
 1. CDC NHANES — https://www.cdc.gov/nchs/nhanes
@@ -453,5 +523,7 @@ F1-score             0.74              0.72
 5. Nature Research. Machine learning para risco cardiovascular — https://www.nature.com/articles/s41598-024-61665-4
 6. Journal of Health Informatics. AVC diagnosis — https://jhi.sbis.org.br/index.php/jhi-sbis/article/view/980
 7. Nature Research 2025. AVC modeling — https://www.nature.com/articles/s41598-025-01855-w
+8. Atlas Grand Challenge - https://atlas.grand-challenge.org/
+9. Notebook Atlas Grand Challenge - https://github.com/npnl/isles_2022/blob/main/ISLES_Example.ipynb
 
 ---
