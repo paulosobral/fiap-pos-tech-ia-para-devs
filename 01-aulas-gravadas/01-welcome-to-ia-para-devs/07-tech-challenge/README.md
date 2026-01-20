@@ -22,9 +22,9 @@ Construir uma solução com foco em IA para processamento de dados médicos, apl
 
 * [Vídeo de apresentação do projeto](https://youtu.be/B7h-XVuymFs "Tech Challenge - Fase 1 AVC");
 
-* [Notebook Computer Tech Challenge Fase 1](https://github.com/paulosobral/fiap-pos-tech-ia-para-devs/tree/01-welcome-to-ia-para-devs/07-tech-challenge/01-aulas-gravadas/01-welcome-to-ia-para-devs/07-tech-challenge/m369853-tech-challenge-fase-1.ipynb "Notebook Computer Tech Challenge Fase 1");
+* [Notebook Computer Tech Challenge Fase 1](https://github.com/paulosobral/fiap-pos-tech-ia-para-devs/blob/feature/01-aulas-gravadas/01-welcome-to-ia-para-devs/07-tech-challenge/01-aulas-gravadas/01-welcome-to-ia-para-devs/07-tech-challenge/rm369853-tech-challenge-fase-1.ipynb "Notebook Computer Tech Challenge Fase 1");
 
-* EXTRA - [Notebook Computer Visinio CNN](https://github.com/paulosobral/fiap-pos-tech-ia-para-devs/tree/01-welcome-to-ia-para-devs/07-tech-challenge/01-aulas-gravadas/01-welcome-to-ia-para-devs/07-tech-challenge/cnn-computer-vision/m369853-tech-challenge-fase-1-extra.ipynb "Notebook Computer Visinio CNN");
+* EXTRA - [Notebook Computer Visinio CNN](https://github.com/paulosobral/fiap-pos-tech-ia-para-devs/blob/feature/01-aulas-gravadas/01-welcome-to-ia-para-devs/07-tech-challenge/01-aulas-gravadas/01-welcome-to-ia-para-devs/07-tech-challenge/cnn-computer-vision/m369853-tech-challenge-fase-1-extra.ipynb "Notebook Computer Visinio CNN");
 
 * [Repositório do GitHub](https://github.com/paulosobral/fiap-pos-tech-ia-para-devs/tree/01-welcome-to-ia-para-devs/07-tech-challenge/01-aulas-gravadas/01-welcome-to-ia-para-devs/07-tech-challenge "Repositório do GitHub");
 
