@@ -29,7 +29,13 @@ Este repositório contém materiais, notebooks e exemplos utilizados ao longo do
    pip install -r caminho/para/requirements.txt
    ```
 
-4. Abra os notebooks usando Jupyter / VS Code e execute as células conforme indicado.
+4. Para forçar funcionar um notebook utilizando o venv:
+
+   ```bash
+   python -m ipykernel install --user --name=$(basename $PWD)
+   ```
+
+5. Abra os notebooks usando Jupyter / VS Code e execute as células conforme indicado.
 
 ## Observações 📌
 - Este repositório é destinado a fins educacionais e de estudo para os participantes da turma **8IADT**.
