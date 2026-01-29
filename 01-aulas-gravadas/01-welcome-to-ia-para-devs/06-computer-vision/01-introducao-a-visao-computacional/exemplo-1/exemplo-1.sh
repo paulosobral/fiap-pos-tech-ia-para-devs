@@ -1,0 +1,1 @@
+GDK_BACKEND=x11 ./venv/bin/python exemplo-1.py
