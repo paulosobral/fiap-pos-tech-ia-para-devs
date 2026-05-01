@@ -192,3 +192,4 @@ override.tf.json
 *.auto.tfvars
 
 drive/
+chroma/
