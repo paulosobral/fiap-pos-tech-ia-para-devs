@@ -193,3 +193,8 @@ override.tf.json
 
 drive/
 chroma/
+
+*.keras
+
+
+training_checkpoints
