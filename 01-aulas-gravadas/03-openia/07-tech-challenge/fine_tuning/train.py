@@ -16,11 +16,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import unsloth  # must be first — patches torch/transformers before other imports
+from unsloth import FastLanguageModel, is_bfloat16_supported
+
 import torch
 from datasets import Dataset
 from trl import SFTTrainer
 from transformers import TrainingArguments
-from unsloth import FastLanguageModel, is_bfloat16_supported
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -29,7 +31,8 @@ OUTPUT_DIR = Path(__file__).resolve().parent / "output" / "lora_model"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # ── Hyper-parameters ──────────────────────────────────────────────────────────
-MODEL_NAME = "unsloth/llama-3-8b-bnb-4bit"
+# llama-3.2-3b fits in ~6 GB VRAM at 4-bit; use llama-3-8b-bnb-4bit if you have ≥12 GB
+MODEL_NAME = "unsloth/llama-3.2-3b-bnb-4bit"
 MAX_SEQ_LENGTH = 2048
 LOAD_IN_4BIT = True
 LORA_R = 16

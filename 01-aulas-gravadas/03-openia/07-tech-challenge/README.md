@@ -18,7 +18,7 @@ python fine_tuning/prepare_dataset.py
 python fine_tuning/train.py
 
 # 4. Avaliar o modelo
-python fine_tuning/evaluate.py
+python fine_tuning/eval_model.py
 
 # 5. Iniciar o assistente
 streamlit run app.py
@@ -46,7 +46,7 @@ streamlit run app.py
 ├── fine_tuning/
 │   ├── prepare_dataset.py   # Baixa PubMedQA, gera dados sintéticos, formata Alpaca
 │   ├── train.py             # Fine-tuning: Unsloth + LoRA + SFTTrainer
-│   ├── evaluate.py          # ROUGE-L, BLEU, exemplos qualitativos
+│   ├── eval_model.py        # ROUGE-L, BLEU, exemplos qualitativos
 │   └── output/              # Adapter LoRA salvo aqui após treino
 ├── assistant/
 │   ├── llm_loader.py        # Carrega modelo (adapter ou fallback)
@@ -163,7 +163,7 @@ Acesse em `http://localhost:8501` após rodar `streamlit run app.py`.
 Após o fine-tuning, execute:
 
 ```bash
-python fine_tuning/evaluate.py
+python fine_tuning/eval_model.py
 ```
 
 Resultados salvos em `fine_tuning/output/eval_results.json`.

@@ -11,16 +11,38 @@ Usage:
 
 from __future__ import annotations
 
+import threading
+from contextlib import contextmanager
 from pathlib import Path
 
-import torch
 from langchain_community.llms import HuggingFacePipeline
 from transformers import pipeline as hf_pipeline
 from unsloth import FastLanguageModel
 
+# ── Unsloth thread-safety patch ───────────────────────────────────────────────
+# unsloth_zoo.rl_environments.time_limit uses signal.alarm() which only works
+# on the main thread. Streamlit runs scripts in worker threads, so we make
+# time_limit a no-op when called outside the main thread.
+import unsloth_zoo.rl_environments as _rl_env  # noqa: E402
+
+_orig_time_limit = _rl_env.time_limit
+
+
+@contextmanager
+def _safe_time_limit(seconds):
+    if threading.current_thread() is threading.main_thread():
+        with _orig_time_limit(seconds):
+            yield
+    else:
+        yield
+
+
+_rl_env.time_limit = _safe_time_limit
+# ─────────────────────────────────────────────────────────────────────────────
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 ADAPTER_DIR = BASE_DIR / "fine_tuning" / "output" / "lora_model"
-FALLBACK_MODEL = "unsloth/llama-3-8b-bnb-4bit"
+FALLBACK_MODEL = "unsloth/llama-3.2-3b-bnb-4bit"
 
 MAX_SEQ_LENGTH = 2048
 MAX_NEW_TOKENS = 512
@@ -54,8 +76,7 @@ def build_llm(use_adapter: bool = True) -> HuggingFacePipeline:
     )
     FastLanguageModel.for_inference(model)
 
-    device = 0 if torch.cuda.is_available() else -1
-
+    # device must NOT be passed when the model was loaded via accelerate (4-bit / unsloth)
     pipe = hf_pipeline(
         "text-generation",
         model=model,
@@ -65,7 +86,6 @@ def build_llm(use_adapter: bool = True) -> HuggingFacePipeline:
         temperature=1.0,
         repetition_penalty=1.1,
         return_full_text=False,
-        device=device,
     )
 
     llm = HuggingFacePipeline(pipeline=pipe)

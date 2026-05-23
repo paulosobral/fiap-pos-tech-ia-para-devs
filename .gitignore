@@ -190,11 +190,11 @@ override.tf.json
 *_override.tf.json
 # terraform.tfvars
 *.auto.tfvars
-
+.agents/
 drive/
 chroma/
-
+data/
+output/
+*cache/
 *.keras
-
-
-training_checkpoints
+*checkpoint*

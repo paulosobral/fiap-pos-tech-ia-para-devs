@@ -122,7 +122,7 @@ _PROTOCOLS: list[dict] = [
             "   d) Cristaloide 30 mL/kg IV se hipotensão ou lactato ≥ 4 mmol/L.\n"
             "   e) Vasopressores se PAM < 65 mmHg após reposição.\n"
             "3. Reavaliar resposta em 1-2h; registrar evolução em prontuário.\n"
-            "NOTA: Toda prescrição requer validação e assinatura do médico responsável.",
+            "NOTA: Toda prescrição requer validação e assinatura do médico responsável."
         ),
     },
     {
@@ -136,7 +136,7 @@ _PROTOCOLS: list[dict] = [
             "3. Monitorar glicemia capilar a cada 1-2h até estabilização, depois a cada 4h.\n"
             "4. Evitar hipoglicemia (< 70 mg/dL): suspender insulina e oferecer dextrose 50% 20 mL IV.\n"
             "5. Transição para SC ao reintroduzir dieta: calcular dose basal-bolus.\n"
-            "NOTA: Prescrição de insulina deve ser validada pelo médico assistente.",
+            "NOTA: Prescrição de insulina deve ser validada pelo médico assistente."
         ),
     },
     {
@@ -153,7 +153,7 @@ _PROTOCOLS: list[dict] = [
             "   - Nitratos: NTG SL 0,4 mg (contraindicado se PAS < 90 ou uso de sildenafil).\n"
             "   - AAS 200 mg VO (se sem contraindicação).\n"
             "5. Estratificação de risco: score HEART ou TIMI.\n"
-            "NOTA: Toda conduta terapêutica requer prescrição e validação médica.",
+            "NOTA: Toda conduta terapêutica requer prescrição e validação médica."
         ),
     },
     {
@@ -166,7 +166,7 @@ _PROTOCOLS: list[dict] = [
             "perda de peso > 4,5 kg em 5 dias com tratamento.\n"
             "Critérios Menores: edema bilateral de MMII, tosse noturna, dispneia aos esforços, "
             "hepatomegalia, derrame pleural, FC > 120 bpm, perda de peso > 4,5 kg em 5 dias.\n"
-            "Exames complementares: BNP/NT-proBNP, ecocardiograma (FEVE), RX tórax.",
+            "Exames complementares: BNP/NT-proBNP, ecocardiograma (FEVE), RX tórax."
         ),
     },
     {
@@ -181,7 +181,7 @@ _PROTOCOLS: list[dict] = [
             "- Correlacionar com quadro clínico e sinais de SIRS/sepse.\n"
             "- Solicitar hemocultura se febre + foco suspeito.\n"
             "- Avaliar VHS, PCR e procalcitonina para graduar resposta inflamatória.\n"
-            "NOTA: Interpretação final e prescrição devem ser realizadas pelo médico.",
+            "NOTA: Interpretação final e prescrição devem ser realizadas pelo médico."
         ),
     },
     {
@@ -195,7 +195,7 @@ _PROTOCOLS: list[dict] = [
             "3. Associada a mudança na forma/consistência das fezes.\n"
             "Subtypes: SII-C (constipação), SII-D (diarréia), SII-M (misto), SII-U (inespecífico).\n"
             "Sinais de alarme que exigem investigação adicional: sangue nas fezes, perda de peso "
-            "involuntária, anemia, febre, história familiar de câncer colorretal.",
+            "involuntária, anemia, febre, história familiar de câncer colorretal."
         ),
     },
     {
@@ -210,7 +210,7 @@ _PROTOCOLS: list[dict] = [
             "   - Clonidina 0,1-0,2 mg VO como alternativa.\n"
             "4. Meta: redução de 25% da PAM em 2-6h (não normalização imediata).\n"
             "5. Acompanhamento ambulatorial com médico de referência.\n"
-            "NOTA: Prescrição e ajuste de dose devem ser validados pelo médico.",
+            "NOTA: Prescrição e ajuste de dose devem ser validados pelo médico."
         ),
     },
     {
@@ -229,7 +229,7 @@ _PROTOCOLS: list[dict] = [
             "- Derrame pericárdico: ausente.\n"
             "- Função diastólica: preservada (E/A 1,2, TDE 180 ms).\n\n"
             "Conclusão: Ecocardiograma transtorácico dentro dos limites da normalidade.\n"
-            "Assinatura: Médico responsável [CRM xxxxx].",
+            "Assinatura: Médico responsável [CRM xxxxx]."
         ),
     },
     {
@@ -247,7 +247,7 @@ _PROTOCOLS: list[dict] = [
             "P: Isglt2 pode ser usado em insuficiência cardíaca?\n"
             "R: Sim. Empagliflozina e dapagliflozina têm benefício cardiovascular comprovado "
             "(EMPA-REG, DAPA-HF).\n\n"
-            "NOTA: Decisão terapêutica individual requer avaliação médica.",
+            "NOTA: Decisão terapêutica individual requer avaliação médica."
         ),
     },
     {
@@ -263,7 +263,7 @@ _PROTOCOLS: list[dict] = [
             "5. Retorno se piora clínica, dispneia, cianose ou não melhora em 48-72h.\n"
             "6. Reavaliação em 48h.\n\n"
             "NOTA: Esta é um modelo orientativo. Toda prescrição deve ser assinada "
-            "pelo médico responsável após avaliação individual do paciente.",
+            "pelo médico responsável após avaliação individual do paciente."
         ),
     },
 ]
@@ -280,7 +280,7 @@ _FAQ_TEMPLATES: list[dict] = [
             "TC sem contraste: hiperdensidade imediata.\n"
             "Tratamento: controle pressórico rigoroso, reversão de anticoagulação, "
             "neurointensivismo; cirurgia em casos selecionados.\n"
-            "NOTA: Diagnóstico e tratamento exigem avaliação neurológica e de imagem urgentes.",
+            "NOTA: Diagnóstico e tratamento exigem avaliação neurológica e de imagem urgentes."
         ),
     },
     {
@@ -295,7 +295,7 @@ _FAQ_TEMPLATES: list[dict] = [
             "- Regra de exclusão: hsTn T0 < LoD (limite de detecção).\n"
             "- Regra de inclusão: hsTn T0 muito elevada ou delta T1-T0 > 6 ng/L (kit-dependente).\n"
             "Causas não-coronárias de elevação: miocardite, PE, IRA, sepse.\n"
-            "NOTA: Interpretação requer correlação clínica pelo médico.",
+            "NOTA: Interpretação requer correlação clínica pelo médico."
         ),
     },
     {
@@ -307,7 +307,7 @@ _FAQ_TEMPLATES: list[dict] = [
             "S₂ — AVC/TIA: 0 | V — Doença vascular: 0 | A — Idade 65-74: +1 | Sc — Sexo feminino: 0\n"
             "Total: 2 pontos → risco moderado-alto → anticoagulação oral recomendada.\n"
             "Preferir NOACs (apixabana, rivaroxabana, dabigatrana) sobre varfarina.\n"
-            "NOTA: Decisão de anticoagular deve ser tomada pelo médico considerando risco de sangramento.",
+            "NOTA: Decisão de anticoagular deve ser tomada pelo médico considerando risco de sangramento."
         ),
     },
     {
@@ -320,7 +320,7 @@ _FAQ_TEMPLATES: list[dict] = [
             "- Confusão mental | Ureia > 43 mg/dL | FR ≥ 30 ipm | PAS < 90 ou PAD ≤ 60 | Idade ≥ 65\n"
             "Score 0-1: ambulatorial; 2: internação clínica; ≥ 3: avaliar UTI.\n"
             "Critérios de UTI (ATS/IDSA): 1 critério maior (ventilação mecânica ou choque séptico) "
-            "ou ≥ 3 critérios menores.",
+            "ou ≥ 3 critérios menores."
         ),
     },
     {
@@ -334,7 +334,7 @@ _FAQ_TEMPLATES: list[dict] = [
             "4. Angioedema (raro, < 1%): emergência médica; contraindicação absoluta permanente.\n"
             "5. Piora de função renal: aumento de creatinina até 30% é aceitável; > 30% → suspender.\n"
             "Contraindicações absolutas: gravidez (teratogênico), angioedema prévio por iECA, estenose "
-            "bilateral de artéria renal.",
+            "bilateral de artéria renal."
         ),
     },
 ]

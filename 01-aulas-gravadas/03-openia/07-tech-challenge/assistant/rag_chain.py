@@ -1,23 +1,22 @@
 """
 rag_chain.py
 ============
-LangChain ConversationalRetrievalChain that combines:
+LangChain LCEL chain that combines:
   - Fine-tuned LLM (via llm_loader)
   - FAISS retriever over medical protocols (via vector_store)
 
 Usage:
     from assistant.rag_chain import build_rag_chain, ask
-    chain, memory = build_rag_chain()
+    chain, _ = build_rag_chain()
     result = ask(chain, "Qual o protocolo para sepse?")
     print(result["answer"])
-    print(result["source_documents"])
+    print(result["sources"])
 """
 
 from __future__ import annotations
 
-from langchain.chains import ConversationalRetrievalChain
-from langchain.memory import ConversationBufferWindowMemory
-from langchain.prompts import PromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import PromptTemplate
 
 from assistant.llm_loader import build_llm
 from assistant.vector_store import get_retriever
@@ -55,48 +54,63 @@ _QA_PROMPT = PromptTemplate(
 )
 
 
+class _MedicalRAGChain:
+    """Stateful LCEL-based conversational retrieval chain."""
+
+    def __init__(self, llm, retriever, window_k: int) -> None:
+        parser = StrOutputParser()
+        self._condense = _CONDENSE_PROMPT | llm | parser
+        self._qa = _QA_PROMPT | llm | parser
+        self._retriever = retriever
+        self._window_k = window_k
+        self._history: list[tuple[str, str]] = []
+
+    def _format_history(self) -> str:
+        tail = self._history[-self._window_k:]
+        return "\n".join(f"Human: {h}\nAI: {a}" for h, a in tail)
+
+    def invoke(self, question: str, patient_context: str = "") -> dict:
+        full_q = (
+            f"{question}\n\nContexto do paciente:\n{patient_context}"
+            if patient_context
+            else question
+        )
+
+        history = self._format_history()
+        standalone = (
+            self._condense.invoke({"chat_history": history, "question": full_q})
+            if history
+            else full_q
+        )
+
+        docs = self._retriever.invoke(standalone)
+        context = "\n\n".join(doc.page_content for doc in docs)
+        answer = self._qa.invoke({"context": context, "question": full_q})
+
+        self._history.append((full_q, answer))
+
+        sources = [
+            doc.metadata.get("source", "Protocolo interno") for doc in docs
+        ]
+        return {
+            "answer": answer,
+            "sources": list(dict.fromkeys(sources)),  # deduplicated, order preserved
+        }
+
+
 def build_rag_chain(
     use_adapter: bool = True,
     window_k: int = 5,
-) -> tuple[ConversationalRetrievalChain, ConversationBufferWindowMemory]:
+) -> tuple[_MedicalRAGChain, None]:
     llm = build_llm(use_adapter=use_adapter)
     retriever = get_retriever()
-
-    memory = ConversationBufferWindowMemory(
-        k=window_k,
-        memory_key="chat_history",
-        output_key="answer",
-        return_messages=False,
-    )
-
-    chain = ConversationalRetrievalChain.from_llm(
-        llm=llm,
-        retriever=retriever,
-        memory=memory,
-        condense_question_prompt=_CONDENSE_PROMPT,
-        combine_docs_chain_kwargs={"prompt": _QA_PROMPT},
-        return_source_documents=True,
-        output_key="answer",
-        verbose=False,
-    )
-    return chain, memory
+    chain = _MedicalRAGChain(llm, retriever, window_k)
+    return chain, None  # None keeps API compatible with callers that do: chain, _ = build_rag_chain()
 
 
 def ask(
-    chain: ConversationalRetrievalChain,
+    chain: _MedicalRAGChain,
     question: str,
     patient_context: str = "",
 ) -> dict:
-    full_question = question
-    if patient_context:
-        full_question = f"{question}\n\nContexto do paciente:\n{patient_context}"
-
-    result = chain.invoke({"question": full_question})
-    sources = [
-        doc.metadata.get("source", "Protocolo interno")
-        for doc in result.get("source_documents", [])
-    ]
-    return {
-        "answer": result["answer"],
-        "sources": list(dict.fromkeys(sources)),  # deduplicated, order preserved
-    }
+    return chain.invoke(question, patient_context)

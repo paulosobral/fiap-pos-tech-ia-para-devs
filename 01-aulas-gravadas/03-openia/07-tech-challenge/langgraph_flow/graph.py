@@ -28,6 +28,7 @@ from functools import partial
 from typing import Literal
 
 from langgraph.graph import END, StateGraph
+from langgraph.checkpoint.memory import MemorySaver
 
 from assistant.patient_db import (
     get_active_medications,
@@ -111,7 +112,7 @@ def build_graph(rag_chain):
     graph.add_edge("diagnosis_node", "pharmacy_node")
     graph.add_edge("pharmacy_node", END)
 
-    return graph.compile(interrupt_before=["pharmacy_node"])
+    return graph.compile(interrupt_before=["pharmacy_node"], checkpointer=MemorySaver())
 
 
 def build_initial_state(patient_id: int, symptoms: str) -> PatientState:

@@ -13,6 +13,29 @@ Tabs:
 
 from __future__ import annotations
 
+# ── SSL compatibility patch (must precede ALL other imports) ──────────────────
+# uv Python's bundled OpenSSL fails to initialise ssl.SSLContext on Fedora when
+# the system openssl.cnf contains FIPS/legacy directives the bundled build can't
+# parse. Fix: disable the system config file and add a Python-level fallback so
+# aiohttp (imported transitively via unsloth→datasets) doesn't crash at load time.
+import os
+import ssl as _ssl
+
+os.environ["OPENSSL_CONF"] = "/dev/null"   # force-override system openssl.cnf
+os.environ["OPENSSL_MODULES"] = ""         # prevent FIPS provider auto-load
+
+_orig_create_default_context = _ssl.create_default_context
+
+def _safe_create_default_context(*args, **kwargs):
+    try:
+        return _orig_create_default_context(*args, **kwargs)
+    except _ssl.SSLError:
+        # App only loads local models — no external TLS connections needed.
+        return _ssl._create_unverified_context()
+
+_ssl.create_default_context = _safe_create_default_context
+# ─────────────────────────────────────────────────────────────────────────────
+
 import time
 from pathlib import Path
 
@@ -135,13 +158,19 @@ def render_chat_tab(patient_id: int, patient_info: dict, graph, rag_chain) -> No
 def _run_langgraph_flow(
     symptoms: str, patient_id: int, patient_info: dict, graph, t_start: float
 ) -> None:
+    import uuid
+    if "langgraph_thread_id" not in st.session_state:
+        st.session_state.langgraph_thread_id = str(uuid.uuid4())
+    thread_id = st.session_state.langgraph_thread_id
+    config = {"configurable": {"thread_id": thread_id}}
+
     initial_state = build_initial_state(patient_id, symptoms)
     final_state = None
     all_output = ""
 
     with st.status("Executando fluxo multi-agente …", expanded=True) as status:
         # Run graph up to interrupt point (before pharmacy)
-        for event in graph.stream(initial_state, stream_mode="values"):
+        for event in graph.stream(initial_state, config, stream_mode="values"):
             final_state = event
 
             agent_steps = final_state.get("agent_steps", [])
@@ -157,13 +186,15 @@ def _run_langgraph_flow(
 
         # Check if interrupted at pharmacy node
         if final_state and final_state.get("human_approval_required") is False:
-            # Resume pharmacy node
-            for event in graph.stream(None, final_state, stream_mode="values"):
+            # Resume pharmacy node (None input = resume from checkpoint)
+            for event in graph.stream(None, config, stream_mode="values"):
                 final_state = event
                 agent_steps = final_state.get("agent_steps", [])
                 if agent_steps:
                     st.write(sanitise_for_display(agent_steps[-1]))
 
+        # Rotate thread_id so next invocation starts fresh
+        st.session_state.langgraph_thread_id = str(uuid.uuid4())
         status.update(label="Fluxo concluído.", state="complete")
 
     if not final_state:

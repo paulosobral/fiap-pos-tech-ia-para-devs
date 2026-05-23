@@ -1,6 +1,6 @@
 """
-evaluate.py
-===========
+eval_model.py
+=============
 Fase 3 — Model evaluation:
   - Load fine-tuned LoRA adapter
   - Run inference on PubMedQA test split
@@ -8,7 +8,7 @@ Fase 3 — Model evaluation:
   - Print qualitative examples
 
 Run:
-    python fine_tuning/evaluate.py
+    python fine_tuning/eval_model.py
 """
 
 from __future__ import annotations
@@ -16,11 +16,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import unsloth  # must be first — patches torch/transformers before other imports
+from unsloth import FastLanguageModel
+
 import nltk
 import torch
 from datasets import Dataset
 from evaluate import load as load_metric
-from unsloth import FastLanguageModel
 
 nltk.download("punkt", quiet=True)
 nltk.download("punkt_tab", quiet=True)
@@ -114,10 +116,8 @@ def main() -> None:
 
     # ROUGE
     rouge_result = rouge.compute(predictions=predictions, references=references)
-    # BLEU
-    tokenised_preds = [p.split() for p in predictions]
-    tokenised_refs = [[r.split()] for r in references]
-    bleu_result = bleu.compute(predictions=tokenised_preds, references=tokenised_refs)
+    # BLEU — evaluate library expects plain strings, not pre-tokenized lists
+    bleu_result = bleu.compute(predictions=predictions, references=[[r] for r in references])
 
     print("\n=== Evaluation Results ===")
     print(f"ROUGE-1:  {rouge_result['rouge1']:.4f}")
