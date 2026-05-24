@@ -56,8 +56,8 @@ LORA_TARGET_MODULES = [
 TRAIN_ARGS = TrainingArguments(
     output_dir=str(OUTPUT_DIR / "checkpoints"),
     num_train_epochs=3,
-    per_device_train_batch_size=4,   # 2 → 4: VRAM freed by shorter seq len
-    gradient_accumulation_steps=2,  # 4 → 2: effective batch stays ~8, fewer sync points
+    per_device_train_batch_size=4,   # 2 → 4: VRAM liberada por sequências mais curtas
+    gradient_accumulation_steps=2,  # 4 → 2: batch efetivo mantido em ~8, menos pontos de sincronização
     warmup_ratio=0.05,
     learning_rate=2e-4,
     fp16=not is_bfloat16_supported(),
@@ -146,7 +146,7 @@ def main() -> None:
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=MODEL_NAME,
         max_seq_length=MAX_SEQ_LENGTH,
-        dtype=None,  # auto-detect
+        dtype=None,  # detecção automática
         load_in_4bit=LOAD_IN_4BIT,
         # device_map="auto" + max_memory permite ao Accelerate/HuggingFace
         # descarregar camadas que excedem a VRAM dedicada para a RAM do sistema.

@@ -1,12 +1,12 @@
 """
 prepare_dataset.py
 ==================
-Fase 1 — Data Preparation pipeline:
-  1. Download PubMedQA (pqa_labeled) from HuggingFace
-  2. Generate synthetic hospital records (protocols, FAQs, report templates)
-  3. Anonymise with regex
-  4. Convert to Alpaca instruction format
-  5. Save processed/medical_train.jsonl  +  processed/medical_test.jsonl
+Fase 1 — Pipeline de preparação de dados:
+  1. Baixar PubMedQA (pqa_labeled) do HuggingFace
+  2. Gerar registros hospitalares sintéticos (protocolos, FAQs, modelos de laudo)
+  3. Anonimizar com regex
+  4. Converter para o formato de instrução Alpaca
+  5. Salvar processed/medical_train.jsonl  +  processed/medical_test.jsonl
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ ALPACA_TEMPLATE = (
     "### Response:\n{output}"
 )
 
-EOS_TOKEN = "<|end_of_text|>"  # overridden by train.py with tokenizer.eos_token
+EOS_TOKEN = "<|end_of_text|>"  # sobrescrito pelo train.py com tokenizer.eos_token
 
 
 def to_alpaca(instruction: str, input_ctx: str, output: str) -> dict[str, str]:

@@ -1,8 +1,8 @@
 """
 triage_agent.py
 ===============
-Classifies patient urgency (low / medium / high) based on reported symptoms.
-Uses keyword heuristics + the RAG chain for context enrichment.
+Classifica a urgência do paciente (baixa / média / alta) com base nos sintomas relatados.
+Usa heurísticas de palavras-chave + a cadeia RAG para enriquecimento de contexto.
 """
 
 from __future__ import annotations

@@ -1,10 +1,10 @@
 """
 audit_logger.py
 ===============
-Structured JSON audit logger for the medical assistant.
-All LLM interactions, agent steps, and high-urgency alerts are recorded.
+Logger de auditoria JSON estruturado para o assistente médico.
+Todas as interações com o LLM, etapas dos agentes e alertas de alta urgência são registrados.
 
-Log file: data/logs/audit.jsonl (one JSON object per line)
+Arquivo de log: data/logs/audit.jsonl (um objeto JSON por linha)
 """
 
 from __future__ import annotations
@@ -105,7 +105,7 @@ def log_agent_step(agent_name: str, patient_id: int, steps: list[str]) -> None:
 
 
 def load_recent_logs(n: int = 50) -> list[dict[str, Any]]:
-    """Read the last `n` log entries from the JSONL file."""
+    """Lê as últimas `n` entradas do arquivo JSONL."""
     if not LOG_FILE.exists():
         return []
     lines: list[str] = []

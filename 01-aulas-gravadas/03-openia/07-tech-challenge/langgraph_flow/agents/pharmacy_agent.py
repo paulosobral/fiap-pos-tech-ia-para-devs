@@ -1,11 +1,11 @@
 """
 pharmacy_agent.py
 =================
-Suggests pharmacological options based on the differential diagnosis.
+Sugere opções farmacológicas com base no diagnóstico diferencial.
 
-SAFETY GUARANTEE: Every response ALWAYS includes the mandatory disclaimer
-that prescription requires physician validation. The LLM output is post-processed
-to enforce this regardless of what the model generates.
+GARANTIA DE SEGURANÇA: Toda resposta SEMPRE inclui o aviso obrigatório
+de que a prescrição requer validação médica. A saída do LLM é pós-processada
+para garantir isso independentemente do que o modelo gerar.
 """
 
 from __future__ import annotations

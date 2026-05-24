@@ -87,7 +87,7 @@ def _route_after_triage(state: PatientState) -> Literal["alert_node", "exam_node
 # ── Builder do grafo ──────────────────────────────────────────────────────────
 
 def build_graph(rag_chain):
-    """Build and compile the StateGraph. Returns a compiled LangGraph app."""
+    """Constrói e compila o StateGraph. Retorna um app LangGraph compilado."""
     graph = StateGraph(PatientState)
 
     # Registra nós.
@@ -116,7 +116,7 @@ def build_graph(rag_chain):
 
 
 def build_initial_state(patient_id: int, symptoms: str) -> PatientState:
-    """Construct initial PatientState from patient_id + symptom description."""
+    """Constrói o PatientState inicial a partir do patient_id e descrição de sintomas."""
     patient_info = get_patient(patient_id) or {}
     active_medications = get_active_medications(patient_id)
     diagnoses = get_diagnoses(patient_id)

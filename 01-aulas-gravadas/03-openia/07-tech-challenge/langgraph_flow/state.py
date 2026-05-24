@@ -1,7 +1,7 @@
 """
 state.py
 ========
-Shared state schema for the LangGraph medical workflow.
+Esquema de estado compartilhado para o fluxo médico LangGraph.
 """
 
 from __future__ import annotations

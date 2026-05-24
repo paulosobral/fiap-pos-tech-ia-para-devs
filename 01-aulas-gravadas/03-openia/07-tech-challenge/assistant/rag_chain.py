@@ -53,7 +53,7 @@ _ALPACA_ARTIFACT_MARKERS = (
 
 
 def _strip_alpaca_artifacts(text: str) -> str:
-    """Truncate LLM output at the first Alpaca-format continuation marker."""
+    """Trunca a saída do LLM no primeiro marcador de continuação no formato Alpaca."""
     for marker in _ALPACA_ARTIFACT_MARKERS:
         idx = text.find(marker)
         if idx != -1:
@@ -79,7 +79,7 @@ _QA_PROMPT = PromptTemplate(
 
 
 class _MedicalRAGChain:
-    """Stateful LCEL-based conversational retrieval chain."""
+    """Cadeia de recuperação conversacional stateful baseada em LCEL."""
 
     def __init__(self, llm, vector_store, window_k: int, top_k: int = 3, max_distance: float = 0.85) -> None:
         parser = StrOutputParser()

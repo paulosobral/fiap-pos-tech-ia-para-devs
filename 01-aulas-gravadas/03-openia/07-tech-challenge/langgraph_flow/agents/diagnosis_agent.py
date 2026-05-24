@@ -1,8 +1,8 @@
 """
 diagnosis_agent.py
 ==================
-Generates a differential diagnosis using the RAG chain.
-Patient context (conditions, completed exams, medications) is injected into the prompt.
+Gera um diagnóstico diferencial usando a cadeia RAG.
+O contexto do paciente (condições, exames realizados, medicamentos) é injetado no prompt.
 """
 
 from __future__ import annotations

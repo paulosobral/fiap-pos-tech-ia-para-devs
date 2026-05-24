@@ -1,8 +1,8 @@
 """
 alert_agent.py
 ==============
-Emits structured alerts for high-urgency cases.
-Writes to the audit log and returns alert messages to be displayed in the UI.
+Emite alertas estruturados para casos de alta urgência.
+Grava no log de auditoria e retorna mensagens de alerta para exibição na interface.
 """
 
 from __future__ import annotations
