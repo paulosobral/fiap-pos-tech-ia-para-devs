@@ -198,3 +198,10 @@ output/
 *cache/
 *.keras
 *checkpoint*
+
+# Tech challenge 03 Fine-tuning: mantém apenas o adapter final versionado; checkpoints continuam fora.
+!01-aulas-gravadas/03-openia/07-tech-challenge/fine_tuning/output/
+01-aulas-gravadas/03-openia/07-tech-challenge/fine_tuning/output/*
+!01-aulas-gravadas/03-openia/07-tech-challenge/fine_tuning/output/lora_model/
+!01-aulas-gravadas/03-openia/07-tech-challenge/fine_tuning/output/lora_model/**
+01-aulas-gravadas/03-openia/07-tech-challenge/fine_tuning/output/lora_model/checkpoints/
