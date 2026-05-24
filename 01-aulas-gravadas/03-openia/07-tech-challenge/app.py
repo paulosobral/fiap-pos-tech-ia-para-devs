@@ -339,6 +339,32 @@ _GLOSSARY = [
     ("DPN",            "Dispneia Paroxística Noturna",               "Falta de ar que acorda o paciente à noite; critério maior de ICC."),
     ("MMII",           "Membros Inferiores",                         "Pernas. \"Edema de MMII\" = inchaço nas pernas."),
     ("ATB",            "Antibiótico",                               "Medicamento usado para tratar infecções bacterianas."),
+    ("TSH",            "Hormônio Estimulante da Tireoide",           "Controla a produção de T4/T3; elevado no hipotireoidismo."),
+    ("T4L",            "Tiroxina Livre",                             "Hormônio tireoidiano ativo; baixo no hipotireoidismo primário."),
+    ("LT4",            "Levotiroxina",                               "Hormônio tireoidiano sintético; tratamento do hipotireoidismo."),
+    ("Hipotireoidismo", "—",                                         "Glândula tireoide produz hormônios em quantidade insuficiente."),
+    # ── Condições adicionais dos pacientes ────────────────────────────────
+    ("FA",              "Fibrilação Atrial",                          "Arritmia em que o átrio bate de forma irregular; aumenta risco de AVC."),
+    ("DRC",             "Doença Renal Crônica",                       "Perda progressiva da função dos rins; estadiada de 1 (leve) a 5 (diálise)."),
+    ("DM1",             "Diabetes Mellitus tipo 1",                   "Diabetes autoimune; pâncreas não produz insulina; requer insulina."),
+    ("DLP",             "Dislipidemia",                               "Alteração no colesterol ou triglicérides; fator de risco cardiovascular."),
+    ("LES",             "Lúpus Eritematoso Sistêmico",                "Doença autoimune que pode afetar pele, articulações, rins e outros órgãos."),
+    ("HFrEF",           "IC com Fração de Ejeção Reduzida",           "IC com FE < 40%; disfunção sistólica do ventrículo esquerdo."),
+    ("HFpEF",           "IC com Fração de Ejeção Preservada",         "IC com FE ≥ 50%; disfunção diastólica."),
+    ("AAS",             "Ácido Acetilsalicílico",                     "Aspirina; antiagregante plaquetário usado em doenças cardiovasculares."),
+    ("TARV",            "Terapia Antirretroviral",                    "Tratamento do HIV com combinação de antivirais; permite vida praticamente normal."),
+    ("HIV",             "Vírus da Imunodeficiência Humana",           "Vírus que compromete o sistema imune; controlado cronicamente com TARV."),
+    ("Asma",            "—",                                         "Doença inflamatória das vias aéreas com broncoespasmo reversível."),
+    ("Rinite alérgica", "—",                                         "Inflamação nasal alérgica; frequentemente associada à asma."),
+    ("Parkinson",       "—",                                         "Doença neurodegenerativa: tremor, rigidez e lentidão de movimentos."),
+    ("Alzheimer",       "—",                                         "Demência progressiva mais comum; perda de memória e função cognitiva."),
+    ("Epilepsia",       "—",                                         "Distúrbio neurológico com crises convulsivas recorrentes."),
+    ("Enxaqueca",       "—",                                         "Cefaleia pulsátil intensa, frequentemente com náusea e fotofobia."),
+    ("Depressão",       "—",                                         "Transtorno de humor com tristeza persistente, anedonia e prejuízo funcional."),
+    ("Ansiedade",       "—",                                         "Transtorno de ansiedade generalizada; preocupação excessiva e sintomas físicos."),
+    ("Gota",            "—",                                         "Artrite por depósito de cristais de ácido úrico; dor intensa em articulações."),
+    ("Obesidade",       "—",                                         "IMC ≥ 30 kg/m²; fator de risco para DM2, HAS, DLP e doenças cardiovasculares."),
+    ("Tabagismo",       "—",                                         "Dependência de tabaco; principal fator de risco evitável de doenças crônicas."),
 ]
 
 _TEST_CASES = [
@@ -559,6 +585,217 @@ Escore 0–1 → tratamento ambulatorial | 2 → internar | ≥ 3 → UTI a cons
 **Critérios de falha** (reavaliar em 48–72h): piora clínica, sem melhora de febre → ampliar cobertura ou internar.
         """,
     },
+    {
+        "label": "🦋 Hipotireoidismo — Diagnóstico e Levotiroxina",
+        "patient_profile": (
+            "Paciente 42a, feminina, sem comorbidades prévias. Refere cansaço progressivo há 4 meses, "
+            "ganho de 6 kg sem mudança de dieta, constipação, pele seca, intolerância ao frio e "
+            "raciocínio mais lento. TSH 18,2 mUI/L (ref. 0,4–4,0), T4L 0,6 ng/dL (ref. 0,8–1,8)."
+        ),
+        "suggested_query": (
+            "Paciente com TSH 18,2 e T4L 0,6, fadiga, ganho de peso, constipação, intolerância ao frio. "
+            "Como confirmar o diagnóstico de hipotireoidismo primário e como iniciar levotiroxina?"
+        ),
+        "reference_answer": """
+**Referência — Claude Sonnet 4.6**
+
+**Diagnóstico**
+- **Hipotireoidismo primário confirmado:** TSH elevado (18,2) + T4L baixo (0,6) — padrão clássico.
+- Classificação: **manifesto** (sintomático + T4L abaixo da referência).
+- Subclínico seria: TSH elevado + T4L normal + pouco ou nenhum sintoma.
+
+**Investigar causa (tireoidite de Hashimoto é a mais comum)**
+- Solicitar **anti-TPO** (anticorpo antitireoperoxidase) — positivo em ~95% dos Hashimoto.
+- USG de tireoide: útil se palpar nódulo ou bócio.
+
+**Tratamento — Levotiroxina (LT4)**
+| Perfil | Dose inicial |
+|---|---|
+| Adulto jovem saudável | 1,6 µg/kg/dia (dose plena) |
+| Idoso ou cardiopata | 12,5–25 µg/dia, com aumento gradual a cada 4–6 semanas |
+| Este caso (42a, sem comorbidades) | ~75–100 µg/dia em dose única matinal |
+
+**Regras de administração:**
+- Tomar em **jejum** (30–60 min antes do café ou 4h após cálcio/ferro/antácido).
+- Dose única matinal; consistência é mais importante que horário exato.
+
+**Monitoramento:**
+- Repetir TSH + T4L em **6–8 semanas** após início ou ajuste.
+- Meta: TSH 0,5–2,5 mUI/L (individualizar em idosos e grávidas).
+- Sintomas melhoram em 2–4 semanas; normalização laboratorial em 6–12 semanas.
+
+**Gestação:** necessidade de LT4 aumenta ~30% — ajustar imediatamente.
+        """,
+    },
+    {
+        "label": "💨 Asma — Crise Aguda e Escalonamento de Tratamento",
+        "patient_profile": (
+            "Paciente 34a, feminina, asma desde a infância. Refere crises noturnas 2–3x/semana, "
+            "uso diário de salbutamol (β2 de curta ação). Acordou às 3h com dispneia intensa, "
+            "sibilos difusos, SpO₂ 93%, FC 110 bpm, FR 28 rpm. Não usou CI nos últimos 15 dias."
+        ),
+        "suggested_query": (
+            "Paciente asmática com crise noturna grave, SpO₂ 93%, sibilos, FR 28, uso excessivo de "
+            "salbutamol e sem corticoide inalatório. Como manejar a crise e escalonar o tratamento?"
+        ),
+        "reference_answer": """
+**Referência — Claude Sonnet 4.6**
+
+**Classificação da crise (GINA 2024)**
+| Grau | SpO₂ | Fala | Musculatura acessória |
+|---|---|---|---|
+| Leve/Moderada | ≥ 95% | Frases completas | Não |
+| Grave | 91–94% | Palavras | Sim |
+| Risco de vida | < 91% | Impossível | Paradoxal |
+
+*Este caso: grave (SpO₂ 93%, FR 28, sibilos difusos).*
+
+**Manejo imediato da crise grave**
+1. **O₂** suplementar → meta SpO₂ ≥ 94–95%.
+2. **Salbutamol 2,5 mg** nebulizado (ou 4–8 jatos em espaçador) a cada 20 min × 3 na 1ª hora.
+3. **Ipratrópio 0,5 mg** nebulizado nas primeiras 3 doses (broncoespasmo grave).
+4. **Prednisolona 40–50 mg VO** (ou metilprednisolona 60–125 mg IV) — início em até 1h.
+5. Reavaliar após 1h: se SpO₂ < 92% ou sem melhora → hospitalizar; se ≥ 95% e melhora clínica → alta com corticoide VO 5–7 dias.
+
+**Escalonamento do tratamento de manutenção (GINA)**
+| Degrau | Tratamento |
+|---|---|
+| 1 | Formoterol+beclometasona em baixa dose conforme necessário |
+| 2 | CI baixa dose diário + SABA de resgate |
+| 3 | CI baixa dose + LABA (ex.: salmeterol) |
+| 4 | CI média/alta dose + LABA |
+| 5 | Adicionar anti-IgE / anti-IL5 / corticoide oral |
+
+*Uso ≥ 3×/semana de SABA = asma não controlada → subir degrau.*
+
+**Educação:** técnica inalatória, plano de ação escrito, evitar gatilhos (ácaros, fumaça, AINE em sensíveis).
+        """,
+    },
+    {
+        "label": "❤️ FA — Anticoagulação e Controle de Frequência",
+        "patient_profile": (
+            "Paciente 75a, masculino, FA persistente diagnosticada há 2 anos, HAS, DPOC. "
+            "Em uso de warfarina (INR atual 2,8), carvedilol 12,5 mg 2x/dia. "
+            "INR no limite superior; questiona se pode trocar para DOAC e "
+            "pergunta sobre a meta de frequência cardíaca."
+        ),
+        "suggested_query": (
+            "Paciente com FA, 75 anos, HAS, DPOC, INR 2,8 em warfarina. "
+            "Posso trocar para DOAC? Qual a meta de FC e como calcular o CHA₂DS₂-VASc?"
+        ),
+        "reference_answer": """
+**Referência — Claude Sonnet 4.6**
+
+**Risco tromboembólico — CHA₂DS₂-VASc**
+| Critério | Pontos |
+|---|---|
+| C — ICC / HFrEF | 1 |
+| H — HAS | 1 ← ✅ |
+| A₂ — Idade ≥ 75 anos | **2** ← ✅ |
+| D — DM2 | 1 |
+| S₂ — AVC/AIT prévio | **2** |
+| V — Doença vascular | 1 |
+| A — Idade 65–74 anos | 1 |
+| Sc — Sexo feminino | 1 |
+
+*Este paciente: HAS (1) + Idade ≥ 75 (2) = **3 pontos** → anticoagulação fortemente indicada.*
+
+**Warfarina vs DOAC**
+- **DOAC** (rivaroxabana, apixabana, dabigatrana) são preferidos em FA não valvar: dose fixa, sem monitoramento de INR, menos interações.
+- **Trocar:** sim, é seguro. Estratégia: suspender warfarina quando INR < 2,0 e iniciar DOAC no mesmo dia.
+- **Atenção DPOC:** sem contraindicação específica para DOAC. Verificar TFG antes (dabigatrana requer TFG ≥ 30; apixabana é mais segura em DRC).
+
+**Meta de frequência cardíaca**
+- FA com função ventricular preservada: **FC < 110 bpm em repouso** (lenient control, RACE II).
+- FA sintomática ou com IC: meta mais estrita **< 80 bpm**.
+- Carvedilol é adequado; alternativas: bisoprolol, diltiazem (se sem IC sistólica).
+
+**Reversão de ritmo:** avaliar cardioversão elétrica se sintomático e < 48h de início; anticoagular por ≥ 3 semanas antes se > 48h ou tempo incerto.
+        """,
+    },
+    {
+        "label": "🫘 DRC — Estadiamento e Proteção Renal",
+        "patient_profile": (
+            "Paciente 61a, masculino, DRC estágio 3 (TFGe 42 mL/min/1,73m²), DM2 e HAS. "
+            "Potássio sérico pendente. Faz uso de enalapril 10 mg + metformina 850 mg 2x/dia. "
+            "Pergunta se pode continuar a metformina e como proteger os rins."
+        ),
+        "suggested_query": (
+            "Paciente com DRC estágio 3, TFGe 42, DM2 e HAS em uso de enalapril e metformina. "
+            "Posso manter a metformina? Como estadiar a DRC e quais são as medidas de neuroproteção renal?"
+        ),
+        "reference_answer": """
+**Referência — Claude Sonnet 4.6**
+
+**Estadiamento DRC (KDIGO)**
+| Estágio | TFGe (mL/min/1,73m²) | Descrição |
+|---|---|---|
+| 1 | ≥ 90 | Normal com marcador de lesão |
+| 2 | 60–89 | Levemente reduzida |
+| **3a** | **45–59** | **Leve a moderada** |
+| **3b** | **30–44** | **Moderada a grave** ← *este paciente (42)* |
+| 4 | 15–29 | Grave |
+| 5 | < 15 | Falência renal (diálise) |
+
+**Metformina na DRC**
+- TFGe ≥ 45: **manter** com monitoramento.
+- TFGe 30–44: **reduzir dose** e monitorar mais frequentemente. ← *este caso: cautela, dose reduzida*
+- TFGe < 30: **contraindicada** (risco de acidose láctica).
+- **Conclusão:** TFGe 42 → zona cinza; manter com dose reduzida (850 mg 1x/dia) e monitorar TFGe a cada 3 meses.
+
+**Medidas de nefroproteção**
+1. **Controle pressórico** — meta PA < 130/80 mmHg em DRC + DM; manter IECA/BRA (enalapril é adequado, reduz proteinúria).
+2. **Controle glicêmico** — HbA1c < 7–8% (menos estrito em DRC avançada).
+3. **Evitar nefrotóxicos** — AINE, contraste iodado sem hidratação prévia, aminoglicosídeos.
+4. **iSGLT2** (dapagliflozina, empagliflozina) — indicados em DRC+DM com TFGe ≥ 25; reduzem progressão renal independentemente do efeito glicêmico.
+5. **Dieta:** restrição de sódio (< 5 g/dia); ajustar proteína e potássio conforme estágio.
+6. **Monitoramento:** TFGe + potássio + microalbuminúria a cada 3 meses.
+        """,
+    },
+    {
+        "label": "🩸 DLP — Dislipidemia e Risco Cardiovascular",
+        "patient_profile": (
+            "Paciente 60a, feminina, DM2, DLP e obesidade (IMC 33). "
+            "LDL 148 mg/dL, HDL 38 mg/dL, TG 210 mg/dL. "
+            "Alerta de alergia a estatinas (miopatia). Sem doença cardiovascular prévia. "
+            "Pergunta qual o alvo de LDL e como tratar sem estatina."
+        ),
+        "suggested_query": (
+            "Paciente DM2 + DLP + obesidade, LDL 148, HDL 38, TG 210, alergia a estatinas por miopatia. "
+            "Qual o alvo de LDL e como tratar a dislipidemia sem estatina?"
+        ),
+        "reference_answer": """
+**Referência — Claude Sonnet 4.6**
+
+**Estratificação de risco cardiovascular**
+- DM2 + DLP + obesidade + idade > 40a, sem evento prévio → **Alto risco cardiovascular**.
+- Com evento prévio (IAM/AVC) → Muito alto risco.
+
+**Metas de LDL (SBC 2020 / ESC 2021)**
+| Risco | LDL-alvo |
+|---|---|
+| Baixo | < 130 mg/dL |
+| Moderado | < 100 mg/dL |
+| **Alto** | **< 70 mg/dL** ← este caso |
+| Muito alto | < 55 mg/dL |
+
+*LDL atual 148 → redução necessária de ~53% para atingir a meta de 70.*
+
+**Tratamento sem estatina (alergia documentada)**
+1. **Ezetimiba 10 mg/dia** — inibe absorção intestinal de colesterol; reduz LDL ~18–20%; 1ª linha quando estatina é contraindicada.
+2. **Inibidor de PCSK9** (evolocumabe, alirocumabe) — reduz LDL 50–60%; indicado quando ezetimiba isolada não atinge meta; custo elevado.
+3. **Bempedoico** (rosuvastatina bempedoica) — alternativa para intolerantes a estatinas; reduz LDL ~18%.
+4. **Para TG 210** (moderadamente elevado): restrição de carboidratos simples + álcool; considerar fibratos se TG > 500 mg/dL (risco pancreatite).
+
+**Medidas não farmacológicas (sempre associar)**
+- Dieta mediterrânea (↓ gordura saturada, ↑ fibra solúvel).
+- Atividade física aeróbica 150 min/semana.
+- Perda de 5–10% do peso → reduz TG e sobe HDL.
+- Tratar DM2: controle glicêmico melhora perfil lipídico.
+
+**Reavaliar lipidograma** em 3 meses após início do tratamento.
+        """,
+    },
 ]
 
 
@@ -581,6 +818,10 @@ def render_reference_tab() -> None:
         _GLOSSARY,
         columns=["Sigla", "Nome completo", "O que significa (para leigos)"],
     )
+    busca = st.text_input("🔍 Buscar no glossário", placeholder="Digite sigla ou palavra-chave...")
+    if busca:
+        mask = df.apply(lambda col: col.str.contains(busca, case=False, na=False)).any(axis=1)
+        df = df[mask]
     st.dataframe(df, use_container_width=True, hide_index=True)
 
     st.divider()

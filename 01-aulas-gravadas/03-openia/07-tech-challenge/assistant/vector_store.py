@@ -12,6 +12,7 @@ Uso:
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 from langchain_community.embeddings import HuggingFaceEmbeddings
@@ -66,7 +67,8 @@ _PROTOCOL_DOCS: list[dict[str, str]] = [
             "1. Triagem imediata: ECG em 10 min da chegada.\n"
             "2. Sinais de alerta: elevação de ST → ativar protocolo IAM-CSST.\n"
             "3. Exames: troponina I de alta sensibilidade (0h e 1h), CK-MB, RX tórax.\n"
-            "4. Medidas MONA: morfina, oxigênio, nitratos, AAS.\n"
+            "4. Medidas iniciais: AAS 300 mg VO mastigado; nitratos (cautela em hipotensão/uso de PDE5); "
+            "O₂ se SpO₂ < 94%; morfina apenas em dor refratária — evitar rotineiramente em NSTEMI (ESC 2023).\n"
             "5. Estratificação de risco: score HEART ou TIMI."
         ),
     },
@@ -110,7 +112,7 @@ _PROTOCOL_DOCS: list[dict[str, str]] = [
         "source": "Protocolo Hipertensão Arterial — Urgência e Emergência",
         "content": (
             "Hipertensão Arterial:\n"
-            "Urgência (PA ≥ 180/120 sem LOA): Captopril 25-50 mg SL/VO ou Clonidina 0,1-0,2 mg VO.\n"
+            "Urgência (PA ≥ 180/120 sem LOA): Captopril 25 mg VO (não sublingual — absorção oral é segura) ou Clonidina 0,1-0,2 mg VO.\n"
             "Meta: redução 25% PAM em 2-6h.\n"
             "Emergência (PA ≥ 180/120 COM LOA — encefalopatia, EAP, IAM, dissecção aórtica):\n"
             "  Nitroprussiato sódico IV ou Labetalol IV. UTI obrigatória.\n"
@@ -150,7 +152,110 @@ _PROTOCOL_DOCS: list[dict[str, str]] = [
             "Contraindicação absoluta: estenose mitral reumática grave → varfarina."
         ),
     },
+    {
+        "source": "Protocolo Hipotireoidismo — Diagnóstico e Tratamento",
+        "content": (
+            "Hipotireoidismo — Diagnóstico e Tratamento:\n"
+            "Diagnóstico: TSH elevado + T4L baixo = hipotireoidismo primário manifesto.\n"
+            "TSH elevado + T4L normal = hipotireoidismo subclínico (tratar se TSH > 10 ou sintomático).\n"
+            "Causa mais comum: tireoidite de Hashimoto (autoimune) — dosar anti-TPO.\n"
+            "Tratamento: Levotiroxina (LT4) oral em jejum (30-60 min antes do café).\n"
+            "Dose: 1,6 µg/kg/dia para adultos jovens saudáveis.\n"
+            "Idosos e cardiopatas: iniciar com 12,5–25 µg/dia e escalonar lentamente.\n"
+            "Meta TSH: 0,5–2,5 mUI/L (individualizar em idosos → 1–4 mUI/L).\n"
+            "Monitoramento: repetir TSH + T4L em 6–8 semanas após início ou ajuste de dose.\n"
+            "Gravidez: aumentar dose ~30% imediatamente ao confirmar gestação.\n"
+            "Interações: cálcio, ferro, omeprazol reduzem absorção → separar por 4h."
+        ),
+    },
+    {
+        "source": "Protocolo Asma — Crise Aguda e Tratamento de Manutenção",
+        "content": (
+            "Asma — Crise Aguda e Escalonamento GINA 2024:\n"
+            "Classificação da crise:\n"
+            "  Leve/Moderada: SpO₂ ≥ 95%, fala em frases, sem musculatura acessória.\n"
+            "  Grave: SpO₂ 91–94%, fala em palavras, uso de musculatura acessória.\n"
+            "  Risco de vida: SpO₂ < 91%, fala impossível, tórax silencioso.\n"
+            "Manejo crise grave:\n"
+            "  1. O₂ suplementar → meta SpO₂ 94–95%.\n"
+            "  2. Salbutamol 2,5 mg nebulizado (ou 4–8 jatos em espaçador) a cada 20 min × 3.\n"
+            "  3. Ipratrópio 0,5 mg nebulizado nas primeiras 3 doses.\n"
+            "  4. Prednisolona 40–50 mg VO ou metilprednisolona 60–125 mg IV.\n"
+            "  5. Se sem melhora após 1h → hospitalizar.\n"
+            "Escalonamento manutenção (degraus GINA):\n"
+            "  Degrau 1: formoterol+CI conforme necessário.\n"
+            "  Degrau 2: CI baixa dose diário + SABA resgate.\n"
+            "  Degrau 3: CI baixa dose + LABA.\n"
+            "  Degrau 4: CI média/alta dose + LABA.\n"
+            "  Degrau 5: biológicos (anti-IgE, anti-IL5) ou corticoide oral.\n"
+            "Uso ≥ 3×/semana de SABA = asma não controlada → subir degrau."
+        ),
+    },
+    {
+        "source": "Protocolo DRC — Estadiamento KDIGO e Nefroproteção",
+        "content": (
+            "Doença Renal Crônica (DRC) — Estadiamento KDIGO e Manejo:\n"
+            "Estadiamento por TFGe (CKD-EPI):\n"
+            "  Estágio 1: TFGe ≥ 90 mL/min/1,73m² (com marcador de lesão renal).\n"
+            "  Estágio 2: TFGe 60–89.\n"
+            "  Estágio 3a: TFGe 45–59.\n"
+            "  Estágio 3b: TFGe 30–44.\n"
+            "  Estágio 4: TFGe 15–29.\n"
+            "  Estágio 5: TFGe < 15 (falência renal / diálise).\n"
+            "Metformina na DRC: manter se TFGe ≥ 45; dose reduzida se 30–44; contraindicada se < 30.\n"
+            "Medidas de nefroproteção:\n"
+            "  IECA/BRA: reduzem proteinúria e progressão (manter se tolerado, monitorar K+).\n"
+            "  iSGLT2 (dapagliflozina): reduz progressão renal em DRC+DM com TFGe ≥ 25.\n"
+            "  Meta PA < 130/80 mmHg em DRC+DM.\n"
+            "  Evitar nefrotóxicos: AINEs, contraste iodado sem hidratação, aminoglicosídeos.\n"
+            "  Dieta: restrição de sódio < 5 g/dia; ajustar proteína e potássio.\n"
+            "Monitoramento: TFGe + potássio + microalbuminúria a cada 3 meses."
+        ),
+    },
+    {
+        "source": "Protocolo Dislipidemia — Metas e Tratamento",
+        "content": (
+            "Dislipidemia (DLP) — Estratificação de Risco e Tratamento:\n"
+            "Metas de LDL por risco cardiovascular (SBC 2020 / ESC 2021):\n"
+            "  Baixo risco: LDL < 130 mg/dL.\n"
+            "  Moderado risco: LDL < 100 mg/dL.\n"
+            "  Alto risco (DM2, DRC, HAS com LOA): LDL < 70 mg/dL.\n"
+            "  Muito alto risco (IAM, AVC, aterosclerose): LDL < 55 mg/dL.\n"
+            "Tratamento farmacológico:\n"
+            "  1ª linha: estatinas (atorvastatina, rosuvastatina) — reduzem LDL 30–55%.\n"
+            "  Intolerância a estatinas: ezetimiba 10 mg/dia (reduz ~18–20%).\n"
+            "  Inibidores de PCSK9 (evolocumabe, alirocumabe): reduzem LDL 50–60%.\n"
+            "  Triglicérides > 500 mg/dL: fibratos para prevenção de pancreatite.\n"
+            "Medidas não farmacológicas: dieta mediterrânea, atividade física 150 min/semana, "
+            "cessação tabágica, perda de peso."
+        ),
+    },
+    {
+        "source": "Protocolo DPOC — Exacerbação e Manejo Crônico",
+        "content": (
+            "DPOC — Exacerbação Aguda e Tratamento de Manutenção:\n"
+            "Diagnóstico: espirometria pós-broncodilatador VEF1/CVF < 0,70 (obstrução irreversível).\n"
+            "Classificação GOLD: estágios I (VEF1 ≥ 80%) a IV (VEF1 < 30%).\n"
+            "Exacerbação aguda:\n"
+            "  1. Broncodilatador de curta ação: salbutamol + ipratrópio nebulizado.\n"
+            "  2. Corticoide sistêmico: prednisolona 40 mg/dia × 5 dias.\n"
+            "  3. Antibiótico se escarro purulento: amoxicilina-clavulanato ou levofloxacino.\n"
+            "  4. O₂ controlado: meta SpO₂ 88–92% (risco de hipercapnia com O₂ excessivo).\n"
+            "Tratamento de manutenção:\n"
+            "  LAMA (tiotrópio): broncodilatador de longa ação; reduz exacerbações.\n"
+            "  LABA+LAMA: para sintomas persistentes.\n"
+            "  LABA+CI: se eosinófilos > 300 ou asma-DPOC overlap.\n"
+            "  Vacinação: influenza anual + pneumocócica + COVID-19.\n"
+            "  Reabilitação pulmonar e cessação tabágica obrigatórias."
+        ),
+    },
 ]
+
+
+def _protocols_hash() -> str:
+    """Hash SHA-1 curto do conteúdo de _PROTOCOL_DOCS para detectar mudanças."""
+    combined = "|".join(item["content"] for item in _PROTOCOL_DOCS)
+    return hashlib.sha1(combined.encode("utf-8")).hexdigest()[:12]
 
 
 def _build_documents() -> list[Document]:
@@ -176,8 +281,9 @@ def _get_embeddings() -> HuggingFaceEmbeddings:
 
 def build_vector_store(force_rebuild: bool = False) -> FAISS:
     faiss_file = INDEX_DIR / "index.faiss"
+    current_signature = f"{EMBED_MODEL}|{_protocols_hash()}"
     stored_signature = EMBED_SIGNATURE_FILE.read_text(encoding="utf-8").strip() if EMBED_SIGNATURE_FILE.exists() else ""
-    signature_mismatch = stored_signature != EMBED_MODEL
+    signature_mismatch = stored_signature != current_signature
 
     if faiss_file.exists() and not force_rebuild and not signature_mismatch:
         print("[vector_store] Loading existing FAISS index …")
@@ -192,7 +298,7 @@ def build_vector_store(force_rebuild: bool = False) -> FAISS:
     embeddings = _get_embeddings()
     store = FAISS.from_documents(docs, embeddings)
     store.save_local(str(INDEX_DIR))
-    EMBED_SIGNATURE_FILE.write_text(EMBED_MODEL, encoding="utf-8")
+    EMBED_SIGNATURE_FILE.write_text(current_signature, encoding="utf-8")
     print(f"[vector_store] Index built with {len(docs)} chunks and saved to {INDEX_DIR}")
     return store
 
