@@ -1,14 +1,14 @@
 """
 eval_model.py
 =============
-Fase 3 — Model evaluation:
-  - Load fine-tuned LoRA adapter
-  - Run inference on PubMedQA test split
-  - Compute ROUGE-L and BLEU scores
-  - Print qualitative examples
+Fase 3 — Avaliação do modelo:
+    - Carrega o adapter LoRA ajustado
+    - Executa inferência no split de teste do PubMedQA
+    - Calcula as métricas ROUGE-L e BLEU
+    - Exibe exemplos qualitativos
 
-Run:
-    python fine_tuning/eval_model.py
+Execução:
+        python fine_tuning/eval_model.py
 """
 
 from __future__ import annotations

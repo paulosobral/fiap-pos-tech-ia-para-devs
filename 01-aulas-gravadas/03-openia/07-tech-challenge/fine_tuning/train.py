@@ -1,14 +1,14 @@
 """
 train.py
 ========
-Fase 2 — Fine-tuning pipeline:
-  - Model:   unsloth/Qwen2.5-3B-Instruct-bnb-4bit  (4-bit quantised Qwen2.5-3B)
-  - Method:  LoRA via Unsloth + SFTTrainer (TRL)
-  - Data:    data/processed/medical_train.jsonl  (Alpaca format)
-  - Output:  fine_tuning/output/lora_model/
+Pipeline de fine-tuning da Fase 2:
+    - Modelo:  unsloth/Qwen2.5-3B-Instruct-bnb-4bit  (Qwen2.5-3B quantizado em 4 bits)
+    - Método:  LoRA via Unsloth + SFTTrainer (TRL)
+    - Dados:   data/processed/medical_train.jsonl  (formato Alpaca)
+    - Saída:   fine_tuning/output/lora_model/
 
-Run:
-    python fine_tuning/train.py
+Execução:
+        python fine_tuning/train.py
 """
 
 from __future__ import annotations
@@ -44,12 +44,12 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 # no mesmo tamanho. Pesos 4-bit ~1.9 GB — cabe folgado em 6 GB VRAM.
 MODEL_NAME = "unsloth/Qwen2.5-3B-Instruct-bnb-4bit"
 # MODEL_NAME = "unsloth/Qwen2.5-7B-Instruct-bnb-4bit"  # se tiver ≥ 12 GB VRAM
-MAX_SEQ_LENGTH = 1024   # 2048 → 1024: halves memory per step; medical Q&A rarely exceeds this
+MAX_SEQ_LENGTH = 1024   # 2048 → 1024: reduz pela metade a memória por passo; perguntas e respostas médicas raramente ultrapassam isso
 LOAD_IN_4BIT = True
-LORA_R = 8              # 16 → 8: less compute per adapter layer; sufficient for domain adaptation
-LORA_ALPHA = 16         # keep alpha > r for effective scaling (alpha/r = 2)
+LORA_R = 8              # 16 → 8: menor custo computacional por camada do adapter; suficiente para adaptação de domínio
+LORA_ALPHA = 16         # manter alpha > r para escala efetiva (alpha/r = 2)
 LORA_TARGET_MODULES = [
-    "q_proj", "k_proj", "v_proj", "o_proj",  # attention only: fastest convergence
+    "q_proj", "k_proj", "v_proj", "o_proj",  # apenas atenção: convergência mais rápida
     "gate_proj", "up_proj", "down_proj",       # MLP — melhora retenção de fatos clínicos
 ]
 
@@ -76,12 +76,12 @@ TRAIN_ARGS = TrainingArguments(
 # ── Helpers de memória ────────────────────────────────────────────────────────
 
 def _build_max_memory() -> dict[int | str, str]:
-    """Compute memory budget: 90 % free dedicated VRAM + 50 % free system RAM.
+    """Calcula o orçamento de memória: 90 % da VRAM dedicada livre + 50 % da RAM do sistema livre.
 
-    Passing this dict to FastLanguageModel.from_pretrained (via device_map="auto")
-    lets HuggingFace/Accelerate spill model layers that do not fit in dedicated
-    VRAM into system RAM (shared / unified memory), extending the effective
-    memory available for the model.
+    Ao passar este dicionário para FastLanguageModel.from_pretrained (via device_map="auto"),
+    o HuggingFace/Accelerate consegue descarregar camadas do modelo que não cabem na VRAM
+    dedicada para a RAM do sistema (memória compartilhada/unificada), ampliando a memória
+    efetivamente disponível para o modelo.
     """
     budget: dict[int | str, str] = {}
     if torch.cuda.is_available():
@@ -149,7 +149,7 @@ def main() -> None:
         dtype=None,  # auto-detect
         load_in_4bit=LOAD_IN_4BIT,
         # device_map="auto" + max_memory permite ao Accelerate/HuggingFace
-        # descarregar camadas que excedem a VRAM dedicada para RAM do sistema.
+        # descarregar camadas que excedem a VRAM dedicada para a RAM do sistema.
         device_map="auto",
         max_memory=_build_max_memory(),
     )
@@ -190,7 +190,7 @@ def main() -> None:
     tokenizer.save_pretrained(str(OUTPUT_DIR))
     print("Adapter saved.")
 
-    # Inferência rápida para sanity-check.
+    # Inferência rápida para verificação de sanidade.
     print("\nSanity check inference:")
     FastLanguageModel.for_inference(model)
     sample_prompt = (

@@ -1,10 +1,10 @@
 """
 llm_loader.py
 =============
-Loads the fine-tuned LoRA model (or falls back to base model) and exposes a
-LangChain-compatible HuggingFacePipeline wrapper.
+Carrega o modelo LoRA ajustado (ou faz fallback para o modelo base) e expõe um
+wrapper HuggingFacePipeline compatível com LangChain.
 
-Usage:
+Uso:
     from assistant.llm_loader import build_llm
     llm = build_llm()
 """
@@ -19,7 +19,7 @@ from langchain_community.llms import HuggingFacePipeline
 from transformers import pipeline as hf_pipeline
 from unsloth import FastLanguageModel
 
-# ── Patch de thread-safety para Unsloth ───────────────────────────────────────
+# ── Patch de segurança de threads para Unsloth ───────────────────────────────
 # unsloth_zoo.rl_environments.time_limit usa signal.alarm(), que só funciona
 # na main thread. Como o Streamlit roda scripts em worker threads, tornamos o
 # time_limit um no-op quando for chamado fora da main thread.
@@ -94,19 +94,16 @@ def build_llm(use_adapter: bool = True) -> HuggingFacePipeline:
         max_new_tokens=MAX_NEW_TOKENS,
         do_sample=False,
         temperature=1.0,
-        repetition_penalty=1.1,
+        repetition_penalty=1.3,       # aumentado de 1.1 → penaliza repetições
+        no_repeat_ngram_size=5,        # bloqueia repetição de 5-gramas (previne loops)
         return_full_text=False,
     )
 
-    # pipeline_kwargs é repassado para cada pipeline.__call__ pelo LangChain.
-    # stop_strings exige transformers >= 4.46; protegido para não quebrar em env antigo.
-    try:
-        llm = HuggingFacePipeline(
-            pipeline=pipe,
-            pipeline_kwargs={"stop_strings": _ALPACA_STOP_STRINGS},
-        )
-    except TypeError:
-        llm = HuggingFacePipeline(pipeline=pipe)
+    # strings de parada via pipeline_kwargs exigem tokenizer em model.generate() a partir do
+    # transformers 4.46+, mas o HuggingFacePipeline não o repassa. Removido para evitar
+    # ValueError; a limpeza de artefatos Alpaca é feita por _strip_alpaca_artifacts em
+    # rag_chain.py.
+    llm = HuggingFacePipeline(pipeline=pipe)
     print("[llm_loader] LLM ready.")
     return llm
 

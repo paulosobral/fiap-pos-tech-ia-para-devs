@@ -1,16 +1,16 @@
 """
 rag_chain.py
 ============
-LangChain LCEL chain that combines:
-  - Fine-tuned LLM (via llm_loader)
-  - FAISS retriever over medical protocols (via vector_store)
+Chain LCEL do LangChain que combina:
+    - LLM ajustado (via llm_loader)
+    - Retriever FAISS sobre protocolos médicos (via vector_store)
 
-Usage:
-    from assistant.rag_chain import build_rag_chain, ask
-    chain, _ = build_rag_chain()
-    result = ask(chain, "Qual o protocolo para sepse?")
-    print(result["answer"])
-    print(result["sources"])
+Uso:
+        from assistant.rag_chain import build_rag_chain, ask
+        chain, _ = build_rag_chain()
+        result = ask(chain, "Qual o protocolo para sepse?")
+        print(result["answer"])
+        print(result["sources"])
 """
 
 from __future__ import annotations

@@ -1,10 +1,10 @@
 """
 vector_store.py
 ===============
-Builds and manages a FAISS vector store over the medical protocol documents.
-The index is persisted to disk so it is rebuilt only when protocols change.
+Constrói e gerencia um vector store FAISS sobre os documentos de protocolos médicos.
+O índice é persistido em disco para ser reconstruído apenas quando os protocolos mudam.
 
-Usage:
+Uso:
     from assistant.vector_store import get_retriever
     retriever = get_retriever()
     docs = retriever.invoke("protocolo sepse")

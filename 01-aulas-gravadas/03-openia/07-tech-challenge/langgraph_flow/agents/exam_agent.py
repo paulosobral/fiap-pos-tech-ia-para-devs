@@ -1,7 +1,7 @@
 """
 exam_agent.py
 =============
-Fetches pending and completed exams for the patient from the SQLite database.
+Obtém os exames pendentes e concluídos do paciente a partir do banco SQLite.
 """
 
 from __future__ import annotations

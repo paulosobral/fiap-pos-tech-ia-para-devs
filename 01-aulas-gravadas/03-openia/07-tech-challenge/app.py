@@ -1,15 +1,15 @@
 """
 app.py
 ======
-Streamlit interface for the Medical AI Assistant.
+Interface Streamlit para o Assistente de IA Médica.
 
-Run:
-    streamlit run app.py
+Execução:
+        streamlit run app.py
 
-Tabs:
-  1. Assistente Médico  — chat interface invoking the LangGraph flow
-  2. Auditoria          — view recent audit log entries
-  3. Glossário & Testes — medical abbreviation glossary and test cases with reference answers
+Abas:
+    1. Assistente Médico  — interface de chat que aciona o fluxo LangGraph
+    2. Auditoria          — visualiza entradas recentes do log de auditoria
+    3. Glossário & Testes — glossário de abreviações médicas e casos de teste com respostas de referência
 """
 
 from __future__ import annotations
@@ -17,8 +17,8 @@ from __future__ import annotations
 # ── Patch de compatibilidade SSL (deve vir antes de TODOS os imports) ─────────
 # O OpenSSL embarcado no Python do uv pode falhar ao inicializar ssl.SSLContext
 # no Fedora quando o openssl.cnf do sistema traz diretivas FIPS/legacy que esse
-# build não consegue interpretar. Solução: desativar o arquivo de config do
-# sistema e aplicar fallback em Python para evitar crash de import no aiohttp
+# build não consegue interpretar. Solução: desativar o arquivo de configuração
+# do sistema e aplicar um fallback em Python para evitar falha de importação no aiohttp
 # (importado de forma transitiva via unsloth→datasets).
 import os
 import ssl as _ssl
@@ -32,7 +32,7 @@ def _safe_create_default_context(*args, **kwargs):
     try:
         return _orig_create_default_context(*args, **kwargs)
     except _ssl.SSLError:
-        # O app só carrega modelos locais; não depende de TLS externo.
+        # O app carrega apenas modelos locais; não depende de TLS externo.
         return _ssl._create_unverified_context()
 
 _ssl.create_default_context = _safe_create_default_context

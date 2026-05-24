@@ -1,10 +1,10 @@
 """
 patient_db.py
 =============
-SQLite database for synthetic patient records.
-Provides CRUD operations and seed data for 20 synthetic patients.
+Banco SQLite para registros sintéticos de pacientes.
+Fornece operações CRUD e dados de seed para 20 pacientes sintéticos.
 
-Usage:
+Uso:
     from assistant.patient_db import init_db, get_patient, get_pending_exams
     init_db()
     patient = get_patient(1)

@@ -1,22 +1,22 @@
 """
 graph.py
 ========
-LangGraph StateGraph — Medical assistant multi-agent workflow.
+StateGraph do LangGraph — fluxo multiagente do assistente médico.
 
-Flow:
+Fluxo:
     triage_node
         ├─ urgency=high ──→ alert_node ──→ exam_node
         └─ urgency=low/medium ──────────→ exam_node
                                                │
                                           diagnosis_node
                                                │
-                                     [human interrupt point]
+                                     [ponto de interrupção humana]
                                                │
                                           pharmacy_node
                                                │
                                              END
 
-Usage:
+Uso:
     from langgraph_flow.graph import build_graph
     graph = build_graph(rag_chain)
     result = graph.invoke(initial_state)
