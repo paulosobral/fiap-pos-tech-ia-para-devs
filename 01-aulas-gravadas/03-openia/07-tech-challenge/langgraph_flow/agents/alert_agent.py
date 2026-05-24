@@ -32,7 +32,7 @@ def alert_node(state: PatientState) -> dict:
         f"Ação recomendada: Avaliação médica IMEDIATA. Acione equipe de plantão."
     )
 
-    # Structured audit log entry
+    # Registro estruturado no log de auditoria.
     _logger.warning(
         "HIGH_URGENCY_ALERT",
         extra={

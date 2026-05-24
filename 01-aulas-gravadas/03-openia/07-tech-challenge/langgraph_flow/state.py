@@ -22,6 +22,7 @@ class PatientState(TypedDict):
     active_medications: list[dict]
     diagnoses: list[dict]
     differential_diagnosis: str
+    diagnosis_low_evidence: bool
     suggested_treatment: str
     alerts: Annotated[list[str], operator.add]
     human_approval_required: bool

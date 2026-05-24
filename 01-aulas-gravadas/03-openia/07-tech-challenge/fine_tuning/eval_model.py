@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import unsloth  # must be first — patches torch/transformers before other imports
+import unsloth  # deve ser o primeiro — aplica patches em torch/transformers antes dos outros imports
 from unsloth import FastLanguageModel
 
 import nltk
@@ -27,7 +27,7 @@ from evaluate import load as load_metric
 nltk.download("punkt", quiet=True)
 nltk.download("punkt_tab", quiet=True)
 
-# ── Paths ─────────────────────────────────────────────────────────────────────
+# ── Caminhos ──────────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent.parent
 TEST_DATA = BASE_DIR / "data" / "processed" / "medical_test.jsonl"
 ADAPTER_DIR = Path(__file__).resolve().parent / "output" / "lora_model"
@@ -73,7 +73,7 @@ def generate_response(model, tokenizer, record: dict, device: str) -> str:
             use_cache=True,
             pad_token_id=tokenizer.eos_token_id,
         )
-    # Decode only newly generated tokens
+    # Decodifica apenas os tokens recém-gerados.
     generated = output_ids[0][inputs["input_ids"].shape[1]:]
     return tokenizer.decode(generated, skip_special_tokens=True).strip()
 
@@ -116,7 +116,7 @@ def main() -> None:
 
     # ROUGE
     rouge_result = rouge.compute(predictions=predictions, references=references)
-    # BLEU — evaluate library expects plain strings, not pre-tokenized lists
+    # BLEU — a lib evaluate espera strings simples, não listas pré-tokenizadas.
     bleu_result = bleu.compute(predictions=predictions, references=[[r] for r in references])
 
     print("\n=== Evaluation Results ===")
@@ -133,7 +133,7 @@ def main() -> None:
         print(f"  Expected:    {references[i][:200]} …")
         print(f"  Generated:   {predictions[i][:200]} …")
 
-    # Save results to JSON
+    # Salva resultados em JSON.
     results_path = ADAPTER_DIR.parent / "eval_results.json"
     with results_path.open("w", encoding="utf-8") as f:
         json.dump(

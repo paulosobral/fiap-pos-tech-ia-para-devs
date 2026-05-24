@@ -44,7 +44,7 @@ from langgraph_flow.agents.alert_agent import alert_node
 from security.audit_logger import log_agent_step
 
 
-# ── Wrappers that inject rag_chain into agents needing it ─────────────────────
+# ── Wrappers que injetam rag_chain nos agentes que precisam ──────────────────
 
 def _diagnosis_node(state: PatientState, rag_chain) -> dict:
     result = diagnosis_node(state, rag_chain)
@@ -76,7 +76,7 @@ def _alert_node(state: PatientState) -> dict:
     return result
 
 
-# ── Routing ───────────────────────────────────────────────────────────────────
+# ── Roteamento ────────────────────────────────────────────────────────────────
 
 def _route_after_triage(state: PatientState) -> Literal["alert_node", "exam_node"]:
     if state.get("urgency_level") == "high":
@@ -84,23 +84,23 @@ def _route_after_triage(state: PatientState) -> Literal["alert_node", "exam_node
     return "exam_node"
 
 
-# ── Graph builder ─────────────────────────────────────────────────────────────
+# ── Builder do grafo ──────────────────────────────────────────────────────────
 
 def build_graph(rag_chain):
     """Build and compile the StateGraph. Returns a compiled LangGraph app."""
     graph = StateGraph(PatientState)
 
-    # Register nodes
+    # Registra nós.
     graph.add_node("triage_node", _triage_node)
     graph.add_node("alert_node", _alert_node)
     graph.add_node("exam_node", _exam_node)
     graph.add_node("diagnosis_node", partial(_diagnosis_node, rag_chain=rag_chain))
     graph.add_node("pharmacy_node", partial(_pharmacy_node, rag_chain=rag_chain))
 
-    # Entry point
+    # Ponto de entrada.
     graph.set_entry_point("triage_node")
 
-    # Edges
+    # Arestas.
     graph.add_conditional_edges(
         "triage_node",
         _route_after_triage,
@@ -108,7 +108,7 @@ def build_graph(rag_chain):
     )
     graph.add_edge("alert_node", "exam_node")
     graph.add_edge("exam_node", "diagnosis_node")
-    # Human interrupt point before pharmacy
+    # Ponto de interrupção humana antes de pharmacy.
     graph.add_edge("diagnosis_node", "pharmacy_node")
     graph.add_edge("pharmacy_node", END)
 
@@ -131,6 +131,7 @@ def build_initial_state(patient_id: int, symptoms: str) -> PatientState:
         active_medications=active_medications,
         diagnoses=diagnoses,
         differential_diagnosis="",
+        diagnosis_low_evidence=False,
         suggested_treatment="",
         alerts=[],
         human_approval_required=False,

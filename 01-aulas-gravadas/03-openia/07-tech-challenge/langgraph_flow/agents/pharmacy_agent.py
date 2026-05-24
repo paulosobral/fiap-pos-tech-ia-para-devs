@@ -23,6 +23,19 @@ _MANDATORY_DISCLAIMER = (
 
 
 def pharmacy_node(state: PatientState, rag_chain) -> dict:
+    if state.get("diagnosis_low_evidence", False):
+        return {
+            "suggested_treatment": (
+                "Sugestões farmacológicas não geradas porque o diagnóstico está com baixa confiança "
+                "documental. Reavalie sinais clínicos e exames antes de qualquer conduta medicamentosa."
+            ) + _MANDATORY_DISCLAIMER,
+            "sources": [],
+            "human_approval_required": True,
+            "agent_steps": [
+                "[Farmácia] Etapa bloqueada por baixa evidência diagnóstica."
+            ],
+        }
+
     diagnosis = state.get("differential_diagnosis", "")
     patient_info = state.get("patient_info", {})
     allergies = patient_info.get("allergies", "Nenhuma conhecida")
@@ -39,11 +52,11 @@ def pharmacy_node(state: PatientState, rag_chain) -> dict:
         "Liste classes de medicamentos e exemplos, indicando possíveis interações."
     )
 
-    result = ask(rag_chain, question)
+    result = ask(rag_chain, question, use_history=False)
     raw_answer = result["answer"]
     sources = result["sources"]
 
-    # Enforce safety disclaimer regardless of LLM output
+    # Força o disclaimer de segurança independentemente da saída da LLM.
     safe_answer = enforce_prescription_disclaimer(raw_answer) + _MANDATORY_DISCLAIMER
 
     step_msg = (

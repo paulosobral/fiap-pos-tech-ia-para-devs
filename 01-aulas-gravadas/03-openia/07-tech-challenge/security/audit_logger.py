@@ -22,7 +22,7 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 LOG_FILE = LOG_DIR / "audit.jsonl"
 
 
-# ── Custom JSON log handler ───────────────────────────────────────────────────
+# ── Handler customizado de log JSON ──────────────────────────────────────────
 
 class _JsonFileHandler(logging.Handler):
     def __init__(self, path: Path) -> None:
@@ -35,7 +35,7 @@ class _JsonFileHandler(logging.Handler):
             "level": record.levelname,
             "event": getattr(record, "event", record.getMessage()),
         }
-        # Merge any extra fields attached to the record
+        # Mescla quaisquer campos extras anexados ao record.
         for key, value in record.__dict__.items():
             if key not in (
                 "name", "msg", "args", "levelname", "levelno", "pathname",
@@ -62,7 +62,7 @@ def get_audit_logger() -> logging.Logger:
     return logger
 
 
-# ── High-level helpers ────────────────────────────────────────────────────────
+# ── Helpers de alto nível ─────────────────────────────────────────────────────
 
 _audit = get_audit_logger()
 

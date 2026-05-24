@@ -19,7 +19,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
 
 from assistant.llm_loader import build_llm
-from assistant.vector_store import get_retriever
+from assistant.vector_store import TOP_K, build_vector_store
 
 _CONDENSE_TEMPLATE = """Dado o histórico de conversa e a nova pergunta do usuário,
 reformule a pergunta para ser autossuficiente (sem precisar do histórico).
@@ -43,6 +43,30 @@ Protocolos relevantes:
 Pergunta: {question}
 Resposta (em português):"""
 
+# Marcadores que indicam vazamento para o próximo exemplo Alpaca.
+_ALPACA_ARTIFACT_MARKERS = (
+    "\n### Input:",
+    "\n### Instruction:",
+    "\nInput:\n",
+    "\n---\n",
+)
+
+
+def _strip_alpaca_artifacts(text: str) -> str:
+    """Truncate LLM output at the first Alpaca-format continuation marker."""
+    for marker in _ALPACA_ARTIFACT_MARKERS:
+        idx = text.find(marker)
+        if idx != -1:
+            text = text[:idx]
+    return text.strip()
+
+
+_NO_EVIDENCE_RESPONSE = (
+    "Não encontrei evidência suficientemente relevante nos protocolos recuperados para "
+    "responder com segurança. Sugiro reformular a pergunta com mais detalhes clínicos "
+    "ou consultar avaliação médica presencial."
+)
+
 _CONDENSE_PROMPT = PromptTemplate(
     input_variables=["chat_history", "question"],
     template=_CONDENSE_TEMPLATE,
@@ -57,44 +81,69 @@ _QA_PROMPT = PromptTemplate(
 class _MedicalRAGChain:
     """Stateful LCEL-based conversational retrieval chain."""
 
-    def __init__(self, llm, retriever, window_k: int) -> None:
+    def __init__(self, llm, vector_store, window_k: int, top_k: int = 3, max_distance: float = 0.85) -> None:
         parser = StrOutputParser()
         self._condense = _CONDENSE_PROMPT | llm | parser
         self._qa = _QA_PROMPT | llm | parser
-        self._retriever = retriever
+        self._store = vector_store
         self._window_k = window_k
+        self._top_k = top_k
+        self._max_distance = max_distance
         self._history: list[tuple[str, str]] = []
 
     def _format_history(self) -> str:
         tail = self._history[-self._window_k:]
         return "\n".join(f"Human: {h}\nAI: {a}" for h, a in tail)
 
-    def invoke(self, question: str, patient_context: str = "") -> dict:
+    def clear_history(self) -> None:
+        self._history.clear()
+
+    def invoke(self, question: str, patient_context: str = "", use_history: bool = True) -> dict:
         full_q = (
             f"{question}\n\nContexto do paciente:\n{patient_context}"
             if patient_context
             else question
         )
 
-        history = self._format_history()
+        history = self._format_history() if use_history else ""
         standalone = (
             self._condense.invoke({"chat_history": history, "question": full_q})
             if history
             else full_q
         )
 
-        docs = self._retriever.invoke(standalone)
-        context = "\n\n".join(doc.page_content for doc in docs)
-        answer = self._qa.invoke({"context": context, "question": full_q})
+        # No FAISS, distância menor significa melhor match semântico.
+        hits = self._store.similarity_search_with_score(standalone, k=self._top_k)
+        filtered_hits = [(doc, score) for doc, score in hits if score <= self._max_distance]
 
-        self._history.append((full_q, answer))
+        if not filtered_hits:
+            answer = _NO_EVIDENCE_RESPONSE
+            if use_history:
+                self._history.append((full_q, answer))
+            return {
+                "answer": answer,
+                "sources": [],
+                "low_evidence": True,
+                "retrieval_scores": [score for _doc, score in hits],
+            }
+
+        docs = [doc for doc, _score in filtered_hits]
+        context = "\n\n".join(doc.page_content for doc in docs)
+        answer = _strip_alpaca_artifacts(
+            self._qa.invoke({"context": context, "question": full_q})
+        )
+
+        if use_history:
+            self._history.append((full_q, answer))
 
         sources = [
             doc.metadata.get("source", "Protocolo interno") for doc in docs
         ]
         return {
             "answer": answer,
-            "sources": list(dict.fromkeys(sources)),  # deduplicated, order preserved
+            "sources": list(dict.fromkeys(sources)),  # deduplicado, ordem preservada
+            "low_evidence": False,
+            "retrieval_scores": [score for _doc, score in filtered_hits],
         }
 
 
@@ -103,14 +152,15 @@ def build_rag_chain(
     window_k: int = 5,
 ) -> tuple[_MedicalRAGChain, None]:
     llm = build_llm(use_adapter=use_adapter)
-    retriever = get_retriever()
-    chain = _MedicalRAGChain(llm, retriever, window_k)
-    return chain, None  # None keeps API compatible with callers that do: chain, _ = build_rag_chain()
+    vector_store = build_vector_store()
+    chain = _MedicalRAGChain(llm, vector_store, window_k)
+    return chain, None  # None mantém compatibilidade para chamadas: chain, _ = build_rag_chain()
 
 
 def ask(
     chain: _MedicalRAGChain,
     question: str,
     patient_context: str = "",
+    use_history: bool = True,
 ) -> dict:
-    return chain.invoke(question, patient_context)
+    return chain.invoke(question, patient_context, use_history=use_history)

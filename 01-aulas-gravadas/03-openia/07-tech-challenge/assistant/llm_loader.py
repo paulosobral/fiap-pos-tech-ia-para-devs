@@ -19,10 +19,10 @@ from langchain_community.llms import HuggingFacePipeline
 from transformers import pipeline as hf_pipeline
 from unsloth import FastLanguageModel
 
-# ── Unsloth thread-safety patch ───────────────────────────────────────────────
-# unsloth_zoo.rl_environments.time_limit uses signal.alarm() which only works
-# on the main thread. Streamlit runs scripts in worker threads, so we make
-# time_limit a no-op when called outside the main thread.
+# ── Patch de thread-safety para Unsloth ───────────────────────────────────────
+# unsloth_zoo.rl_environments.time_limit usa signal.alarm(), que só funciona
+# na main thread. Como o Streamlit roda scripts em worker threads, tornamos o
+# time_limit um no-op quando for chamado fora da main thread.
 import unsloth_zoo.rl_environments as _rl_env  # noqa: E402
 
 _orig_time_limit = _rl_env.time_limit
@@ -42,10 +42,20 @@ _rl_env.time_limit = _safe_time_limit
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 ADAPTER_DIR = BASE_DIR / "fine_tuning" / "output" / "lora_model"
-FALLBACK_MODEL = "unsloth/llama-3.2-3b-bnb-4bit"
+# Deve corresponder ao modelo base do fine-tuning para manter compatibilidade do adapter LoRA.
+FALLBACK_MODEL = "unsloth/Qwen2.5-3B-Instruct-bnb-4bit"
 
 MAX_SEQ_LENGTH = 2048
 MAX_NEW_TOKENS = 512
+
+# Sequências de parada para evitar que o modelo continue no próximo exemplo
+# Alpaca após finalizar a resposta (artefato do fine-tuning em formato Alpaca).
+_ALPACA_STOP_STRINGS = [
+    "\n### Input:",
+    "\n### Instruction:",
+    "\nInput:\n",
+    "\n---\n",
+]
 
 _SYSTEM_PROMPT = (
     "Você é um assistente médico virtual do hospital. "
@@ -76,7 +86,7 @@ def build_llm(use_adapter: bool = True) -> HuggingFacePipeline:
     )
     FastLanguageModel.for_inference(model)
 
-    # device must NOT be passed when the model was loaded via accelerate (4-bit / unsloth)
+    # Não passar device quando o modelo foi carregado via accelerate (4-bit / unsloth).
     pipe = hf_pipeline(
         "text-generation",
         model=model,
@@ -88,7 +98,15 @@ def build_llm(use_adapter: bool = True) -> HuggingFacePipeline:
         return_full_text=False,
     )
 
-    llm = HuggingFacePipeline(pipeline=pipe)
+    # pipeline_kwargs é repassado para cada pipeline.__call__ pelo LangChain.
+    # stop_strings exige transformers >= 4.46; protegido para não quebrar em env antigo.
+    try:
+        llm = HuggingFacePipeline(
+            pipeline=pipe,
+            pipeline_kwargs={"stop_strings": _ALPACA_STOP_STRINGS},
+        )
+    except TypeError:
+        llm = HuggingFacePipeline(pipeline=pipe)
     print("[llm_loader] LLM ready.")
     return llm
 

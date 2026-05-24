@@ -22,14 +22,16 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 BASE_DIR = Path(__file__).resolve().parent.parent
 INDEX_DIR = BASE_DIR / "data" / "faiss_index"
 INDEX_DIR.mkdir(parents=True, exist_ok=True)
+EMBED_SIGNATURE_FILE = INDEX_DIR / "embedding_model.txt"
 
-EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+# Modelo multilíngue forte para retrieval médico em PT-BR/EN.
+EMBED_MODEL = "BAAI/bge-m3"
 CHUNK_SIZE = 512
 CHUNK_OVERLAP = 64
 TOP_K = 4
 
-# ── Protocol corpus (loaded at import time) ───────────────────────────────────
-# In a production system these would be read from files/database.
+# ── Corpus de protocolos (carregado no import) ───────────────────────────────
+# Em produção, estes dados viriam de arquivos/banco.
 _PROTOCOL_DOCS: list[dict[str, str]] = [
     {
         "source": "Protocolo Sepse Grave",
@@ -174,17 +176,23 @@ def _get_embeddings() -> HuggingFaceEmbeddings:
 
 def build_vector_store(force_rebuild: bool = False) -> FAISS:
     faiss_file = INDEX_DIR / "index.faiss"
+    stored_signature = EMBED_SIGNATURE_FILE.read_text(encoding="utf-8").strip() if EMBED_SIGNATURE_FILE.exists() else ""
+    signature_mismatch = stored_signature != EMBED_MODEL
 
-    if faiss_file.exists() and not force_rebuild:
+    if faiss_file.exists() and not force_rebuild and not signature_mismatch:
         print("[vector_store] Loading existing FAISS index …")
         embeddings = _get_embeddings()
         return FAISS.load_local(str(INDEX_DIR), embeddings, allow_dangerous_deserialization=True)
+
+    if signature_mismatch and faiss_file.exists() and not force_rebuild:
+        print("[vector_store] Embedding model changed; rebuilding FAISS index …")
 
     print("[vector_store] Building FAISS index …")
     docs = _build_documents()
     embeddings = _get_embeddings()
     store = FAISS.from_documents(docs, embeddings)
     store.save_local(str(INDEX_DIR))
+    EMBED_SIGNATURE_FILE.write_text(EMBED_MODEL, encoding="utf-8")
     print(f"[vector_store] Index built with {len(docs)} chunks and saved to {INDEX_DIR}")
     return store
 

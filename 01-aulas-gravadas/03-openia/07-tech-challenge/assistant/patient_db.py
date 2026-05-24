@@ -38,13 +38,13 @@ _ENGINE = create_engine(f"sqlite:///{DB_PATH}", echo=False)
 _SessionLocal = sessionmaker(bind=_ENGINE)
 
 
-# ── Enable WAL for concurrent reads ──────────────────────────────────────────
+# ── Ativa WAL para leituras concorrentes ─────────────────────────────────────
 @event.listens_for(_ENGINE, "connect")
 def _set_wal(dbapi_conn, _):
     dbapi_conn.execute("PRAGMA journal_mode=WAL")
 
 
-# ── ORM Models ────────────────────────────────────────────────────────────────
+# ── Modelos ORM ───────────────────────────────────────────────────────────────
 
 class Base(DeclarativeBase):
     pass
@@ -105,7 +105,7 @@ class Medication(Base):
     patient = relationship("Patient", back_populates="medications")
 
 
-# ── Seed data ─────────────────────────────────────────────────────────────────
+# ── Dados de seed ─────────────────────────────────────────────────────────────
 
 _SEED_PATIENTS = [
     {"name": "Paciente A", "age": 68, "sex": "M", "blood_type": "A+",
@@ -238,7 +238,7 @@ def init_db(force_reseed: bool = False) -> None:
     print(f"[patient_db] Database initialised with {len(_SEED_PATIENTS)} patients at {DB_PATH}")
 
 
-# ── Query helpers ─────────────────────────────────────────────────────────────
+# ── Helpers de consulta ───────────────────────────────────────────────────────
 
 def get_all_patients() -> list[dict[str, Any]]:
     with _SessionLocal() as session:

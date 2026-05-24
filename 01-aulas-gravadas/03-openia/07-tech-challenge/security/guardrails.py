@@ -13,7 +13,7 @@ import re
 
 MAX_INPUT_LENGTH = 2000
 
-# Patterns that indicate prompt injection attempts
+# Padrões que indicam tentativa de prompt injection.
 _INJECTION_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"ignore\s+(all\s+)?previous\s+instructions?", re.IGNORECASE),
     re.compile(r"disregard\s+(your\s+)?system\s+prompt", re.IGNORECASE),
@@ -25,7 +25,7 @@ _INJECTION_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"##\s*system\s*:", re.IGNORECASE),
 ]
 
-# Drug/prescription keywords that trigger mandatory disclaimer
+# Palavras-chave de fármacos/prescrição que disparam disclaimer obrigatório.
 _PRESCRIPTION_KEYWORDS: list[str] = [
     "prescrever", "prescrito", "prescrição", "receita médica",
     "administrar", "dose", "dosagem", "comprimido", "ampola",

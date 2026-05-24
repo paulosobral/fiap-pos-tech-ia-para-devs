@@ -19,7 +19,7 @@ from pathlib import Path
 
 from datasets import load_dataset
 
-# ── Paths ─────────────────────────────────────────────────────────────────────
+# ── Caminhos ──────────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_RAW = BASE_DIR / "data" / "raw"
 DATA_SYNTHETIC = BASE_DIR / "data" / "synthetic"
@@ -28,12 +28,12 @@ DATA_PROCESSED = BASE_DIR / "data" / "processed"
 for _p in (DATA_RAW, DATA_SYNTHETIC, DATA_PROCESSED):
     _p.mkdir(parents=True, exist_ok=True)
 
-# ── Anonymisation helpers ─────────────────────────────────────────────────────
+# ── Helpers de anonimização ───────────────────────────────────────────────────
 _ANON_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\b\d{3}\.\d{3}\.\d{3}-\d{2}\b"), "[CPF]"),
     (re.compile(r"\b\d{2}/\d{2}/\d{4}\b"), "[DATA]"),
     (re.compile(r"\b\d{4}-\d{2}-\d{2}\b"), "[DATA]"),
-    # Broad name heuristic: two or more title-cased words preceded by Dr./Dra./Paciente
+    # Heurística ampla de nomes: duas ou mais palavras em Title Case após Dr./Dra./Paciente.
     (re.compile(r"\b(?:Dr\.|Dra\.|Paciente|Patient)\s+[A-ZÁÉÍÓÚÃÕÂÊÔÀÜ][a-záéíóúãõâêôàü]+(?:\s+[A-ZÁÉÍÓÚÃÕÂÊÔÀÜ][a-záéíóúãõâêôàü]+)*"), "[NOME]"),
     (re.compile(r"\bHospital\s+[A-ZÁÉÍÓÚÃÕÂÊÔÀÜ][\w\s]*"), "[HOSPITAL]"),
     (re.compile(r"\b\d{5}-\d{3}\b"), "[CEP]"),
@@ -47,7 +47,7 @@ def anonymise(text: str) -> str:
     return text
 
 
-# ── Alpaca formatter ──────────────────────────────────────────────────────────
+# ── Formatador Alpaca ─────────────────────────────────────────────────────────
 ALPACA_TEMPLATE = (
     "Below is a clinical question. Write an evidence-based medical response.\n\n"
     "### Instruction:\n{instruction}\n\n"
@@ -87,7 +87,7 @@ def load_pubmedqa(split_ratio: float = 0.9) -> tuple[list[dict], list[dict]]:
         long_answer: str = item["long_answer"]
         final_decision: str = item.get("final_decision", "")
 
-        context_text = "\n".join(context_list[:3])  # keep top-3 context sentences
+        context_text = "\n".join(context_list[:3])  # mantém as 3 sentenças de contexto mais relevantes
         instruction = f"Answer the following clinical question based on PubMed evidence."
         input_ctx = f"Question: {question}\n\nContext:\n{anonymise(context_text)}"
         output = (
@@ -106,7 +106,7 @@ def load_pubmedqa(split_ratio: float = 0.9) -> tuple[list[dict], list[dict]]:
     return train_records, test_records
 
 
-# ── Synthetic medical data ────────────────────────────────────────────────────
+# ── Dados médicos sintéticos ──────────────────────────────────────────────────
 
 _PROTOCOLS: list[dict] = [
     {
@@ -349,18 +349,64 @@ def generate_synthetic_records() -> list[dict]:
     return records
 
 
-# ── Main ──────────────────────────────────────────────────────────────────────
+# ── MedQuAD ───────────────────────────────────────────────────────────────────
+
+def load_medquad(split_ratio: float = 0.9, max_records: int | None = None) -> tuple[list[dict], list[dict]]:
+    """Load MedQuAD from HuggingFace (lavita/MedQuAD).
+
+    Fields used: Question, Answer, qtype (used to build instruction).
+    Records with empty Answer are skipped.
+    """
+    print("Downloading MedQuAD …")
+    ds = load_dataset("lavita/MedQuAD", split="train")
+
+    train_records: list[dict] = []
+    test_records: list[dict] = []
+
+    items = list(ds)
+    if max_records is not None:
+        random.shuffle(items)
+        items = items[:max_records]
+
+    for i, item in enumerate(items):
+        question: str = (item.get("question") or item.get("Question") or "").strip()
+        answer: str = (item.get("answer") or item.get("Answer") or "").strip()
+        qtype: str = (item.get("qtype") or "").strip()
+
+        if not question or not answer:
+            continue
+
+        instruction = (
+            f"Answer the following medical question ({qtype})."
+            if qtype
+            else "Answer the following medical question."
+        )
+        input_ctx = f"Question: {anonymise(question)}"
+        output = anonymise(answer)
+
+        record = to_alpaca(instruction, input_ctx, output)
+        if i / len(items) < split_ratio:
+            train_records.append(record)
+        else:
+            test_records.append(record)
+
+    print(f"  MedQuAD → {len(train_records)} train / {len(test_records)} test")
+    return train_records, test_records
+
+
+# ── Principal ─────────────────────────────────────────────────────────────────
 
 def main() -> None:
     random.seed(42)
 
     pubmed_train, pubmed_test = load_pubmedqa()
+    medquad_train, medquad_test = load_medquad()
     synthetic = generate_synthetic_records()
 
-    train_records = pubmed_train + synthetic
+    train_records = pubmed_train + medquad_train + synthetic
     random.shuffle(train_records)
 
-    # Save processed datasets
+    # Salva os datasets processados.
     train_path = DATA_PROCESSED / "medical_train.jsonl"
     test_path = DATA_PROCESSED / "medical_test.jsonl"
 
@@ -368,11 +414,14 @@ def main() -> None:
         for rec in train_records:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
+    test_records = pubmed_test + medquad_test
+    random.shuffle(test_records)
+
     with test_path.open("w", encoding="utf-8") as f:
-        for rec in pubmed_test:
+        for rec in test_records:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
-    # Also save synthetic records separately for reference
+    # Também salva os registros sintéticos separadamente para referência.
     synthetic_path = DATA_SYNTHETIC / "synthetic_records.jsonl"
     with synthetic_path.open("w", encoding="utf-8") as f:
         for rec in synthetic:
@@ -380,8 +429,12 @@ def main() -> None:
 
     print(
         f"\nDataset saved:\n"
-        f"  Train: {len(train_records)} records → {train_path}\n"
-        f"  Test:  {len(pubmed_test)} records → {test_path}\n"
+        f"  Train: {len(train_records)} records "
+        f"(PubMedQA={len(pubmed_train)}, MedQuAD={len(medquad_train)}, Synthetic={len(synthetic)}) "
+        f"→ {train_path}\n"
+        f"  Test:  {len(test_records)} records "
+        f"(PubMedQA={len(pubmed_test)}, MedQuAD={len(medquad_test)}) "
+        f"→ {test_path}\n"
         f"  Synthetic: {len(synthetic)} records → {synthetic_path}"
     )
 
