@@ -4,6 +4,16 @@
 * Turma: 8IADT
 * Funcional: RM369853
 
+#### Fase 3
+
+* [Fase 3 — Vídeo de apresentação do projeto](TBD)
+
+* [Fase 3 — Código Python](TBD "Código Python");
+
+#### Geral
+
+* [Repositório do GitHub](https://github.com/paulosobral/fiap-pos-tech-ia-para-devs "Repositório do GitHub");
+
 ## Visão Geral do Projeto
 
 Assistente virtual médico com LLM fine-tuned, RAG sobre protocolos hospitalares e fluxo multi-agente via LangGraph.
@@ -108,15 +118,15 @@ graph TD
 
 O RAG (Retrieval-Augmented Generation) é utilizado para os **protocolos hospitalares** armazenados no índice FAISS (`data/faiss_index/`). A cada consulta, os trechos mais relevantes dos protocolos são recuperados por similaridade semântica e injetados no prompt como contexto antes de a LLM gerar a resposta.
 
-```
-Pergunta
-  → FAISS.similarity_search()          ← busca semântica nos protocolos
-       └─ top-k chunks de protocolos
-  → prompt = {chunks} + {pergunta} + {contexto do paciente}
-  → LLM fine-tuned gera resposta baseada nos protocolos recuperados
-  → explainability.attach_sources()    ← cita os protocolos usados
-  → audit_logger.log_query()
-  → Resposta com fontes citadas
+```mermaid
+flowchart LR
+    P([Pergunta]) --> F[FAISS\nsimilarity_search]
+    F -->|top-k chunks| PR[Prompt\nchunks + pergunta\n+ contexto do paciente]
+    DB[(SQLite\nPacientes)] -->|query SQL → texto| PR
+    PR --> LLM[LLM fine-tuned\nQwen2.5-3B]
+    LLM --> EX[explainability\nattach_sources]
+    EX --> AL[audit_logger\nlog_query]
+    AL --> R([Resposta\ncom fontes citadas])
 ```
 
 > **O que está no FAISS**: protocolos e FAQs sintéticos gerados em `prepare_dataset.py` + `data/synthetic/`.  
