@@ -10,7 +10,7 @@ Este repositório contém materiais, notebooks e exemplos utilizados ao longo do
 
 * [Fase 2 — Tech Challenge - Fase 2 GA e Núvem](https://github.com/paulosobral/fiap-pos-tech-ia-para-devs/tree/main/01-aulas-gravadas/02-evolucao-da-ia-genia-cloud-ml-e-llms/07-tech-challenge);
 
-* [Fase 3 — Tech Challenge - Fase 3 GA e Núvem](https://github.com/paulosobral/fiap-pos-tech-ia-para-devs/tree/main/01-aulas-gravadas/03-openia/07-tech-challenge);
+* [Fase 3 — Tech Challenge - Assistente Médico IA](https://github.com/paulosobral/fiap-pos-tech-ia-para-devs/tree/main/01-aulas-gravadas/03-openia/07-tech-challenge);
 
 ## O que há neste repositório ✅
 - Notebooks com exemplos de Machine Learning e Deep Learning
