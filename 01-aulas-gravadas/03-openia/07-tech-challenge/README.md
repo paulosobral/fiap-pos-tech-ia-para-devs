@@ -6,9 +6,9 @@
 
 #### Fase 3
 
-* [Fase 3 — Vídeo de apresentação do projeto](TBD)
+* [Fase 3 — Vídeo de apresentação do projeto](https://youtu.be/yPH4tHY1t8U)
 
-* [Fase 3 — Código Python](TBD "Código Python");
+* [Fase 3 — Código Python](https://github.com/paulosobral/fiap-pos-tech-ia-para-devs/tree/main/01-aulas-gravadas/03-openia/07-tech-challenge "Código Python");
 
 #### Geral
 
@@ -239,6 +239,8 @@ LORA_TARGET_MODULES = [
 ---
 
 ## Interface Streamlit
+
+![Assistente Médico IA](assistente-medico-ia.png)
 
 Acesse em `http://localhost:8501` após rodar `streamlit run app.py`.
 

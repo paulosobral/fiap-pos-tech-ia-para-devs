@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>README.md</title>
+<meta http-equiv="Content-type" content="text/html;charset=UTF-8">
+
+<style>
+/* https://github.com/microsoft/vscode/blob/master/extensions/markdown-language-features/media/markdown.css */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+body {
+	font-family: var(--vscode-markdown-font-family, -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif);
+	font-size: var(--vscode-markdown-font-size, 14px);
+	padding: 0 26px;
+	line-height: var(--vscode-markdown-line-height, 22px);
+	word-wrap: break-word;
+}
+
+#code-csp-warning {
+	position: fixed;
+	top: 0;
+	right: 0;
+	color: white;
+	margin: 16px;
+	text-align: center;
+	font-size: 12px;
+	font-family: sans-serif;
+	background-color:#444444;
+	cursor: pointer;
+	padding: 6px;
+	box-shadow: 1px 1px 1px rgba(0,0,0,.25);
+}
+
+#code-csp-warning:hover {
+	text-decoration: none;
+	background-color:#007acc;
+	box-shadow: 2px 2px 2px rgba(0,0,0,.25);
+}
+
+body.scrollBeyondLastLine {
+	margin-bottom: calc(100vh - 22px);
+}
+
+body.showEditorSelection .code-line {
+	position: relative;
+}
+
+body.showEditorSelection .code-active-line:before,
+body.showEditorSelection .code-line:hover:before {
+	content: "";
+	display: block;
+	position: absolute;
+	top: 0;
+	left: -12px;
+	height: 100%;
+}
+
+body.showEditorSelection li.code-active-line:before,
+body.showEditorSelection li.code-line:hover:before {
+	left: -30px;
+}
+
+.vscode-light.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.15);
+}
+
+.vscode-light.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.40);
+}
+
+.vscode-light.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-dark.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.4);
+}
+
+.vscode-dark.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.60);
+}
+
+.vscode-dark.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-high-contrast.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 160, 0, 0.7);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 160, 0, 1);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+img {
+	max-width: 100%;
+	max-height: 100%;
+}
+
+a {
+	text-decoration: none;
+}
+
+a:hover {
+	text-decoration: underline;
+}
+
+a:focus,
+input:focus,
+select:focus,
+textarea:focus {
+	outline: 1px solid -webkit-focus-ring-color;
+	outline-offset: -1px;
+}
+
+hr {
+	border: 0;
+	height: 2px;
+	border-bottom: 2px solid;
+}
+
+h1 {
+	padding-bottom: 0.3em;
+	line-height: 1.2;
+	border-bottom-width: 1px;
+	border-bottom-style: solid;
+}
+
+h1, h2, h3 {
+	font-weight: normal;
+}
+
+table {
+	border-collapse: collapse;
+}
+
+table > thead > tr > th {
+	text-align: left;
+	border-bottom: 1px solid;
+}
+
+table > thead > tr > th,
+table > thead > tr > td,
+table > tbody > tr > th,
+table > tbody > tr > td {
+	padding: 5px 10px;
+}
+
+table > tbody > tr + tr > td {
+	border-top: 1px solid;
+}
+
+blockquote {
+	margin: 0 7px 0 5px;
+	padding: 0 16px 0 10px;
+	border-left-width: 5px;
+	border-left-style: solid;
+}
+
+code {
+	font-family: Menlo, Monaco, Consolas, "Droid Sans Mono", "Courier New", monospace, "Droid Sans Fallback";
+	font-size: 1em;
+	line-height: 1.357em;
+}
+
+body.wordWrap pre {
+	white-space: pre-wrap;
+}
+
+pre:not(.hljs),
+pre.hljs code > div {
+	padding: 16px;
+	border-radius: 3px;
+	overflow: auto;
+}
+
+pre code {
+	color: var(--vscode-editor-foreground);
+	tab-size: 4;
+}
+
+/** Theming */
+
+.vscode-light pre {
+	background-color: rgba(220, 220, 220, 0.4);
+}
+
+.vscode-dark pre {
+	background-color: rgba(10, 10, 10, 0.4);
+}
+
+.vscode-high-contrast pre {
+	background-color: rgb(0, 0, 0);
+}
+
+.vscode-high-contrast h1 {
+	border-color: rgb(0, 0, 0);
+}
+
+.vscode-light table > thead > tr > th {
+	border-color: rgba(0, 0, 0, 0.69);
+}
+
+.vscode-dark table > thead > tr > th {
+	border-color: rgba(255, 255, 255, 0.69);
+}
+
+.vscode-light h1,
+.vscode-light hr,
+.vscode-light table > tbody > tr + tr > td {
+	border-color: rgba(0, 0, 0, 0.18);
+}
+
+.vscode-dark h1,
+.vscode-dark hr,
+.vscode-dark table > tbody > tr + tr > td {
+	border-color: rgba(255, 255, 255, 0.18);
+}
+
+</style>
+
+<style>
+/* Tomorrow Theme */
+/* http://jmblog.github.com/color-themes-for-google-code-highlightjs */
+/* Original theme - https://github.com/chriskempson/tomorrow-theme */
+
+/* Tomorrow Comment */
+.hljs-comment,
+.hljs-quote {
+	color: #8e908c;
+}
+
+/* Tomorrow Red */
+.hljs-variable,
+.hljs-template-variable,
+.hljs-tag,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class,
+.hljs-regexp,
+.hljs-deletion {
+	color: #c82829;
+}
+
+/* Tomorrow Orange */
+.hljs-number,
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-literal,
+.hljs-type,
+.hljs-params,
+.hljs-meta,
+.hljs-link {
+	color: #f5871f;
+}
+
+/* Tomorrow Yellow */
+.hljs-attribute {
+	color: #eab700;
+}
+
+/* Tomorrow Green */
+.hljs-string,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition {
+	color: #718c00;
+}
+
+/* Tomorrow Blue */
+.hljs-title,
+.hljs-section {
+	color: #4271ae;
+}
+
+/* Tomorrow Purple */
+.hljs-keyword,
+.hljs-selector-tag {
+	color: #8959a8;
+}
+
+.hljs {
+	display: block;
+	overflow-x: auto;
+	color: #4d4d4c;
+	padding: 0.5em;
+}
+
+.hljs-emphasis {
+	font-style: italic;
+}
+
+.hljs-strong {
+	font-weight: bold;
+}
+</style>
+
+<style>
+/*
+ * Markdown PDF CSS
+ */
+
+ body {
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif, "Meiryo";
+	padding: 0 12px;
+}
+
+pre {
+	background-color: #f8f8f8;
+	border: 1px solid #cccccc;
+	border-radius: 3px;
+	overflow-x: auto;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+}
+
+pre:not(.hljs) {
+	padding: 23px;
+	line-height: 19px;
+}
+
+blockquote {
+	background: rgba(127, 127, 127, 0.1);
+	border-color: rgba(0, 122, 204, 0.5);
+}
+
+.emoji {
+	height: 1.4em;
+}
+
+code {
+	font-size: 14px;
+	line-height: 19px;
+}
+
+/* for inline code */
+:not(pre):not(.hljs) > code {
+	color: #C9AE75; /* Change the old color so it seems less like an error */
+	font-size: inherit;
+}
+
+/* Page Break : use <div class="page"/> or <div class="page"></div> to insert page break
+-------------------------------------------------------- */
+.page {
+	page-break-after: always;
+}
+
+</style>
+
+<script src="https://unpkg.com/mermaid/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast')
+          ? 'dark'
+          : 'default'
+    });
+  </script>
+<h1 id="tech-challenge---fase-3-assistente-médico-ia">Tech Challenge - Fase 3: Assistente Médico IA</h1>
+<ul>
+<li>Curso: Pós Tech IA para Devs</li>
+<li>Turma: 8IADT</li>
+<li>Funcional: RM369853</li>
+</ul>
+<h4 id="fase-3">Fase 3</h4>
+<ul>
+<li>
+<p><a href="https://youtu.be/yPH4tHY1t8U">Fase 3 — Vídeo de apresentação do projeto</a></p>
+</li>
+<li>
+<p><a href="https://github.com/paulosobral/fiap-pos-tech-ia-para-devs/tree/main/01-aulas-gravadas/03-openia/07-tech-challenge" title="Código Python">Fase 3 — Código Python</a>;</p>
+</li>
+</ul>
+<h4 id="geral">Geral</h4>
+<ul>
+<li><a href="https://github.com/paulosobral/fiap-pos-tech-ia-para-devs" title="Repositório do GitHub">Repositório do GitHub</a>;</li>
+</ul>
+<h2 id="visão-geral-do-projeto">Visão Geral do Projeto</h2>
+<p>Assistente virtual médico com LLM fine-tuned, RAG sobre protocolos hospitalares e fluxo multi-agente via LangGraph.</p>
+<hr>
+<h2 id="quick-start">Quick Start</h2>
+<pre class="hljs"><code><div><span class="hljs-comment"># 1. Instalar dependências (GPU local recomendada)</span>
+pip install -r requirements.txt
+python -m spacy download pt_core_news_sm
+
+<span class="hljs-comment"># 2. Preparar dataset de treinamento</span>
+python fine_tuning/prepare_dataset.py
+
+<span class="hljs-comment"># 3. Fine-tuning (GPU recomendada; CPU/RAM usada como overflow automático)</span>
+python fine_tuning/train.py
+
+<span class="hljs-comment"># 4. Avaliar o modelo</span>
+python fine_tuning/eval_model.py
+
+<span class="hljs-comment"># 5. Iniciar o assistente</span>
+streamlit run app.py
+</div></code></pre>
+<hr>
+<h2 id="pré-requisitos">Pré-requisitos</h2>
+<table>
+<thead>
+<tr>
+<th>Componente</th>
+<th>Versão mínima</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Python</td>
+<td>3.10+</td>
+</tr>
+<tr>
+<td>CUDA</td>
+<td>11.8+ (para fine-tuning)</td>
+</tr>
+<tr>
+<td>VRAM dedicada</td>
+<td>≥ 6 GB (modelo 3B 4-bit); ≥ 12 GB (modelo 8B 4-bit)</td>
+</tr>
+<tr>
+<td>RAM do sistema</td>
+<td>≥ 16 GB recomendado (usado como overflow de VRAM)</td>
+</tr>
+<tr>
+<td>GPU</td>
+<td>NVIDIA (Unsloth é CUDA-only)</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>O app funciona sem fine-tuning: define <code>use_adapter=False</code> em <code>assistant/llm_loader.py</code> para usar o modelo base como fallback.</p>
+<p>Com o gerenciamento de memória automático, camadas que não cabem na VRAM dedicada são descarregadas para a RAM do sistema. GPUs com menor VRAM conseguem treinar usando essa memória compartilhada como extensão.</p>
+</blockquote>
+<hr>
+<h2 id="estrutura-do-projeto">Estrutura do Projeto</h2>
+<pre class="hljs"><code><div>07-tech-challenge/
+├── fine_tuning/
+│   ├── prepare_dataset.py   # Baixa PubMedQA + MedQuAD, gera dados sintéticos, formata Alpaca
+│   ├── train.py             # Fine-tuning: Unsloth + LoRA + SFTTrainer + CPU memory offload
+│   ├── eval_model.py        # ROUGE-L, BLEU, exemplos qualitativos
+│   └── output/              # Adapter LoRA salvo aqui após treino
+├── assistant/
+│   ├── llm_loader.py        # Carrega modelo (adapter ou fallback)
+│   ├── vector_store.py      # FAISS sobre protocolos hospitalares
+│   ├── patient_db.py        # SQLite com 20 pacientes sintéticos
+│   └── rag_chain.py         # ConversationalRetrievalChain (LangChain)
+├── langgraph_flow/
+│   ├── state.py             # PatientState (TypedDict compartilhado)
+│   ├── graph.py             # StateGraph + roteamento condicional
+│   └── agents/
+│       ├── triage_agent.py    # Classifica urgência (low/medium/high)
+│       ├── exam_agent.py      # Busca exames pendentes/concluídos
+│       ├── diagnosis_agent.py # Diagnóstico diferencial via RAG
+│       ├── pharmacy_agent.py  # Sugestões farmacológicas (com guardrail)
+│       └── alert_agent.py     # Emite alertas de urgência alta
+├── security/
+│   ├── guardrails.py        # Valida input, bloqueia injection, enforcement de disclaimer
+│   ├── audit_logger.py      # Log JSON estruturado (data/logs/audit.jsonl)
+│   └── explainability.py    # Citação de fontes + footer de rastreabilidade
+├── data/
+│   ├── raw/                 # PubMedQA bruto
+│   ├── synthetic/           # Protocolos/laudos/FAQs gerados
+│   ├── processed/           # medical_train.jsonl, medical_test.jsonl
+│   ├── faiss_index/         # Índice vetorial persistido
+│   ├── patient_records.db   # SQLite de pacientes sintéticos
+│   └── logs/audit.jsonl     # Log de auditoria
+├── app.py                   # Interface Streamlit
+└── requirements.txt
+</div></code></pre>
+<hr>
+<h2 id="arquitetura">Arquitetura</h2>
+<h3 id="fluxo-langgraph">Fluxo LangGraph</h3>
+<pre><code class="language-mermaid"><div class="mermaid">graph TD
+    A([Sintomas do Paciente]) --> B[triage_node\nClassifica urgência]
+    B -->|urgência = high| C[alert_node\nEmite alerta + log]
+    B -->|urgência = low/medium| D[exam_node\nBusca exames no SQLite]
+    C --> D
+    D --> E[diagnosis_node\nDiagnóstico diferencial RAG+LLM]
+    E --> F{Interrupt\nAprovação médica}
+    F --> G[pharmacy_node\nSugestões farmacológicas]
+    G --> H([END])
+</div></code></pre>
+<h3 id="pipeline-rag-langchain">Pipeline RAG (LangChain)</h3>
+<p>O RAG (Retrieval-Augmented Generation) é utilizado para os <strong>protocolos hospitalares</strong> armazenados no índice FAISS (<code>data/faiss_index/</code>). A cada consulta, os trechos mais relevantes dos protocolos são recuperados por similaridade semântica e injetados no prompt como contexto antes de a LLM gerar a resposta.</p>
+<pre><code class="language-mermaid"><div class="mermaid">flowchart LR
+    P([Pergunta]) --> F[FAISS\nsimilarity_search]
+    F -->|top-k chunks| PR[Prompt\nchunks + pergunta\n+ contexto do paciente]
+    DB[(SQLite\nPacientes)] -->|query SQL → texto| PR
+    PR --> LLM[LLM fine-tuned\nQwen2.5-3B]
+    LLM --> EX[explainability\nattach_sources]
+    EX --> AL[audit_logger\nlog_query]
+    AL --> R([Resposta\ncom fontes citadas])
+</div></code></pre>
+<blockquote>
+<p><strong>O que está no FAISS</strong>: protocolos e FAQs sintéticos gerados em <code>prepare_dataset.py</code> + <code>data/synthetic/</code>.<br>
+<strong>O que NÃO é RAG</strong>: dados do paciente (SQLite) — esses são consultados diretamente via SQL e injetados como texto estruturado no prompt pelo <code>diagnosis_agent.py</code>.</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>Fonte de dados</th>
+<th>Mecanismo</th>
+<th>Onde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Protocolos hospitalares</td>
+<td><strong>RAG</strong> (FAISS + busca semântica)</td>
+<td><code>assistant/vector_store.py</code>, <code>rag_chain.py</code></td>
+</tr>
+<tr>
+<td>Dados do paciente (ficha, exames, medicações)</td>
+<td>Prompt injection (query SQL → texto)</td>
+<td><code>assistant/patient_db.py</code>, <code>diagnosis_agent.py</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="ajustes-de-robustez-rag-e-diagnóstico">Ajustes de Robustez (RAG e Diagnóstico)</h3>
+<p>Para reduzir respostas extrapoladas e inconsistências entre pacientes, o pipeline foi endurecido com os seguintes ajustes:</p>
+<ol>
+<li><strong>Embedding multilíngue no FAISS</strong></li>
+</ol>
+<ul>
+<li><code>assistant/vector_store.py</code> usa <code>BAAI/bge-m3</code>.</li>
+<li>O índice FAISS é reconstruído automaticamente quando o embedding muda (arquivo de assinatura do modelo em <code>data/faiss_index/</code>).</li>
+</ul>
+<ol start="2">
+<li><strong>Gate de confiança no retrieval</strong></li>
+</ol>
+<ul>
+<li><code>assistant/rag_chain.py</code> aplica <code>similarity_search_with_score</code> e filtra por distância máxima.</li>
+<li>Se não houver chunks com relevância suficiente, a resposta retorna em modo seguro: evidência insuficiente (sem inventar conteúdo).</li>
+</ul>
+<ol start="3">
+<li><strong>Isolamento de histórico entre casos clínicos</strong></li>
+</ol>
+<ul>
+<li>O histórico interno do chain é limpo a cada nova pergunta clínica.</li>
+<li>Ao trocar paciente na sidebar, o histórico e o chat da sessão também são reinicializados para evitar contaminação de contexto.</li>
+</ul>
+<ol start="4">
+<li><strong>Diagnóstico conservador com fallback seguro</strong></li>
+</ol>
+<ul>
+<li><code>diagnosis_agent.py</code> força formato de hipóteses conservadoras e sem prescrição.</li>
+<li>Saídas inválidas/espúrias são substituídas por fallback de baixa evidência.</li>
+</ul>
+<ol start="5">
+<li><strong>Bloqueio farmacológico por baixa evidência</strong></li>
+</ol>
+<ul>
+<li><code>pharmacy_agent.py</code> não gera sugestão farmacológica quando o diagnóstico está com baixa confiança documental.</li>
+<li>O fluxo registra o bloqueio e exige revisão médica antes de conduta.</li>
+</ul>
+<ol start="6">
+<li><strong>Stop token e truncagem de artefatos Alpaca</strong></li>
+</ol>
+<ul>
+<li><code>assistant/llm_loader.py</code> passa <code>stop_strings</code> ao <code>HuggingFacePipeline</code> para encerrar a geração nos marcadores <code>### Input:</code> / <code>### Instruction:</code> (artefatos do formato de treino Alpaca que faziam o modelo continuar gerando um próximo &quot;exemplo&quot; fictício após a resposta).</li>
+<li><code>assistant/rag_chain.py</code> aplica <code>_strip_alpaca_artifacts()</code> em toda saída do LLM como camada adicional de defesa.</li>
+</ul>
+<ol start="7">
+<li><strong>Atualização do modelo base para Qwen2.5-3B-Instruct</strong></li>
+</ol>
+<ul>
+<li>Substituído <code>unsloth/llama-3.2-3b-bnb-4bit</code> por <code>unsloth/Qwen2.5-3B-Instruct-bnb-4bit</code> em treino e inferência.</li>
+<li>Mesmo custo de VRAM (~1,9 GB a 4-bit), mas com notável melhoria em PT-BR e instruction-following para domínio médico.</li>
+<li>Trocar para <code>unsloth/Qwen2.5-7B-Instruct-bnb-4bit</code> em <code>fine_tuning/train.py</code> se tiver ≥ 12 GB VRAM.</li>
+</ul>
+<hr>
+<h2 id="dados">Dados</h2>
+<table>
+<thead>
+<tr>
+<th>Dataset</th>
+<th>Origem</th>
+<th>Registros</th>
+<th>Uso</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PubMedQA <code>pqa_labeled</code></td>
+<td>HuggingFace</td>
+<td>~1.000</td>
+<td>Treino/teste</td>
+</tr>
+<tr>
+<td>MedQuAD</td>
+<td>HuggingFace (<code>lavita/MedQuAD</code>)</td>
+<td>~47.000</td>
+<td>Treino/teste</td>
+</tr>
+<tr>
+<td>Protocolos sintéticos</td>
+<td>Gerado em <code>prepare_dataset.py</code></td>
+<td>15</td>
+<td>Treino</td>
+</tr>
+<tr>
+<td>FAQs sintéticos</td>
+<td>Gerado em <code>prepare_dataset.py</code></td>
+<td>5</td>
+<td>Treino</td>
+</tr>
+<tr>
+<td>Pacientes sintéticos</td>
+<td><code>patient_db.py</code></td>
+<td>20</td>
+<td>Runtime (SQLite)</td>
+</tr>
+</tbody>
+</table>
+<p>Todos os dados são <strong>públicos ou sintéticos</strong> — nenhum dado real de paciente é utilizado. Os dados sintéticos passam por anonimização com regex antes do treinamento.</p>
+<blockquote>
+<p><strong>MedQuAD</strong> (Medical Question Answer Dataset) contém ~47k pares Q&amp;A de fontes como NIH, CDC e MedlinePlus, cobrindo tipos de pergunta como <em>treatment</em>, <em>symptoms</em>, <em>causes</em>, <em>diagnosis</em> e <em>prevention</em>. Complementa o PubMedQA, que é focado em evidências de ensaios clínicos, ampliando a cobertura para perguntas clínicas gerais.</p>
+<p>Para hardware limitado, passe <code>max_records=10000</code> em <code>load_medquad()</code> dentro de <code>prepare_dataset.py</code>.</p>
+</blockquote>
+<hr>
+<h2 id="fine-tuning">Fine-tuning</h2>
+<table>
+<thead>
+<tr>
+<th>Parâmetro</th>
+<th>Valor</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Modelo base</td>
+<td><code>unsloth/Qwen2.5-3B-Instruct-bnb-4bit</code></td>
+</tr>
+<tr>
+<td>Método</td>
+<td>LoRA (<code>r=8</code>, <code>alpha=16</code>)</td>
+</tr>
+<tr>
+<td>Épocas</td>
+<td>3</td>
+</tr>
+<tr>
+<td>Batch size</td>
+<td>4 (+ grad. accum. 2 = efetivo 8)</td>
+</tr>
+<tr>
+<td>Learning rate</td>
+<td>2e-4 (cosine decay)</td>
+</tr>
+<tr>
+<td>Max seq length</td>
+<td>1024 tokens</td>
+</tr>
+<tr>
+<td>Formato</td>
+<td>Alpaca (<code>### Instruction / ### Input / ### Response</code>)</td>
+</tr>
+<tr>
+<td>Output</td>
+<td><code>fine_tuning/output/lora_model/</code></td>
+</tr>
+<tr>
+<td>Packing</td>
+<td><code>packing=True</code> — empacota exemplos curtos no mesmo contexto (~2× throughput)</td>
+</tr>
+<tr>
+<td>Gerenciamento de memória</td>
+<td><code>PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True,max_split_size_mb:512</code></td>
+</tr>
+<tr>
+<td>Memória compartilhada</td>
+<td><code>device_map=&quot;auto&quot;</code> + <code>max_memory</code> dinâmico (90% VRAM + 50% RAM livre)</td>
+</tr>
+<tr>
+<td>Pin memory</td>
+<td>Desabilitado (<code>dataloader_pin_memory=False</code>) para liberar RAM ao offload</td>
+</tr>
+</tbody>
+</table>
+<h3 id="módulos-lora-lora_target_modules">Módulos LoRA (<code>LORA_TARGET_MODULES</code>)</h3>
+<p>Por padrão apenas as <strong>camadas de atenção</strong> são adaptadas, priorizando velocidade (~1h30–2h de treino):</p>
+<pre class="hljs"><code><div>LORA_TARGET_MODULES = [<span class="hljs-string">&quot;q_proj&quot;</span>, <span class="hljs-string">&quot;k_proj&quot;</span>, <span class="hljs-string">&quot;v_proj&quot;</span>, <span class="hljs-string">&quot;o_proj&quot;</span>]
+</div></code></pre>
+<p>Se as respostas ficarem genéricas ou rasas em terminologia médica, adicione os módulos MLP:</p>
+<pre class="hljs"><code><div>LORA_TARGET_MODULES = [
+    <span class="hljs-string">&quot;q_proj&quot;</span>, <span class="hljs-string">&quot;k_proj&quot;</span>, <span class="hljs-string">&quot;v_proj&quot;</span>, <span class="hljs-string">&quot;o_proj&quot;</span>,  <span class="hljs-comment"># atenção</span>
+    <span class="hljs-string">&quot;gate_proj&quot;</span>, <span class="hljs-string">&quot;up_proj&quot;</span>, <span class="hljs-string">&quot;down_proj&quot;</span>,       <span class="hljs-comment"># MLP — melhora retenção de fatos clínicos</span>
+]
+</div></code></pre>
+<blockquote>
+<p>Os módulos MLP são onde o modelo &quot;armazena fatos&quot; — adaptá-los é especialmente útil para domínios com terminologia específica como o médico, ao custo de ~40% a mais de tempo de treino.</p>
+</blockquote>
+<hr>
+<h2 id="segurança">Segurança</h2>
+<ul>
+<li><strong>Sem prescrição direta</strong>: toda resposta com conteúdo farmacológico inclui disclaimer obrigatório.</li>
+<li><strong>Guardrails de input</strong>: bloqueio de prompt injection (regex), limite de 2.000 chars.</li>
+<li><strong>Auditoria</strong>: cada query, step de agente e alerta é gravado em <code>data/logs/audit.jsonl</code>.</li>
+<li><strong>Explainability</strong>: fontes dos protocolos consultados são exibidas em toda resposta.</li>
+<li><strong>Human-in-the-loop</strong>: o fluxo LangGraph tem um ponto de interrupção antes das sugestões farmacológicas.</li>
+</ul>
+<hr>
+<h2 id="interface-streamlit">Interface Streamlit</h2>
+<p><img src="assistente-medico-ia.png" alt="Assistente Médico IA"></p>
+<p>Acesse em <code>http://localhost:8501</code> após rodar <code>streamlit run app.py</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Aba</th>
+<th>Função</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>💬 Assistente</td>
+<td>Seleção de paciente, chat com LangGraph ou RAG direto</td>
+</tr>
+<tr>
+<td>📋 Auditoria</td>
+<td>Visualização dos últimos N registros do log JSON</td>
+</tr>
+<tr>
+<td>📚 Glossário &amp; Testes</td>
+<td>Glossário de siglas médicas + casos clínicos prontos com respostas de referência</td>
+</tr>
+</tbody>
+</table>
+<h3 id="sidebar--seleção-de-paciente">Sidebar — Seleção de Paciente</h3>
+<p>A barra lateral exibe um selectbox com <strong>&quot;Consulta Geral (sem paciente)&quot;</strong> como primeira opção, seguida dos 20 pacientes sintéticos armazenados no SQLite.</p>
+<table>
+<thead>
+<tr>
+<th>Seleção</th>
+<th>Comportamento</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Consulta Geral (sem paciente)</strong></td>
+<td>Nenhum contexto clínico é injetado; respostas baseadas apenas nos protocolos e no modelo</td>
+</tr>
+<tr>
+<td><strong>Paciente A–T</strong></td>
+<td>Ficha resumida exibida na sidebar; dados injetados como contexto em toda consulta</td>
+</tr>
+</tbody>
+</table>
+<p>Ao selecionar um paciente, a ficha resumida é exibida: nome, idade, sexo, tipo sanguíneo, alergias e condições crônicas.</p>
+<h3 id="modo-fluxo-completo-langgraph">Modo: Fluxo completo (LangGraph)</h3>
+<p>Executa o pipeline multi-agente completo antes de responder:</p>
+<pre class="hljs"><code><div>Sintomas digitados
+  → triage_agent   — classifica urgência (low / medium / high)
+  → alert_agent    — se urgência = high, emite alerta vermelho imediato
+  → exam_agent     — busca exames do paciente no SQLite
+  → diagnosis_agent — diagnóstico diferencial via RAG + LLM fine-tuned
+  → [INTERRUPT]    — pausa para &quot;aprovação médica&quot; (human-in-the-loop)
+  → pharmacy_agent — sugestões farmacológicas com disclaimer obrigatório
+</div></code></pre>
+<p>Durante a execução, um painel <code>st.status()</code> exibe cada step do agente <strong>em tempo real</strong>.<br>
+O resultado final apresenta:</p>
+<ul>
+<li><strong>Diagnóstico Diferencial</strong> com fontes dos protocolos consultados</li>
+<li><strong>Sugestões Farmacológicas</strong></li>
+<li><strong>Footer de rastreabilidade</strong>: lista de steps, nível de urgência e flag de aprovação humana</li>
+</ul>
+<h3 id="modo-pergunta-rápida-rag-direto">Modo: Pergunta rápida (RAG direto)</h3>
+<p>Pula todos os agentes e vai direto à cadeia de recuperação:</p>
+<pre class="hljs"><code><div>Pergunta + contexto do paciente (alergias, condições)
+  → ConversationalRetrievalChain
+       ├─ FAISS — recupera protocolos hospitalares relevantes
+       └─ HuggingFacePipeline — LLM fine-tuned gera a resposta
+  → resposta + fontes citadas
+</div></code></pre>
+<p>Mais rápido que o fluxo completo; indicado para perguntas pontuais (ex.: &quot;qual a dose de metformina?&quot;).</p>
+<h3 id="aba--auditoria">Aba 📋 Auditoria</h3>
+<ul>
+<li>Slider para selecionar quantas entradas recentes exibir (5–100)</li>
+<li>Cada entrada é mostrada em <code>st.expander</code> com timestamp, evento e ID do paciente</li>
+<li>Expandir mostra o JSON completo: query, resposta, sources, latência em ms e nível de urgência</li>
+</ul>
+<h3 id="guardrails-no-frontend">Guardrails no frontend</h3>
+<p>Antes de qualquer chamada ao modelo, o <code>validate_input()</code> é aplicado:</p>
+<ul>
+<li>Bloqueia padrões de <strong>prompt injection</strong> via regex</li>
+<li>Rejeita inputs com mais de <strong>2.000 caracteres</strong></li>
+<li>Em caso de violação, exibe <code>st.error()</code> e aborta sem invocar o modelo</li>
+</ul>
+<hr>
+<h2 id="avaliação-do-modelo">Avaliação do Modelo</h2>
+<p>Após o fine-tuning, execute:</p>
+<pre class="hljs"><code><div>python fine_tuning/eval_model.py
+</div></code></pre>
+<p>Resultados salvos em <code>fine_tuning/output/eval_results.json</code>.</p>
+<p>Métricas: ROUGE-1, ROUGE-2, ROUGE-L, BLEU (calculados sobre o split de teste combinado de PubMedQA + MedQuAD).</p>
+<hr>
+<h2 id="licença">Licença</h2>
+<p>Este projeto foi desenvolvido para fins acadêmicos no curso FIAP Pós Tech — IA para Devs, Fase 3.
+Dados de treinamento: PubMedQA (MIT License), MedQuAD (CC BY 4.0 — National Library of Medicine). Modelo base: LLaMA 3 (Meta Llama 3 Community License).</p>
+
+</body>
+</html>
