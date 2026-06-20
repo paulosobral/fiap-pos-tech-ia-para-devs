@@ -1,0 +1,3 @@
+opencv-python-headless==4.13.0.90
+mediapipe==0.10.14
+tqdm==4.68.3
