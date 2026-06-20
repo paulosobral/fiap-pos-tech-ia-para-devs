@@ -1,0 +1,2 @@
+SpeechRecognition==3.17.0
+moviepy==2.2.1
