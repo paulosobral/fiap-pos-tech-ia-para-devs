@@ -1,0 +1,13 @@
+Relatório de Investimentos
+Investidor: João Silva
+Tipo de Investimento: Ações
+Valor Investido: R$ 10.000
+Data do Investimento: 01/01/2024
+Investidor: Maria Oliveira
+Tipo de Investimento: Fundos Imobiliários
+Valor Investido: R$ 5.000
+Data do Investimento: 15/02/2024
+Investidor: Carlos Souza
+Tipo de Investimento: Tesouro Direto
+Valor Investido: R$ 8.000
+Data do Investimento: 20/03/2024
