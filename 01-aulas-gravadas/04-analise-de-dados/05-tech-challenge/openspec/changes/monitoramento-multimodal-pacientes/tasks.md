@@ -14,12 +14,12 @@
 
 ## 3. Sinais vitais (vital-signs-monitoring)
 
-- [ ] 3.1 Baixar dataset público de sinais vitais (PhysioNet/MIMIC-III demo ou VitalDB) para realizar o reinamento e após o treino com score adequado, salvar amostra CSV em `data/vital_signs_sample.csv`
-- [ ] 3.2 Implementar carregamento e validação de CSV de sinais vitais em `vital_signs/analysis.py` (rejeitar arquivo sem coluna de sinal vital reconhecida)
-- [ ] 3.3 Aplicar `detect_anomalies()` linha a linha por sinal vital e gerar `Alert` para cada leitura marcada como anômala
-- [ ] 3.4 Implementar `vital_signs/isolation_forest.py` com `fit_and_predict(df) -> pd.Series[bool]` usando `sklearn.ensemble.IsolationForest`
-- [ ] 3.5 Combinar resultado das duas camadas (z-score e Isolation Forest) destacando concordância/discordância no relatório da aba
-- [ ] 3.6 Construir aba "Sinais Vitais" em `app.py`: upload de CSV, gráfico da série temporal, tabela de anomalias das duas camadas
+- [x] 3.1 Baixar dataset público de sinais vitais (PhysioNet/MIMIC-III demo ou VitalDB) para realizar o reinamento e após o treino com score adequado, salvar amostra CSV em `data/vital_signs_sample.csv` (dados reais do MIMIC-III Clinical Database Demo, PhysioNet — CHARTEVENTS.csv de um icustay real, sem credenciais)
+- [x] 3.2 Implementar carregamento e validação de CSV de sinais vitais em `vital_signs/analysis.py` (rejeitar arquivo sem coluna de sinal vital reconhecida)
+- [x] 3.3 Aplicar `detect_anomalies()` linha a linha por sinal vital e gerar `Alert` para cada leitura marcada como anômala
+- [x] 3.4 Implementar `vital_signs/isolation_forest.py` com `fit_and_predict(df) -> pd.Series[bool]` usando `sklearn.ensemble.IsolationForest`
+- [x] 3.5 Combinar resultado das duas camadas (z-score e Isolation Forest) destacando concordância/discordância no relatório da aba
+- [x] 3.6 Construir aba "Sinais Vitais" em `app.py`: upload de CSV, gráfico da série temporal, tabela de anomalias das duas camadas
 
 ## 4. Vídeo (video-motion-analysis)
 
