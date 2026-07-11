@@ -1,0 +1,17 @@
+# ── App ──────────────────────────────────────────────────────
+streamlit>=1.35.0
+
+# ── Vídeo (pose estimation / object detection) ──────────────
+ultralytics>=8.2.0
+opencv-python>=4.9.0
+
+# ── AWS (Transcribe, Comprehend, Bedrock) ───────────────────
+boto3>=1.34.0
+
+# ── Sinais vitais (anomaly detection) ───────────────────────
+scikit-learn>=1.4.0
+
+# ── Dados ────────────────────────────────────────────────────
+pandas>=2.2.0
+numpy>=1.26.0
+openpyxl>=3.1.0

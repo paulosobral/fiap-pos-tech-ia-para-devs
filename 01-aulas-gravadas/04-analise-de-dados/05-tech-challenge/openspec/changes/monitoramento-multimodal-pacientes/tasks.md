@@ -1,9 +1,9 @@
 ## 1. Setup do projeto
 
-- [ ] 1.1 Criar `requirements.txt` com `streamlit`, `ultralytics`, `opencv-python`, `boto3`, `scikit-learn`, `pandas`, `numpy`, `openpyxl`
-- [ ] 1.2 Criar venv local (`python -m venv venv`) e instalar dependências
-- [ ] 1.3 Criar estrutura de diretórios: `anomaly/`, `video/`, `audio/`, `vital_signs/`, `prescriptions/`, `alerts/`, `data/`
-- [ ] 1.4 Configurar credenciais AWS localmente (variáveis de ambiente ou `~/.aws/credentials`) com permissão para Transcribe, Comprehend e Bedrock
+- [x] 1.1 Criar `requirements.txt` com `streamlit`, `ultralytics`, `opencv-python`, `boto3`, `scikit-learn`, `pandas`, `numpy`, `openpyxl`
+- [x] 1.2 Criar venv local (`python -m venv venv`) e instalar dependências
+- [x] 1.3 Criar estrutura de diretórios: `anomaly/`, `video/`, `audio/`, `vital_signs/`, `prescriptions/`, `alerts/`, `data/`
+- [x] 1.4 Configurar credenciais AWS localmente (variáveis de ambiente ou `~/.aws/credentials`) com permissão para Transcribe, Comprehend e Bedrock (já existentes em `~/.aws/credentials`, perfis `default` e `bedrock` — não foi necessário reconfigurar)
 
 ## 2. Módulo compartilhado de anomalia (clinical-alerting)
 
