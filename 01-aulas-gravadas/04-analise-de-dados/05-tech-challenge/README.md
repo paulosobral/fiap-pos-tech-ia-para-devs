@@ -7,6 +7,7 @@
 
 - Python 3.11+
 - Credenciais AWS já configuradas em `~/.aws/credentials` (perfis `default` e `bedrock`), com permissão para os serviços **Transcribe**, **Comprehend** e **Bedrock** (modelo Claude Sonnet habilitado na região utilizada). Não é necessário reconfigurar — o arquivo já existe neste ambiente.
+- Aba **Áudio**: requer um bucket S3 existente (região `us-east-1`, ver `audio/aws_speech.py`) configurado via variável de ambiente `AUDIO_TRANSCRIBE_BUCKET` — o AWS Transcribe precisa de um bucket S3 para entrada/saída do job assíncrono de transcrição. Sem essa variável definida, a aba exibe um aviso e não tenta a chamada.
 
 ## Setup rápido
 

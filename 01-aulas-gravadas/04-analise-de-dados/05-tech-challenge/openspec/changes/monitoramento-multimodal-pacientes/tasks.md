@@ -33,13 +33,13 @@
 
 ## 5. Áudio (audio-speech-analysis)
 
-- [ ] 5.1 Baixar/salvar áudio público livre de direitos simulando consulta médica em `data/` para uso como demo
-- [ ] 5.2 Implementar `audio/aws_speech.py`: função de transcrição via AWS Transcribe retornando texto e timestamps por segmento
-- [ ] 5.3 Implementar chamada AWS Comprehend para sentimento e entidades sobre o texto transcrito
-- [ ] 5.4 Implementar detecção de termos críticos pré-definidos (lista configurável, ex.: "dor", "não consigo respirar") no texto transcrito, gerando `Alert` quando encontrados
-- [ ] 5.5 Implementar `audio/analysis.py`: derivar séries de taxa de fala e duração de pausa a partir dos timestamps do Transcribe
-- [ ] 5.6 Aplicar `detect_anomalies()` sobre as séries acústicas para marcar segmentos compatíveis com fadiga/disartria
-- [ ] 5.7 Construir aba "Áudio" em `app.py`: upload de áudio (validando formato mp3/wav), exibição de transcrição, sentimento, termos críticos e anomalias de fala
+- [x] 5.1 Baixar/salvar áudio público livre de direitos simulando consulta médica em `data/` para uso como demo (`data/demo_consulta_audio.mp3` — nenhuma fonte pública gratuita de áudio médico curto foi encontrada rapidamente; gerado via TTS (`gTTS`, Google Text-to-Speech, pt-BR) a partir de um roteiro de consulta sintético contendo termos críticos, ~10s)
+- [x] 5.2 Implementar `audio/aws_speech.py`: função de transcrição via AWS Transcribe retornando texto e timestamps por segmento
+- [x] 5.3 Implementar chamada AWS Comprehend para sentimento e entidades sobre o texto transcrito
+- [x] 5.4 Implementar detecção de termos críticos pré-definidos (lista configurável, ex.: "dor", "não consigo respirar") no texto transcrito, gerando `Alert` quando encontrados
+- [x] 5.5 Implementar `audio/analysis.py`: derivar séries de taxa de fala e duração de pausa a partir dos timestamps do Transcribe
+- [x] 5.6 Aplicar `detect_anomalies()` sobre as séries acústicas para marcar segmentos compatíveis com fadiga/disartria
+- [x] 5.7 Construir aba "Áudio" em `app.py`: upload de áudio (validando formato mp3/wav), exibição de transcrição, sentimento, termos críticos e anomalias de fala
 
 ## 6. Prescrições (prescription-review)
 

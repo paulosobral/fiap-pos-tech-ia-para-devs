@@ -5,17 +5,32 @@ capability tab is thin UI glued to its own module's ``analyze(...)``
 function, which internally pushes ``Alert``s to the shared feed
 (``alerts/feed.py``).
 
-Tabs implemented so far: Sinais Vitais (Task 3), Vídeo (Task 4). The
-remaining tabs (Áudio, Prescrições) are added by later tasks; no
-placeholder tabs are created ahead of time.
+Tabs implemented so far: Sinais Vitais (Task 3), Vídeo (Task 4), Áudio
+(Task 5). The remaining tab (Prescrições) is added by a later task; no
+placeholder tab is created ahead of time.
 """
 import os
 import tempfile
+import uuid
 
 import cv2
 import pandas as pd
 import streamlit as st
 
+from audio.analysis import DEFAULT_THRESHOLD as AUDIO_DEFAULT_THRESHOLD
+from audio.analysis import DEFAULT_WINDOW as AUDIO_DEFAULT_WINDOW
+from audio.analysis import analyze as analyze_audio
+from audio.aws_speech import (
+    AUDIO_S3_BUCKET_ENV_VAR,
+    DEFAULT_CRITICAL_TERMS,
+    AudioProcessingError,
+    build_clients,
+    detect_entities,
+    get_configured_bucket_name,
+    raise_critical_term_alerts,
+    transcribe_audio,
+)
+from audio.aws_speech import analyze_sentiment as analyze_audio_sentiment
 from vital_signs.analysis import (
     DEFAULT_THRESHOLD,
     DEFAULT_WINDOW,
@@ -31,8 +46,6 @@ from video.pose import extract_frame_series
 
 st.set_page_config(page_title="Monitoramento Multimodal de Pacientes", layout="wide")
 st.title("Monitoramento Multimodal de Pacientes")
-
-VIDEO_ALLOWED_EXTENSIONS = ("mp4", "avi", "mov")
 
 
 @st.cache_resource(show_spinner=False)
@@ -76,7 +89,10 @@ def _read_video_frames(uploaded_file):
     return frames, fps
 
 
-(tab_vitals, tab_video) = st.tabs(["Sinais Vitais", "Vídeo"])
+VIDEO_ALLOWED_EXTENSIONS = ("mp4", "avi", "mov")
+AUDIO_ALLOWED_EXTENSIONS = ("mp3", "wav")
+
+(tab_vitals, tab_video, tab_audio) = st.tabs(["Sinais Vitais", "Vídeo", "Áudio"])
 
 with tab_vitals:
     st.header("Sinais Vitais")
@@ -274,3 +290,131 @@ with tab_video:
                             st.warning(f"[{alert.timestamp}] {alert.description}")
     else:
         st.info("Faça upload de um vídeo para iniciar a análise.")
+
+with tab_audio:
+    st.header("Áudio")
+    st.caption(
+        "Upload de áudio de consulta médica (mp3 ou wav). O áudio é "
+        "transcrito via AWS Transcribe (texto + timestamps por palavra), "
+        "o texto transcrito é analisado pelo AWS Comprehend (sentimento "
+        "e entidades) e verificado contra uma lista configurável de "
+        "termos críticos (ex.: \"dor\", \"não consigo respirar\"), cada "
+        "ocorrência gerando um alerta no feed compartilhado. Séries de "
+        "taxa de fala e duração de pausa são derivadas dos timestamps do "
+        "Transcribe e passadas pelo mesmo detector de anomalia por "
+        "rolling z-score usado nas demais abas, sinalizando segmentos "
+        "compatíveis com fadiga ou disartria."
+    )
+
+    bucket_name = get_configured_bucket_name()
+    if not bucket_name:
+        st.warning(
+            "Nenhum bucket S3 configurado para o AWS Transcribe. Defina a "
+            f"variável de ambiente `{AUDIO_S3_BUCKET_ENV_VAR}` com o nome de "
+            "um bucket S3 existente e acessível pelas credenciais AWS "
+            "configuradas, e reinicie a aplicação."
+        )
+
+    audio_file = st.file_uploader(
+        "Selecione um áudio (mp3 ou wav)",
+        type=list(AUDIO_ALLOWED_EXTENSIONS),
+        key="audio_uploader",
+        help="Formatos aceitos: " + ", ".join(AUDIO_ALLOWED_EXTENSIONS),
+    )
+
+    if audio_file is not None:
+        extension = audio_file.name.rsplit(".", 1)[-1].lower() if "." in audio_file.name else ""
+        if extension not in AUDIO_ALLOWED_EXTENSIONS:
+            st.error(
+                "Formato de arquivo não suportado: "
+                f"'.{extension or audio_file.name}'. Formatos aceitos: "
+                + ", ".join(AUDIO_ALLOWED_EXTENSIONS)
+                + "."
+            )
+        elif bucket_name:
+            critical_terms_input = st.text_input(
+                "Termos críticos (separados por vírgula)",
+                value=", ".join(DEFAULT_CRITICAL_TERMS),
+                help="Lista configurável de termos que geram alerta imediato quando encontrados na transcrição.",
+            )
+            critical_terms = [t.strip() for t in critical_terms_input.split(",") if t.strip()]
+
+            if st.button("Processar áudio", key="audio_process_button"):
+                try:
+                    clients = build_clients()
+                    with st.spinner(
+                        "Transcrevendo áudio via AWS Transcribe (pode levar até alguns minutos)..."
+                    ):
+                        transcription = transcribe_audio(
+                            audio_bytes=audio_file.getvalue(),
+                            file_extension=extension,
+                            bucket_name=bucket_name,
+                            s3_client=clients["s3"],
+                            transcribe_client=clients["transcribe"],
+                            job_name=f"tech-challenge-audio-{uuid.uuid4().hex}",
+                        )
+                except AudioProcessingError as exc:
+                    st.error(f"Falha ao transcrever o áudio: {exc}")
+                except Exception as exc:  # pragma: no cover - defensive, e.g. missing/invalid AWS credentials
+                    st.error(f"Falha inesperada ao acessar os serviços AWS: {exc}")
+                else:
+                    text = transcription["text"]
+                    words = transcription["words"]
+
+                    st.subheader("Transcrição")
+                    if not text:
+                        st.info("Nenhuma fala foi identificada no áudio enviado.")
+                    else:
+                        st.write(text)
+                        st.caption(f"{len(words)} palavra(s) com timestamp identificadas.")
+
+                        try:
+                            sentiment_result = analyze_audio_sentiment(text, client=clients["comprehend"])
+                            entities = detect_entities(text, client=clients["comprehend"])
+                        except AudioProcessingError as exc:
+                            st.error(f"Falha ao analisar o texto via AWS Comprehend: {exc}")
+                        else:
+                            st.subheader("Sentimento (AWS Comprehend)")
+                            st.write(
+                                f"**{sentiment_result['sentiment']}** — "
+                                f"{sentiment_result['sentiment_score']}"
+                            )
+
+                            st.subheader("Entidades (AWS Comprehend)")
+                            if not entities:
+                                st.info("Nenhuma entidade identificada no texto transcrito.")
+                            else:
+                                st.dataframe(pd.DataFrame(entities), use_container_width=True)
+
+                        critical_alerts = raise_critical_term_alerts(text, terms=critical_terms)
+                        st.subheader("Termos críticos")
+                        if not critical_alerts:
+                            st.info("Nenhum termo crítico foi identificado na transcrição.")
+                        else:
+                            for alert in critical_alerts:
+                                st.warning(f"[{alert.timestamp}] {alert.description}")
+
+                        if words:
+                            audio_result = analyze_audio(
+                                words, window=AUDIO_DEFAULT_WINDOW, threshold=AUDIO_DEFAULT_THRESHOLD
+                            )
+
+                            st.subheader("Anomalias de fala (taxa de fala / duração de pausa)")
+                            has_speech_anomaly = audio_result["speech_rate_anomalies"].any()
+                            has_pause_anomaly = audio_result["pause_anomalies"].any()
+                            if not has_speech_anomaly and not has_pause_anomaly:
+                                st.info(
+                                    "Nenhum indicador de fadiga ou disartria foi detectado "
+                                    "(taxa de fala e duração de pausa dentro do esperado)."
+                                )
+                            else:
+                                n_speech = int(audio_result["speech_rate_anomalies"].sum())
+                                n_pause = int(audio_result["pause_anomalies"].sum())
+                                st.write(
+                                    f"{n_speech} segmento(s) com taxa de fala anômala, "
+                                    f"{n_pause} pausa(s) anômala(s)."
+                                )
+                                for alert in audio_result["alerts"]:
+                                    st.warning(f"[{alert.timestamp}] {alert.description}")
+    else:
+        st.info("Faça upload de um áudio para iniciar a análise.")
