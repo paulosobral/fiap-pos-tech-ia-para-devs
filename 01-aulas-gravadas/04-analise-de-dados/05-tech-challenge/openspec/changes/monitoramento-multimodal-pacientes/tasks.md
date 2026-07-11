@@ -7,10 +7,10 @@
 
 ## 2. Módulo compartilhado de anomalia (clinical-alerting)
 
-- [ ] 2.1 Implementar `anomaly/zscore.py` com função `detect_anomalies(series, window, threshold)` que retorna série booleana de anomalias via rolling z-score
-- [ ] 2.2 Tratar caso de série menor que a janela configurada (retornar tudo `False`, sem erro)
-- [ ] 2.3 Implementar `alerts/feed.py` com classe/dataclass `Alert` (origem, timestamp, descrição) e funções `add_alert()` / `get_alerts()` sobre `st.session_state`
-- [ ] 2.4 Garantir que `get_alerts()` retorna alertas ordenados do mais recente para o mais antigo
+- [x] 2.1 Implementar `anomaly/zscore.py` com função `detect_anomalies(series, window, threshold)` que retorna série booleana de anomalias via rolling z-score
+- [x] 2.2 Tratar caso de série menor que a janela configurada (retornar tudo `False`, sem erro)
+- [x] 2.3 Implementar `alerts/feed.py` com classe/dataclass `Alert` (origem, timestamp, descrição) e funções `add_alert()` / `get_alerts()` sobre `st.session_state`
+- [x] 2.4 Garantir que `get_alerts()` retorna alertas ordenados do mais recente para o mais antigo
 
 ## 3. Sinais vitais (vital-signs-monitoring)
 

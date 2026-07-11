@@ -1,0 +1,61 @@
+"""Shared alert feed consumed by the Vídeo, Áudio, Sinais Vitais and
+Prescrições tabs, simulating real-time notification to the medical team.
+
+Alerts live in ``st.session_state`` so they persist across Streamlit
+reruns within the same browser session and are visible to every tab.
+
+Spec: openspec/changes/monitoramento-multimodal-pacientes/specs/clinical-alerting/spec.md
+"""
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import List, Optional
+
+import streamlit as st
+
+_SESSION_KEY = "alerts"
+
+
+@dataclass
+class Alert:
+    """A single alert raised by any capability tab.
+
+    Attributes:
+        origin: Tab/capability that generated the alert (e.g. "Vídeo",
+            "Áudio", "Sinais Vitais", "Prescrições").
+        description: Human-readable description of the anomaly/issue.
+        timestamp: When the alert was generated.
+    """
+
+    origin: str
+    description: str
+    timestamp: datetime = field(default_factory=datetime.now)
+
+
+def add_alert(origin: str, description: str, timestamp: Optional[datetime] = None) -> Alert:
+    """Create an ``Alert`` and append it to the shared feed in ``st.session_state``.
+
+    Args:
+        origin: Tab/capability that generated the alert.
+        description: Human-readable description of the anomaly/issue.
+        timestamp: Optional explicit timestamp; defaults to ``datetime.now()``.
+
+    Returns:
+        The ``Alert`` instance that was added to the feed.
+    """
+    if _SESSION_KEY not in st.session_state:
+        st.session_state[_SESSION_KEY] = []
+
+    alert = Alert(origin=origin, description=description, timestamp=timestamp or datetime.now())
+    st.session_state[_SESSION_KEY].append(alert)
+    return alert
+
+
+def get_alerts() -> List[Alert]:
+    """Return all alerts in the shared feed, ordered newest-first.
+
+    Returns:
+        List of ``Alert`` objects. Empty list when no alert has been
+        generated in the current session.
+    """
+    alerts = st.session_state.get(_SESSION_KEY, [])
+    return sorted(alerts, key=lambda alert: alert.timestamp, reverse=True)
