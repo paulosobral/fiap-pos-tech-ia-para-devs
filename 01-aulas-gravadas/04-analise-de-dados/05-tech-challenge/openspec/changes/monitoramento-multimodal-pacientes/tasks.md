@@ -23,13 +23,13 @@
 
 ## 4. Vídeo (video-motion-analysis)
 
-- [ ] 4.1 Baixar/salvar vídeo público livre de direitos de fisioterapia/exercício em `data/` para uso como demo
-- [ ] 4.2 Implementar `video/pose.py`: carregar `yolov8n-pose.pt` via `ultralytics`, processar vídeo frame a frame extraindo keypoints
-- [ ] 4.3 Implementar cálculo de ângulo de articulação e velocidade de movimento entre frames a partir dos keypoints, tratando frames sem pessoa detectada
-- [ ] 4.4 Implementar `video/analysis.py`: aplicar `detect_anomalies()` sobre as séries de ângulo e velocidade, com `threshold` recebido como parâmetro
-- [ ] 4.5 Implementar detecção de objeto/área crítica via YOLOv8 com regra de zona configurável, gerando `Alert` imediato por interseção de bounding box
-- [ ] 4.6 Implementar geração de relatório de desvios (lista ordenada por timestamp) combinando anomalias posturais e alertas de zona crítica
-- [ ] 4.7 Construir aba "Vídeo" em `app.py`: upload de vídeo (validando formato mp4/avi/mov), slider de sensibilidade, exibição do relatório de desvios
+- [x] 4.1 Baixar/salvar vídeo público livre de direitos de fisioterapia/exercício em `data/` para uso como demo (`data/demo_pose_walk.mp4` — recorte de 6s, re-encodado para mp4/h264, do vídeo de amostra `vtest.avi` distribuído com o próprio OpenCV, de uso livre para desenvolvimento/testes)
+- [x] 4.2 Implementar `video/pose.py`: carregar `yolov8n-pose.pt` via `ultralytics`, processar vídeo frame a frame extraindo keypoints
+- [x] 4.3 Implementar cálculo de ângulo de articulação e velocidade de movimento entre frames a partir dos keypoints, tratando frames sem pessoa detectada
+- [x] 4.4 Implementar `video/analysis.py`: aplicar `detect_anomalies()` sobre as séries de ângulo e velocidade, com `threshold` recebido como parâmetro
+- [x] 4.5 Implementar detecção de objeto/área crítica via YOLOv8 com regra de zona configurável, gerando `Alert` imediato por interseção de bounding box
+- [x] 4.6 Implementar geração de relatório de desvios (lista ordenada por timestamp) combinando anomalias posturais e alertas de zona crítica
+- [x] 4.7 Construir aba "Vídeo" em `app.py`: upload de vídeo (validando formato mp4/avi/mov), slider de sensibilidade, exibição do relatório de desvios
 
 ## 5. Áudio (audio-speech-analysis)
 
