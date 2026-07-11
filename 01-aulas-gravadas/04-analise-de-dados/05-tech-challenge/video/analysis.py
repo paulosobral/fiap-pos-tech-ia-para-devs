@@ -52,9 +52,15 @@ DEFAULT_WINDOW = 10
 ZONE_CRITICAL_CLASSES = {0}
 
 # Default critical zone in relative frame coordinates
-# (x_min, y_min, x_max, y_max), each in [0, 1]. No zone is checked unless
-# the caller supplies one explicitly; this default is only illustrative.
-DEFAULT_ZONE: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+# (x_min, y_min, x_max, y_max), each in [0, 1]. This module never applies
+# it implicitly — ``analyze``'s ``zone`` parameter still defaults to
+# ``None``, meaning "skip the zone-critical-object path entirely" for
+# callers that don't pass a zone. ``DEFAULT_ZONE`` exists so callers that
+# *do* want a pre-filled starting zone (e.g. the Vídeo tab's zone
+# controls in app.py) share one canonical value instead of hard-coding
+# it again. The right-hand-fifth-of-frame value below matches the
+# bundled demo video's framing of the critical area.
+DEFAULT_ZONE: Tuple[float, float, float, float] = (0.7, 0.0, 1.0, 1.0)
 
 _CLASS_LABELS = {0: "person"}
 

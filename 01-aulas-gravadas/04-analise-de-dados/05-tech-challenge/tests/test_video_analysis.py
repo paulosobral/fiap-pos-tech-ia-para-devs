@@ -19,7 +19,7 @@ No real YOLO model is involved — tests operate directly on the
 import pytest
 import streamlit as st
 
-from video.analysis import analyze, box_intersects_zone
+from video.analysis import DEFAULT_ZONE, analyze, box_intersects_zone
 
 
 @pytest.fixture(autouse=True)
@@ -141,6 +141,50 @@ def test_analyze_zone_alert_is_independent_of_zscore_threshold():
 
     zone_alerts = [a for a in result["alerts"] if "zona" in a.description.lower()]
     assert len(zone_alerts) == 1
+
+
+def test_default_zone_matches_documented_right_hand_fifth_of_frame():
+    # DEFAULT_ZONE is the canonical pre-filled starting value shared by
+    # the app.py zone controls; it must stay the value that keeps the
+    # bundled demo video's behavior unchanged (right-hand fifth of the
+    # frame, full height).
+    assert DEFAULT_ZONE == (0.7, 0.0, 1.0, 1.0)
+
+
+def test_analyze_with_default_zone_flags_detection_inside_it():
+    frames = [
+        _frame(
+            0.0,
+            angle=90.0,
+            velocity=1.0,
+            detections=[{"cls": 0, "label": "person", "xyxy": [80, 10, 100, 20]}],
+        )
+    ]
+
+    result = analyze(
+        frames, threshold=3.0, window=4, zone=DEFAULT_ZONE, frame_width=100, frame_height=100
+    )
+
+    zone_alerts = [a for a in result["alerts"] if "zona" in a.description.lower()]
+    assert len(zone_alerts) == 1
+
+
+def test_analyze_zone_still_skipped_when_zone_is_none_despite_default_zone_existing():
+    # DEFAULT_ZONE existing as a named constant must not change the
+    # "None means skip the zone path entirely" contract of analyze().
+    frames = [
+        _frame(
+            0.0,
+            angle=90.0,
+            velocity=1.0,
+            detections=[{"cls": 0, "label": "person", "xyxy": [80, 10, 100, 20]}],
+        )
+    ]
+
+    result = analyze(frames, threshold=3.0, window=4, zone=None, frame_width=100, frame_height=100)
+
+    zone_alerts = [a for a in result["alerts"] if "zona" in a.description.lower()]
+    assert zone_alerts == []
 
 
 def test_analyze_no_zone_alert_when_no_detection_intersects_zone():

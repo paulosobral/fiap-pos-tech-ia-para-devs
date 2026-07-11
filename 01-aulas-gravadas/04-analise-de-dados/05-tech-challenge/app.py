@@ -25,6 +25,7 @@ from vital_signs.analysis import (
     load_vital_signs_csv,
 )
 from video.analysis import DEFAULT_WINDOW as VIDEO_DEFAULT_WINDOW
+from video.analysis import DEFAULT_ZONE as VIDEO_DEFAULT_ZONE
 from video.analysis import analyze as analyze_video
 from video.pose import extract_frame_series
 
@@ -186,6 +187,32 @@ with tab_video:
                 help="Valores menores tornam a detecção mais sensível (mais anomalias reportadas).",
             )
 
+            zone_x_range = st.slider(
+                "Zona crítica — faixa horizontal (x_min, x_max)",
+                min_value=0.0,
+                max_value=1.0,
+                value=(VIDEO_DEFAULT_ZONE[0], VIDEO_DEFAULT_ZONE[2]),
+                step=0.05,
+                help=(
+                    "Posição relativa da zona crítica no eixo horizontal do quadro "
+                    "(0.0 = borda esquerda, 1.0 = borda direita). Ajuste conforme o "
+                    "enquadramento do vídeo enviado."
+                ),
+            )
+            zone_y_range = st.slider(
+                "Zona crítica — faixa vertical (y_min, y_max)",
+                min_value=0.0,
+                max_value=1.0,
+                value=(VIDEO_DEFAULT_ZONE[1], VIDEO_DEFAULT_ZONE[3]),
+                step=0.05,
+                help=(
+                    "Posição relativa da zona crítica no eixo vertical do quadro "
+                    "(0.0 = topo, 1.0 = base). Ajuste conforme o enquadramento do "
+                    "vídeo enviado."
+                ),
+            )
+            critical_zone = (zone_x_range[0], zone_y_range[0], zone_x_range[1], zone_y_range[1])
+
             with st.spinner("Carregando modelo YOLOv8-pose (pode baixar pesos na primeira execução)..."):
                 try:
                     pose_model = _load_pose_model()
@@ -225,7 +252,7 @@ with tab_video:
                         frame_series,
                         threshold=float(sensitivity_threshold),
                         window=VIDEO_DEFAULT_WINDOW,
-                        zone=(0.7, 0.0, 1.0, 1.0),
+                        zone=critical_zone,
                         frame_width=frame_width,
                         frame_height=frame_height,
                     )
