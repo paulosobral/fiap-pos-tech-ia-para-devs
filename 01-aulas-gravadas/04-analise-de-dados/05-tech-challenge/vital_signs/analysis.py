@@ -14,6 +14,7 @@ high-confidence anomalies (both layers agree) from single-layer signals.
 
 Spec: openspec/changes/monitoramento-multimodal-pacientes/specs/vital-signs-monitoring/spec.md
 """
+import warnings
 from typing import Any, Dict
 
 import pandas as pd
@@ -61,8 +62,9 @@ def load_vital_signs_csv(file) -> pd.DataFrame:
 
     Raises:
         VitalSignsValidationError: If the CSV has no column matching any
-            entry in ``RECOGNIZED_VITAL_SIGN_COLUMNS``, or cannot be parsed
-            as CSV at all.
+            entry in ``RECOGNIZED_VITAL_SIGN_COLUMNS``, cannot be parsed as
+            CSV at all, has an unparseable ``timestamp`` value, or has a
+            non-numeric value in a recognized vital-sign column.
     """
     try:
         df = pd.read_csv(file)
@@ -76,10 +78,29 @@ def load_vital_signs_csv(file) -> pd.DataFrame:
             f"Colunas esperadas (ao menos uma): {', '.join(RECOGNIZED_VITAL_SIGN_COLUMNS)}."
         )
 
+    for column in recognized:
+        numeric_column = pd.to_numeric(df[column], errors="coerce")
+        invalid_mask = numeric_column.isna() & df[column].notna()
+        if invalid_mask.any():
+            bad_row = df.index[invalid_mask][0]
+            bad_value = df.loc[bad_row, column]
+            raise VitalSignsValidationError(
+                f"Valor não numérico encontrado na coluna '{column}' "
+                f"(linha {bad_row + 2} do CSV: '{bad_value}')."
+            )
+        df[column] = numeric_column
+
     if "timestamp" in [c.strip().lower() for c in df.columns]:
         ts_col = next(c for c in df.columns if c.strip().lower() == "timestamp")
         df = df.rename(columns={ts_col: "timestamp"})
-        df["timestamp"] = pd.to_datetime(df["timestamp"])
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", UserWarning)
+                df["timestamp"] = pd.to_datetime(df["timestamp"])
+        except (ValueError, TypeError) as exc:
+            raise VitalSignsValidationError(
+                f"Não foi possível interpretar a coluna 'timestamp' como data/hora: {exc}"
+            ) from exc
     else:
         df = df.reset_index(drop=True)
         df.insert(0, "timestamp", df.index)

@@ -91,6 +91,39 @@ def test_load_vital_signs_csv_accepts_missing_timestamp_by_falling_back_to_row_o
     assert list(df["timestamp"]) == [0, 1]
 
 
+def test_load_vital_signs_csv_rejects_unparseable_timestamp_value():
+    # A recognized vital-sign column is present, but the timestamp values
+    # are not parseable as dates. Must raise the module's validation error
+    # (clean st.error in app.py), not crash with an uncaught
+    # pandas.errors.DateParseError.
+    csv = _csv_bytes("timestamp,heart_rate\nnot-a-date,80\nalso-bad,82\n")
+
+    with pytest.raises(VitalSignsValidationError) as exc_info:
+        load_vital_signs_csv(csv)
+
+    message = str(exc_info.value)
+    assert "timestamp" in message.lower()
+
+
+def test_load_vital_signs_csv_rejects_non_numeric_value_in_signal_column():
+    # A recognized vital-sign column has a non-numeric value in one row.
+    # Must raise the module's validation error, not crash further down the
+    # pipeline (e.g. rolling z-score / Isolation Forest) with an uncaught
+    # pandas.errors.DataError.
+    csv = _csv_bytes(
+        "timestamp,heart_rate\n"
+        "2024-01-01 00:00:00,80\n"
+        "2024-01-01 01:00:00,bad\n"
+        "2024-01-01 02:00:00,82\n"
+    )
+
+    with pytest.raises(VitalSignsValidationError) as exc_info:
+        load_vital_signs_csv(csv)
+
+    message = str(exc_info.value)
+    assert "heart_rate" in message
+
+
 def test_recognized_vital_sign_columns_include_common_signals():
     assert "heart_rate" in RECOGNIZED_VITAL_SIGN_COLUMNS
     assert "spo2" in RECOGNIZED_VITAL_SIGN_COLUMNS
