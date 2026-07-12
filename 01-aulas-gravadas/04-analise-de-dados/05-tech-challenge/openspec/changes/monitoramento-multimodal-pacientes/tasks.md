@@ -59,7 +59,7 @@
 
 ## 8. Documentação e entregáveis da Fase 4
 
-- [ ] 8.1 Escrever `README.md` com instruções de setup (venv, requirements, credenciais AWS, download do modelo YOLOv8-pose)
-- [ ] 8.2 Escrever relatório técnico cobrindo: descrição do fluxo multimodal, modelos aplicados em cada tipo de dado (incluindo justificativa AWS no lugar de Azure e YOLOv8-pose no lugar de OpenPose), resultados obtidos e exemplos de anomalias detectadas
-- [ ] 8.3 Gravar vídeo de demonstração de até 15 minutos cobrindo: análise de áudio e vídeo, detecção e resposta a anomalias, integração dos serviços AWS, fluxo final de alerta à equipe médica
-- [ ] 8.4 Publicar vídeo no YouTube ou Vimeo (público ou não listado) e adicionar link ao README
+- [x] 8.1 Escrever `README.md` com instruções de setup (venv, requirements, credenciais AWS, download do modelo YOLOv8-pose) — README expandido com setup completo, credenciais/regiões AWS reais (perfil `bedrock` em `us-east-2`), variável `AUDIO_TRANSCRIBE_BUCKET`, descrição das 4 abas + feed de alertas, execução de testes e seção "Pendências"
+- [x] 8.2 Escrever relatório técnico cobrindo: descrição do fluxo multimodal, modelos aplicados em cada tipo de dado (incluindo justificativa AWS no lugar de Azure e YOLOv8-pose no lugar de OpenPose), resultados obtidos e exemplos de anomalias detectadas — `RELATORIO_TECNICO.md`, com exemplos reais de anomalia por modalidade (MIMIC-III/Isolation Forest, Bedrock/Paciente B, smoke run do vídeo) e seção de limitações conhecidas
+- [ ] 8.3 Gravar vídeo de demonstração de até 15 minutos cobrindo: análise de áudio e vídeo, detecção e resposta a anomalias, integração dos serviços AWS, fluxo final de alerta à equipe médica — **Pendente, ação manual do usuário** (fora do escopo desta implementação)
+- [ ] 8.4 Publicar vídeo no YouTube ou Vimeo (público ou não listado) e adicionar link ao README — **Pendente, ação manual do usuário** (depende de 8.3)

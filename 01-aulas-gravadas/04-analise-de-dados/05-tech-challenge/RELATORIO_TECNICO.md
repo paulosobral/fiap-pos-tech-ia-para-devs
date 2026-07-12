@@ -1,0 +1,278 @@
+# Relatório Técnico — Monitoramento Multimodal de Pacientes
+
+Tech Challenge Fase 4 (8IADT), projeto individual. Referências: `openspec/changes/monitoramento-multimodal-pacientes/proposal.md`
+e `design.md` (decisões D1–D7), specs em `openspec/changes/monitoramento-multimodal-pacientes/specs/*/spec.md`.
+
+## 1. Visão geral do fluxo multimodal
+
+A aplicação (`app.py`, Streamlit) expõe 4 abas independentes — Sinais Vitais, Vídeo, Áudio e
+Prescrições — cada uma recebendo upload de um arquivo (não há captura em tempo real de
+câmera/microfone; ver seção "Limitações"). Cada aba delega o processamento a um módulo Python
+próprio (`vital_signs/`, `video/`, `audio/`, `prescriptions/`), organizado por *capability* e não
+por camada técnica (decisão D7 do design). Três das quatro modalidades (Vídeo, Áudio, Sinais
+Vitais) compartilham a mesma função genérica de detecção estatística de anomalia
+(`anomaly/zscore.py::detect_anomalies`, decisão D2); a quarta (Prescrições) usa raciocínio de LLM
+via AWS Bedrock (decisão D6), sem estatística.
+
+Toda anomalia ou inconsistência detectada, em qualquer aba, gera um `Alert` (origem, timestamp,
+descrição) empurrado para um feed compartilhado em `st.session_state`
+(`alerts/feed.py`), renderizado na sidebar do `app.py` (`_render_alert_feed()`), do mais recente
+para o mais antigo — simulando notificação em tempo real à equipe médica. Essa visão unificada é
+adicional à exibição de alertas que cada aba já mostra inline; não a substitui.
+
+Fluxo resumido por aba:
+
+```
+Sinais Vitais:  CSV → validação/parse → rolling z-score (linha a linha)
+                                       → Isolation Forest (lote)      → relatório combinado + Alert
+Vídeo:          vídeo → YOLOv8-pose (frame a frame) → série de ângulo/velocidade → rolling z-score
+                                                     → bounding box da pessoa → regra de zona crítica
+                                                                                        → relatório de desvios + Alert
+Áudio:          áudio → AWS Transcribe (texto + timestamps) → AWS Comprehend (sentimento/entidades)
+                                                             → busca de termos críticos
+                                                             → taxa de fala / duração de pausa → rolling z-score
+                                                                                                        → Alert
+Prescrições:    CSV/Excel → histórico por paciente → prompt estruturado → AWS Bedrock (Claude Sonnet)
+                                                                          → parsing da resposta JSON → Alert
+```
+
+## 2. Modelos/técnicas aplicados por tipo de dado, e por quê
+
+| Modalidade | Técnica aplicada | Por quê |
+|---|---|---|
+| Vídeo | YOLOv8-pose (`yolov8n-pose.pt`, `ultralytics`) + rolling z-score sobre ângulo/velocidade + regra de zona | Um único forward pass fornece keypoints humanos **e** bounding boxes no mesmo modelo (ver D1 abaixo) |
+| Áudio | AWS Transcribe (fala→texto) + AWS Comprehend (sentimento/entidades) + rolling z-score sobre taxa de fala/pausa | Serviços gerenciados de nuvem, sem necessidade de treinar um ASR ou classificador de sentimento próprio (ver D5 abaixo) |
+| Sinais Vitais | Rolling z-score (linha a linha) + Isolation Forest (`sklearn`, lote) | Duas camadas complementares: uma "tempo real"/explicável, outra estatística/ML validando em lote sobre o dataset completo (ver D3) |
+| Prescrições | AWS Bedrock, Claude Sonnet (raciocínio de LLM, sem fine-tuning) | Dataset sintético pequeno, tarefa de interpretação semântica de texto/dados estruturados — mais adequada a um LLM instruído por prompt do que a um modelo estatístico treinado em poucos exemplos (ver D6) |
+
+### 2.1 Justificativa: AWS em vez de Azure Cognitive Services (design.md D5)
+
+O PDF do desafio cita literalmente **Azure Speech to Text** e **Azure Text Analytics** como
+exemplos de serviço gerenciado para a análise de áudio. Esta implementação usa **AWS Transcribe**
+(fala→texto) e **AWS Comprehend** (sentimento + entidades) como equivalentes funcionais, e
+adicionalmente **AWS Bedrock** (Claude Sonnet) para a análise de prescrições — capability sem
+equivalente citado no PDF, mas natural dentro da mesma conta cloud já escolhida.
+
+Motivo da troca: gerenciar duas contas cloud e dois SDKs diferentes (Azure SDK + boto3) só para
+dois serviços específicos, dentro de um projeto individual com prazo curto, foi julgado um custo
+de engenharia desproporcional ao benefício. A equivalência funcional é direta serviço a serviço:
+
+- Azure Speech to Text ↔ AWS Transcribe: ambos convertem áudio em texto com timestamps por
+  palavra/segmento.
+- Azure Text Analytics ↔ AWS Comprehend: ambos oferecem classificação de sentimento e extração
+  de entidades sobre texto.
+
+Risco assumido conscientemente: uma avaliação que exija literalmente Azure pode penalizar esta
+escolha. Mitigação: esta seção documenta a equivalência explicitamente, e o código (`audio/aws_speech.py`)
+comenta a escolha de região/serviço para que a substituição seja auditável.
+
+### 2.2 Justificativa: YOLOv8-pose em vez de OpenPose + YOLOv8 separados (design.md D1)
+
+O PDF sugere OpenPose (para análise postural) e YOLOv8 (para detecção de objetos/áreas críticas)
+como exemplos ("modelos como"), não como exigência obrigatória e exclusiva. OpenPose depende de
+um build Caffe antigo, difícil de instalar/manter em 2026. Optou-se por
+`ultralytics` YOLOv8-pose (`yolov8n-pose.pt`), que no mesmo forward pass fornece:
+
+1. Keypoints humanos (usados para calcular ângulo de articulação e velocidade de movimento —
+   análise postural).
+2. Bounding boxes de detecção (usadas para a regra de zona crítica).
+
+Consequência documentada do modelo escolhido: `yolov8n-pose.pt` é de detecção **single-class**
+("person", dataset COCO-keypoints) — a mesma passada que extrai a pose só produz caixas de
+pessoa, não de objetos genéricos (ex.: instrumento cirúrgico). A "detecção de objeto/área crítica"
+implementada é, portanto, "uma **pessoa** entrando em uma zona configurada do quadro", não um
+objeto arbitrário — isso exigiria um segundo modelo de propósito geral (`yolov8n.pt`, 80 classes
+COCO), o que a decisão D1 evitou deliberadamente para manter um único forward pass. Essa troca de
+escopo está registrada em código (`video/analysis.py`, constante `ZONE_CRITICAL_CLASSES = {0}`,
+facilmente extensível se um segundo modelo for adicionado no futuro).
+
+Alternativa considerada e rejeitada: YOLOv8 puro + MediaPipe Pose separados — exigiria dois
+pipelines e duas dependências onde um modelo já resolve ambos os sub-requisitos do PDF.
+
+## 3. As duas abordagens de IA demonstradas
+
+O `design.md` estabelece como meta cobrir, no relatório, duas abordagens de IA distintas:
+
+1. **Estatística / ML clássico, sem necessidade de treino "pesado":**
+   - Rolling z-score (`anomaly/zscore.py`) — média/desvio-padrão móveis sobre uma janela,
+     `|z| > threshold` marca anomalia. Reaproveitado, sem modificação, pelas 3 modalidades
+     numéricas (ângulo/velocidade no Vídeo; taxa de fala/duração de pausa no Áudio;
+     FC/PA/SpO2/temperatura/frequência respiratória em Sinais Vitais). Não exige treino,
+     decisão interpretável e documentável (threshold explícito no relatório/UI).
+   - Isolation Forest (`sklearn.ensemble.IsolationForest`, `vital_signs/isolation_forest.py`) —
+     ajustado (`fit`) sobre o dataset completo de sinais vitais carregado, roda em lote como
+     segunda camada de validação cruzada, exclusivamente em Sinais Vitais (única modalidade com
+     dataset robusto suficiente para um fit útil — ver D3).
+2. **Raciocínio via LLM:**
+   - AWS Bedrock (Claude Sonnet), em `prescriptions/bedrock_review.py` — sem treino de modelo
+     customizado, análise de inconsistências (mudança abrupta de dose, interação medicamentosa,
+     falta de justificativa clínica) feita por raciocínio semântico sobre texto/dados
+     estruturados via prompt estruturado em português, respondendo em JSON.
+
+Essa divisão deliberada (estatística onde há dado numérico reaproveitável e volume suficiente;
+LLM onde a tarefa é de interpretação semântica sobre pouco dado) é o eixo central da narrativa
+técnica do projeto.
+
+## 4. Resultados obtidos e exemplos reais de anomalias
+
+Os exemplos abaixo são resultados reais, obtidos durante a implementação e validação de cada
+capability (ver `.superpowers/sdd/task-{3,4,5,6}-report.md` para o detalhamento completo). Nenhum
+número foi inventado — onde a validação real foi limitada, isso é indicado explicitamente.
+
+### 4.1 Sinais Vitais — dataset real (MIMIC-III Demo)
+
+Dataset: **MIMIC-III Clinical Database Demo v1.4** (PhysioNet), um estágio de UTI real
+(`icustay_id = 250305`), 480 leituras horárias de frequência cardíaca, SpO2, frequência
+respiratória e pressão arterial sistólica/diastólica (`data/vital_signs_sample.csv`) — dado
+clínico real e de-identificado, não sintético.
+
+Resultado real, com os thresholds padrão do código (`window=6`, `threshold=3.0`):
+- **0 alertas via rolling z-score** — a série real de UTI é naturalmente ruidosa, sem um pico
+  isoladamente extremo o suficiente para cruzar um threshold conservador escolhido para não
+  saturar o feed de alertas a cada leitura horária.
+- **24 leituras marcadas exclusivamente pelo Isolation Forest** (`isolation_forest_only`, com
+  `contamination=0.05`) — nenhuma delas coincidiu com um alerta de z-score.
+
+Esse é o exemplo concreto de **divergência entre as duas camadas de detecção**: o Isolation
+Forest, olhando o padrão multivariado do lote completo, aponta leituras que o z-score
+linha-a-linha (olhando cada sinal isoladamente, janela curta) não captura. O relatório combinado
+na UI rotula essas leituras como `isolation_forest_only`, tornando essa divergência visível — que
+é exatamente o cenário "Isolation Forest identifica anomalia não capturada pelo z-score" descrito
+no spec de `vital-signs-monitoring`.
+
+### 4.2 Prescrições — AWS Bedrock, achados reais sobre o dataset sintético
+
+Dataset sintético (`data/prescricoes_sinteticas.csv`, 3 pacientes, criado manualmente por falta de
+fonte pública apropriada — ver seção "Limitações"): Paciente A (Losartana 50mg estável, caso
+normal), Paciente B (Metformina 500mg → 2000mg em 7 dias, mudança abrupta de dose), Paciente C
+(Warfarina + Aspirina co-prescritas, possível interação medicamentosa).
+
+Chamada real ao Bedrock (perfil `bedrock`, região `us-east-2`, modelo
+`us.anthropic.claude-sonnet-5`) para o **Paciente B** retornou:
+
+```json
+[
+  {
+    "tipo": "mudanca_dose_abrupta",
+    "explicacao": "A dose de Metformina passou de 500mg (em 2026-01-17) para 2000mg (em 2026-01-24), um aumento de 4 vezes em apenas 7 dias, sem evidência de titulação gradual..."
+  },
+  {
+    "tipo": "dose_sem_justificativa",
+    "explicacao": "Não há registro de exames, sintomas ou avaliação clínica que justifique o aumento da dose de Metformina..."
+  }
+]
+```
+
+Ambos os achados geraram `Alert(origin="Prescrições", ...)` no feed compartilhado. Para o
+**Paciente A** (caso normal), a chamada real ao Bedrock retornou `[]` — nenhuma inconsistência —
+confirmando também o caminho "sem achados" com uma resposta real do modelo, não apenas com um
+mock. O caso do Paciente C (interação medicamentosa) foi validado via testes unitários mockados,
+não com uma segunda chamada real, para respeitar o orçamento de chamadas reais definido na
+tarefa (ver `.superpowers/sdd/task-6-report.md`).
+
+### 4.3 Vídeo — smoke run real contra o modelo YOLOv8-pose
+
+Vídeo de demonstração: `data/demo_pose_walk.mp4`, recorte de 6s (re-encodado para mp4/h264,
+480×360) do vídeo de amostra `vtest.avi` distribuído com o próprio OpenCV (uso livre), mostrando
+pedestres caminhando — usado como fallback documentado na ausência de um vídeo de fisioterapia
+específico obtido sem credenciais.
+
+Execução real (não apenas testes unitários mockados) contra o modelo real `yolov8n-pose.pt` e o
+vídeo real:
+
+```
+frames lidos: 60          fps: 10.0
+frames com pose detectada: 47 / 60
+anomalias de ângulo: 0
+anomalias de velocidade: 1
+alertas gerados: 59
+entradas no relatório de desvios: 59
+```
+
+A zona crítica de demonstração (`(0.7, 0.0, 1.0, 1.0)` — 30% direito do quadro, configurável via
+sliders na UI) disparou alertas repetidamente conforme pedestres cruzavam essa região, e uma
+anomalia de velocidade do punho foi detectada — evidência de que a pipeline completa (extração de
+pose → cálculo de ângulo/velocidade → z-score → regra de zona → relatório) funciona de ponta a
+ponta contra o modelo real, e não só contra dados de teste sintéticos.
+
+### 4.4 Áudio — validação real limitada, honestamente reportada
+
+Áudio de demonstração: `data/demo_consulta_audio.mp3`, um clipe curto (~10s) de fala sintética em
+pt-BR gerada via TTS (`gTTS`), com um roteiro contendo termos críticos ("dor no peito", "não
+consigo respirar", "tontura") — não foi encontrada rapidamente uma fonte pública gratuita de
+áudio médico real curto, então o clipe foi gerado como fallback documentado.
+
+Uma chamada real a cada serviço (Transcribe, Comprehend) foi feita durante a validação: a
+transcrição reproduziu exatamente o roteiro (18 palavras com timestamp), o sentimento retornado
+pelo Comprehend foi `NEGATIVE` (99,75% de confiança) e 3 entidades foram extraídas. A busca de
+termos críticos (lógica local, sem chamada AWS) encontrou corretamente "dor", "não consigo
+respirar", "dor no peito" e "tontura" no texto transcrito real.
+
+**Honestamente**: por se tratar de um clipe curto e sintético (sem variação natural real de fadiga
+vocal), não há um exemplo real de anomalia de taxa de fala/duração de pausa detectada nesse clipe
+— a validação real do módulo `audio/analysis.py` (rolling z-score sobre taxa de fala/pausa) foi
+feita majoritariamente via testes unitários com séries sintéticas construídas para exercitar o
+caminho de detecção (ex.: `test_analyze_flags_anomaly_and_raises_alert_when_pause_is_extreme`), não
+contra um áudio real com um evento de fadiga genuíno. Isso é uma limitação da validação real desta
+modalidade, não da lógica implementada — a mesma função `detect_anomalies` já validada nas outras
+duas modalidades é reutilizada sem alteração.
+
+## 5. Limitações conhecidas
+
+- **Sem captura em tempo real de câmera/microfone.** O requisito implícito do PDF de
+  "monitoramento contínuo" é simulado via upload de arquivo, não streaming ao vivo — decisão de
+  escopo por limitação do ambiente de desenvolvimento (WSL, sem passthrough fácil de
+  câmera/microfone). A mesma pipeline (extração de features → `detect_anomalies` →
+  `alerts.feed.add_alert`) se estenderia a um fluxo de streaming real trocando apenas a fonte de
+  entrada; isso é trabalho futuro, não implementado aqui.
+- **Rastreamento postural de uma única articulação.** `video/pose.py` calcula o ângulo apenas do
+  cotovelo direito (shoulder-elbow-wrist) e a velocidade apenas do punho direito, não um esqueleto
+  completo. Escolha documentada no código: o cotovelo é visível em mais enquadramentos de câmera
+  (planos superiores de corpo, comuns em demos de fisioterapia) do que o joelho, que exigiria um
+  plano de corpo inteiro. Um esqueleto completo (múltiplas articulações) é possível com o mesmo
+  modelo, mas não foi implementado — trade-off consciente de escopo, não uma limitação do
+  YOLOv8-pose em si.
+- **Detecção de "objeto crítico" limitada a pessoas.** Como descrito na seção 2.2, o modelo
+  `yolov8n-pose.pt` só detecta a classe "person" no mesmo forward pass que extrai a pose. A regra
+  de zona crítica implementada, portanto, sinaliza entrada de **pessoas** em uma área configurada,
+  não objetos genéricos (ex.: instrumental). Adicionar um segundo modelo de detecção geral
+  (`yolov8n.pt`, 80 classes COCO) resolveria isso, ao custo de duas passadas de inferência por
+  frame em vez de uma — trade-off explicitamente evitado pela decisão D1.
+- **Dataset sintético de prescrições, pequeno.** `data/prescricoes_sinteticas.csv` tem apenas 3
+  pacientes, criados manualmente porque não foi localizada rapidamente uma fonte pública
+  apropriada de histórico de prescrições com casos de mudança abrupta de dose/interação
+  medicamentosa. Isso é suficiente para demonstrar o raciocínio do Bedrock qualitativamente (ver
+  seção 4.2), mas não permite qualquer afirmação estatística sobre taxa de acerto/erro do modelo
+  em escala.
+- **Bedrock só validado em `us-east-2`, não em `us-east-1`.** Para a conta AWS usada no
+  desenvolvimento, `us-east-1` retornou `ResourceNotFoundException` ("Model use case details have
+  not been submitted for this account") de forma consistente em ~10 tentativas ao longo de vários
+  minutos — um bloqueio de nível de conta/formulário de uso, não um problema transitório ou de
+  permissão (`list_foundation_models`/`list_inference_profiles` funcionam normalmente nessa
+  região). A região `us-east-2` (e também `us-west-2`, testada) funcionou imediatamente. Contas
+  AWS diferentes podem não ter essa restrição.
+- **Segfault conhecido do `streamlit.testing.v1.AppTest` neste ambiente.** Ao processar upload de
+  CSV/arquivo dentro de um script rerun do `AppTest`, o processo trava com `SIGSEGV` (exit code
+  139). O crash foi isolado à combinação `pandas==3.0.3` + `pyarrow==25.0.0` rodando dentro da
+  thread de background do `AppTest`, reproduzido inclusive em um script trivial de duas linhas
+  sem nenhum código deste projeto envolvido — ou seja, é uma incompatibilidade de
+  ambiente/dependências (Streamlit 1.59.1 + pandas/pyarrow nesta build Python em WSL2), não um
+  defeito de qualquer aba da aplicação. Por esse motivo, a cobertura automatizada de ponta a ponta
+  das abas Sinais Vitais e Vídeo (upload → processamento → renderização) via `AppTest` é parcial;
+  a verificação real dessas abas foi feita via `streamlit run` real (boot sem erros, HTTP 200) e
+  via a suíte de testes unitários (que exercita a lógica de cada módulo diretamente, sem passar
+  pelo `AppTest`).
+- **Threshold/janela fixos em Áudio e no rolling z-score de Sinais Vitais (parcialmente).** Por
+  decisão de design (D4), apenas o slider de sensibilidade da aba Vídeo (e o par
+  window/threshold da aba Sinais Vitais, que também é ajustável na UI) é interativo; o
+  threshold/janela da detecção de anomalia de fala em Áudio (`DEFAULT_WINDOW=5`,
+  `DEFAULT_THRESHOLD=2.5`) é fixo, documentado em código (`audio/analysis.py`), sem controle na
+  UI — não havia requisito de interatividade para essa aba.
+
+## 6. Referências internas
+
+- Decisões de design detalhadas: `openspec/changes/monitoramento-multimodal-pacientes/design.md`
+  (D1–D7).
+- Requisitos formais por capability: `openspec/changes/monitoramento-multimodal-pacientes/specs/*/spec.md`.
+- Relatórios de execução de cada tarefa (evidência de TDD, chamadas AWS reais, bugs encontrados e
+  corrigidos): `.superpowers/sdd/task-{1,...,7}-report.md`.
