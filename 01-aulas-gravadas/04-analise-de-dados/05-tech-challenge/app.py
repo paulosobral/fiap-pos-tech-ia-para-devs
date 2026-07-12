@@ -93,17 +93,19 @@ def _load_pose_model():
     return YOLO("yolov8n-pose.pt")
 
 
-def _read_video_frames(uploaded_file):
-    """Persist the uploaded video to a temp file and read all frames.
+def _decode_video_frames(video_bytes: bytes, extension: str):
+    """Persist raw video bytes to a temp file and decode all frames.
 
     ``cv2.VideoCapture`` needs a path (or a backend that supports
     in-memory buffers, which is not reliably available across
-    platforms), so the Streamlit ``UploadedFile`` is written to a
-    temporary file first.
+    platforms), so the raw bytes are written to a temporary file first.
+    Takes plain ``bytes``/``extension`` rather than the Streamlit
+    ``UploadedFile`` object so this (and the cached function that wraps
+    it below) can be called with a hashable, content-addressed argument.
     """
-    suffix = "." + uploaded_file.name.rsplit(".", 1)[-1].lower()
+    suffix = "." + extension
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-        tmp.write(uploaded_file.getvalue())
+        tmp.write(video_bytes)
         tmp_path = tmp.name
 
     try:
@@ -120,6 +122,41 @@ def _read_video_frames(uploaded_file):
         os.unlink(tmp_path)
 
     return frames, fps
+
+
+@st.cache_data(show_spinner=False)
+def _extract_pose_frame_series(video_bytes, extension, _pose_model, _on_frame_processed=None):
+    """Decode ``video_bytes`` and run pose extraction, cached by video content.
+
+    The expensive step here is ``extract_frame_series`` (YOLOv8-pose
+    inference over every frame), not the cheap z-score/zone thresholding
+    done afterwards by ``video.analysis.analyze``. Caching this step keyed
+    on the uploaded video's own bytes (plus its extension) means that
+    re-running it for the *same* video — e.g. clicking "Processar vídeo"
+    again after only adjusting the sensitivity/zone sliders — reuses the
+    previous inference result instead of re-running YOLO over every frame.
+
+    ``_pose_model`` and ``_on_frame_processed`` are prefixed with an
+    underscore per Streamlit's caching convention, which excludes them
+    from the cache key: a loaded model instance and a per-render progress
+    callback are not meaningfully stable/hashable across reruns, and
+    aren't part of what should invalidate the cache anyway (the video
+    content is).
+
+    Returns:
+        Tuple of ``(frame_series, frame_width, frame_height)``. ``frame_series``
+        is ``[]`` and the dimensions are ``0`` when no frame could be
+        decoded from the video.
+    """
+    frames, fps = _decode_video_frames(video_bytes, extension)
+    if not frames:
+        return [], 0, 0
+
+    frame_series = extract_frame_series(
+        _pose_model, frames, fps=fps, on_frame_processed=_on_frame_processed
+    )
+    frame_height, frame_width = frames[0].shape[:2]
+    return frame_series, frame_width, frame_height
 
 
 VIDEO_ALLOWED_EXTENSIONS = ("mp4", "avi", "mov")
@@ -169,34 +206,35 @@ with tab_vitals:
                 "Threshold do z-score (|z| >)", min_value=0.1, value=DEFAULT_THRESHOLD, step=0.1
             )
 
-            result = analyze(vitals_df, window=int(window), threshold=float(threshold))
-            combined_report = result["combined_report"]
+            if st.button("Processar sinais vitais", key="vital_signs_process_button"):
+                result = analyze(vitals_df, window=int(window), threshold=float(threshold))
+                combined_report = result["combined_report"]
 
-            st.subheader("Relatório combinado de anomalias (z-score + Isolation Forest)")
-            anomalies_only = combined_report[combined_report["agreement"] != "normal"]
+                st.subheader("Relatório combinado de anomalias (z-score + Isolation Forest)")
+                anomalies_only = combined_report[combined_report["agreement"] != "normal"]
 
-            if anomalies_only.empty:
-                st.info("Nenhuma anomalia detectada por nenhuma das duas camadas.")
-            else:
-                agreement_labels = {
-                    "alta_confianca": "Alta confiança (ambas as camadas concordam)",
-                    "zscore_only": "Somente rolling z-score",
-                    "isolation_forest_only": "Somente Isolation Forest",
-                }
-                display_df = anomalies_only.copy()
-                display_df["agreement"] = display_df["agreement"].map(agreement_labels)
-                st.dataframe(display_df, use_container_width=True)
+                if anomalies_only.empty:
+                    st.info("Nenhuma anomalia detectada por nenhuma das duas camadas.")
+                else:
+                    agreement_labels = {
+                        "alta_confianca": "Alta confiança (ambas as camadas concordam)",
+                        "zscore_only": "Somente rolling z-score",
+                        "isolation_forest_only": "Somente Isolation Forest",
+                    }
+                    display_df = anomalies_only.copy()
+                    display_df["agreement"] = display_df["agreement"].map(agreement_labels)
+                    st.dataframe(display_df, use_container_width=True)
 
-                high_confidence = (combined_report["agreement"] == "alta_confianca").sum()
-                st.caption(
-                    f"{len(anomalies_only)} leitura(s) anômala(s) no total, das quais "
-                    f"{high_confidence} com alta confiança (ambas as camadas concordam)."
-                )
+                    high_confidence = (combined_report["agreement"] == "alta_confianca").sum()
+                    st.caption(
+                        f"{len(anomalies_only)} leitura(s) anômala(s) no total, das quais "
+                        f"{high_confidence} com alta confiança (ambas as camadas concordam)."
+                    )
 
-            if result["alerts"]:
-                st.subheader("Alertas gerados (feed compartilhado)")
-                for alert in result["alerts"]:
-                    st.warning(f"[{alert.timestamp}] {alert.description}")
+                if result["alerts"]:
+                    st.subheader("Alertas gerados (feed compartilhado)")
+                    for alert in result["alerts"]:
+                        st.warning(f"[{alert.timestamp}] {alert.description}")
     else:
         st.info("Faça upload de um CSV para iniciar a análise.")
 
@@ -265,19 +303,17 @@ with tab_video:
             )
             critical_zone = (zone_x_range[0], zone_y_range[0], zone_x_range[1], zone_y_range[1])
 
-            with st.spinner("Carregando modelo YOLOv8-pose (pode baixar pesos na primeira execução)..."):
-                try:
-                    pose_model = _load_pose_model()
-                except Exception as exc:  # pragma: no cover - defensive, requires network/model failure
-                    pose_model = None
-                    st.error(f"Não foi possível carregar o modelo YOLOv8-pose: {exc}")
+            if st.button("Processar vídeo", key="video_process_button"):
+                with st.spinner(
+                    "Carregando modelo YOLOv8-pose (pode baixar pesos na primeira execução)..."
+                ):
+                    try:
+                        pose_model = _load_pose_model()
+                    except Exception as exc:  # pragma: no cover - defensive, requires network/model failure
+                        pose_model = None
+                        st.error(f"Não foi possível carregar o modelo YOLOv8-pose: {exc}")
 
-            if pose_model is not None:
-                frames, fps = _read_video_frames(video_file)
-
-                if not frames:
-                    st.error("Não foi possível ler nenhum frame do vídeo enviado. Verifique o arquivo.")
-                else:
+                if pose_model is not None:
                     progress_bar = st.progress(0.0, text="Processando vídeo frame a frame...")
 
                     def _update_progress(frame_index, total_frames):
@@ -286,44 +322,57 @@ with tab_video:
                             text=f"Processando vídeo frame a frame... ({frame_index + 1}/{total_frames})",
                         )
 
-                    frame_series = extract_frame_series(
-                        pose_model, frames, fps=fps, on_frame_processed=_update_progress
+                    # Pose extraction (expensive YOLOv8-pose inference over
+                    # every frame) is cached by the video's own bytes, so
+                    # re-clicking "Processar vídeo" for the *same* video
+                    # after only changing a slider reuses the cached result
+                    # instead of re-running inference (Finding 2). The
+                    # progress bar only animates on a cache miss, since the
+                    # callback is not invoked when the cached result is
+                    # reused.
+                    frame_series, frame_width, frame_height = _extract_pose_frame_series(
+                        video_file.getvalue(),
+                        extension,
+                        pose_model,
+                        _on_frame_processed=_update_progress,
                     )
                     progress_bar.empty()
 
-                    total_frames = len(frames)
-                    frames_with_pose = sum(1 for f in frame_series if f["has_pose"])
-                    st.success(
-                        f"Vídeo processado: {total_frames} frames, "
-                        f"{frames_with_pose} com pose detectada "
-                        f"({total_frames - frames_with_pose} sem dados de pose)."
-                    )
-
-                    frame_height, frame_width = frames[0].shape[:2]
-                    video_result = analyze_video(
-                        frame_series,
-                        threshold=float(sensitivity_threshold),
-                        window=VIDEO_DEFAULT_WINDOW,
-                        zone=critical_zone,
-                        frame_width=frame_width,
-                        frame_height=frame_height,
-                    )
-
-                    st.subheader("Relatório de desvios do vídeo")
-                    deviation_report = video_result["deviation_report"]
-                    if not deviation_report:
-                        st.info("Nenhum desvio foi encontrado no vídeo processado.")
+                    if not frame_series:
+                        st.error("Não foi possível ler nenhum frame do vídeo enviado. Verifique o arquivo.")
                     else:
-                        report_df = pd.DataFrame(deviation_report)
-                        report_df["kind"] = report_df["kind"].map(
-                            {"postural": "Anomalia postural", "zona_critica": "Zona crítica"}
+                        total_frames = len(frame_series)
+                        frames_with_pose = sum(1 for f in frame_series if f["has_pose"])
+                        st.success(
+                            f"Vídeo processado: {total_frames} frames, "
+                            f"{frames_with_pose} com pose detectada "
+                            f"({total_frames - frames_with_pose} sem dados de pose)."
                         )
-                        st.dataframe(report_df, use_container_width=True)
 
-                    if video_result["alerts"]:
-                        st.subheader("Alertas gerados (feed compartilhado)")
-                        for alert in video_result["alerts"]:
-                            st.warning(f"[{alert.timestamp}] {alert.description}")
+                        video_result = analyze_video(
+                            frame_series,
+                            threshold=float(sensitivity_threshold),
+                            window=VIDEO_DEFAULT_WINDOW,
+                            zone=critical_zone,
+                            frame_width=frame_width,
+                            frame_height=frame_height,
+                        )
+
+                        st.subheader("Relatório de desvios do vídeo")
+                        deviation_report = video_result["deviation_report"]
+                        if not deviation_report:
+                            st.info("Nenhum desvio foi encontrado no vídeo processado.")
+                        else:
+                            report_df = pd.DataFrame(deviation_report)
+                            report_df["kind"] = report_df["kind"].map(
+                                {"postural": "Anomalia postural", "zona_critica": "Zona crítica"}
+                            )
+                            st.dataframe(report_df, use_container_width=True)
+
+                        if video_result["alerts"]:
+                            st.subheader("Alertas gerados (feed compartilhado)")
+                            for alert in video_result["alerts"]:
+                                st.warning(f"[{alert.timestamp}] {alert.description}")
     else:
         st.info("Faça upload de um vídeo para iniciar a análise.")
 

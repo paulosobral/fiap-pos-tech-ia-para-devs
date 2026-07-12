@@ -169,7 +169,6 @@ def analyze(
                     f"Leitura anômala de {column} = {value} em {timestamp} "
                     f"(|z-score| > {threshold})."
                 ),
-                timestamp=timestamp if isinstance(timestamp, pd.Timestamp) else None,
             )
             alerts.append(alert)
 

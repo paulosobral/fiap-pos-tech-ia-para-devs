@@ -13,6 +13,7 @@ Covers scenarios from the vital-signs-monitoring spec:
   - Scenario: Concordância entre as duas camadas de detecção
 """
 import io
+from datetime import datetime
 
 import pandas as pd
 import pytest
@@ -148,6 +149,26 @@ def test_analyze_flags_spike_and_generates_alert_referencing_signal_and_timestam
     assert alert.origin == "Sinais Vitais"
     assert "heart_rate" in alert.description
     assert "200" in alert.description
+
+
+def test_analyze_alert_timestamp_is_wall_clock_generation_time_not_clinical_reading_time():
+    # Alert.timestamp must use the default add_alert() wall-clock time
+    # (consistent with the Vídeo/Áudio/Prescrições tabs) so the shared feed
+    # sorts newest-first correctly instead of mixing in old clinical
+    # timestamps from historical CSVs (e.g. MIMIC-III samples from 2024).
+    # The clinical/CSV event time must still be present in the description.
+    clinical_timestamps = pd.date_range("2024-01-01", periods=12, freq="h")
+    heart_rate = [80] * 8 + [200] + [80] * 3
+    df = pd.DataFrame({"timestamp": clinical_timestamps, "heart_rate": heart_rate})
+
+    before = datetime.now()
+    result = analyze(df, window=6, threshold=2.0)
+    after = datetime.now()
+
+    assert len(result["alerts"]) >= 1
+    alert = result["alerts"][0]
+    assert before <= alert.timestamp <= after
+    assert "2024-01-01" in alert.description
 
 
 def test_analyze_stable_series_generates_no_alerts():
