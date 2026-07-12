@@ -5,9 +5,8 @@ capability tab is thin UI glued to its own module's ``analyze(...)``
 function, which internally pushes ``Alert``s to the shared feed
 (``alerts/feed.py``).
 
-Tabs implemented so far: Sinais Vitais (Task 3), Vídeo (Task 4), Áudio
-(Task 5). The remaining tab (Prescrições) is added by a later task; no
-placeholder tab is created ahead of time.
+Tabs implemented: Sinais Vitais (Task 3), Vídeo (Task 4), Áudio (Task 5),
+Prescrições (Task 6).
 """
 import os
 import tempfile
@@ -31,6 +30,16 @@ from audio.aws_speech import (
     transcribe_audio,
 )
 from audio.aws_speech import analyze_sentiment as analyze_audio_sentiment
+from prescriptions.bedrock_review import (
+    REQUIRED_COLUMNS as PRESCRIPTION_REQUIRED_COLUMNS,
+)
+from prescriptions.bedrock_review import (
+    PrescriptionReviewError,
+    PrescriptionValidationError,
+    build_bedrock_client,
+    load_prescriptions,
+    review_patient_prescriptions,
+)
 from vital_signs.analysis import (
     DEFAULT_THRESHOLD,
     DEFAULT_WINDOW,
@@ -91,8 +100,11 @@ def _read_video_frames(uploaded_file):
 
 VIDEO_ALLOWED_EXTENSIONS = ("mp4", "avi", "mov")
 AUDIO_ALLOWED_EXTENSIONS = ("mp3", "wav")
+PRESCRIPTIONS_ALLOWED_EXTENSIONS = ("csv", "xlsx", "xls")
 
-(tab_vitals, tab_video, tab_audio) = st.tabs(["Sinais Vitais", "Vídeo", "Áudio"])
+(tab_vitals, tab_video, tab_audio, tab_prescriptions) = st.tabs(
+    ["Sinais Vitais", "Vídeo", "Áudio", "Prescrições"]
+)
 
 with tab_vitals:
     st.header("Sinais Vitais")
@@ -418,3 +430,66 @@ with tab_audio:
                                     st.warning(f"[{alert.timestamp}] {alert.description}")
     else:
         st.info("Faça upload de um áudio para iniciar a análise.")
+
+with tab_prescriptions:
+    st.header("Prescrições")
+    st.caption(
+        "Upload de histórico de prescrições (CSV ou Excel) por paciente ao "
+        "longo do tempo. Para cada paciente, o histórico é enviado ao AWS "
+        "Bedrock (Claude Sonnet), que analisa o texto/dados em busca de "
+        "inconsistências: mudança abrupta de dose, possível interação "
+        "medicamentosa ou alteração de dose sem justificativa clínica "
+        "aparente. Cada inconsistência apontada gera um alerta no feed "
+        "compartilhado."
+    )
+
+    prescriptions_file = st.file_uploader(
+        "Selecione um arquivo de prescrições (CSV ou Excel)",
+        type=list(PRESCRIPTIONS_ALLOWED_EXTENSIONS),
+        key="prescriptions_uploader",
+        help=f"Colunas obrigatórias: {', '.join(PRESCRIPTION_REQUIRED_COLUMNS)}.",
+    )
+
+    if prescriptions_file is not None:
+        try:
+            prescriptions_df = load_prescriptions(prescriptions_file, filename=prescriptions_file.name)
+        except PrescriptionValidationError as exc:
+            st.error(str(exc))
+        else:
+            st.success(f"Arquivo carregado: {len(prescriptions_df)} prescrição(ões).")
+
+            patients = sorted(prescriptions_df["paciente"].unique())
+            selected_patient = st.selectbox("Paciente", patients, key="prescriptions_patient_select")
+
+            patient_history = prescriptions_df[prescriptions_df["paciente"] == selected_patient]
+
+            st.subheader(f"Histórico de prescrições — {selected_patient}")
+            st.dataframe(patient_history, use_container_width=True)
+
+            if st.button("Revisar inconsistências via Bedrock", key="prescriptions_review_button"):
+                try:
+                    with st.spinner("Analisando histórico via AWS Bedrock (Claude Sonnet)..."):
+                        client = build_bedrock_client()
+                        review_result = review_patient_prescriptions(
+                            prescriptions_df, selected_patient, client=client
+                        )
+                except PrescriptionReviewError as exc:
+                    st.error(f"Falha ao revisar prescrições via AWS Bedrock: {exc}")
+                except Exception as exc:  # pragma: no cover - defensive, e.g. missing/invalid AWS credentials
+                    st.error(f"Falha inesperada ao acessar o AWS Bedrock: {exc}")
+                else:
+                    st.subheader("Inconsistências identificadas (AWS Bedrock)")
+                    findings = review_result["findings"]
+                    if not findings:
+                        st.info("Nenhuma inconsistência encontrada para este paciente.")
+                    else:
+                        for finding in findings:
+                            st.warning(
+                                f"**{finding.get('tipo', 'inconsistencia')}** — "
+                                f"{finding.get('explicacao', 'sem detalhes fornecidos.')}"
+                            )
+                        st.caption(
+                            f"{len(review_result['alerts'])} alerta(s) gerado(s) no feed compartilhado."
+                        )
+    else:
+        st.info("Faça upload de um CSV ou Excel de prescrições para iniciar a análise.")

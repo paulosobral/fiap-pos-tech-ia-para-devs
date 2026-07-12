@@ -43,12 +43,12 @@
 
 ## 6. Prescrições (prescription-review)
 
-- [ ] 6.1 Criar dataset sintético de prescrições (paciente, medicamento, dose, data) em `data/prescricoes_sinteticas.csv`, incluindo ao menos um caso de mudança abrupta de dose e um caso normal
-- [ ] 6.2 Implementar carregamento/validação de CSV ou Excel de prescrições em `prescriptions/bedrock_review.py` (rejeitar arquivo com coluna obrigatória faltante)
-- [ ] 6.3 Implementar chamada ao AWS Bedrock (Claude Sonnet) com prompt estruturado pedindo identificação de inconsistências (dose, interação medicamentosa, justificativa clínica)
-- [ ] 6.4 Implementar tratamento de erro/timeout na chamada Bedrock, exibindo mensagem sem interromper as demais abas
-- [ ] 6.5 Parsear resposta do Bedrock e gerar `Alert` para cada inconsistência apontada
-- [ ] 6.6 Construir aba "Prescrições" em `app.py`: upload de CSV/Excel, tabela de histórico por paciente, exibição das inconsistências identificadas pelo Bedrock
+- [x] 6.1 Criar dataset sintético de prescrições (paciente, medicamento, dose, data) em `data/prescricoes_sinteticas.csv`, incluindo ao menos um caso de mudança abrupta de dose e um caso normal
+- [x] 6.2 Implementar carregamento/validação de CSV ou Excel de prescrições em `prescriptions/bedrock_review.py` (rejeitar arquivo com coluna obrigatória faltante)
+- [x] 6.3 Implementar chamada ao AWS Bedrock (Claude Sonnet) com prompt estruturado pedindo identificação de inconsistências (dose, interação medicamentosa, justificativa clínica)
+- [x] 6.4 Implementar tratamento de erro/timeout na chamada Bedrock, exibindo mensagem sem interromper as demais abas
+- [x] 6.5 Parsear resposta do Bedrock e gerar `Alert` para cada inconsistência apontada
+- [x] 6.6 Construir aba "Prescrições" em `app.py`: upload de CSV/Excel, tabela de histórico por paciente, exibição das inconsistências identificadas pelo Bedrock
 
 ## 7. Integração final e feed de alertas
 
