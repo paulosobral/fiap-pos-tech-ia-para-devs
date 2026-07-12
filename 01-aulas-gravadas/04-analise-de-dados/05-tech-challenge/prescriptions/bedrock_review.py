@@ -19,7 +19,7 @@ Spec: openspec/changes/monitoramento-multimodal-pacientes/specs/prescription-rev
 """
 import json
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import pandas as pd
 from botocore.exceptions import BotoCoreError, ClientError
@@ -66,26 +66,40 @@ class PrescriptionReviewError(Exception):
 # ── boto3 client construction ────────────────────────────────────────
 
 
-def build_bedrock_client(profile_name: str = BEDROCK_PROFILE_NAME, region_name: str = AWS_REGION):
+def build_bedrock_client(
+    profile_name: str = BEDROCK_PROFILE_NAME,
+    region_name: str = AWS_REGION,
+    read_timeout_s: float = 60.0,
+    connect_timeout_s: float = 10.0,
+):
     """Build the boto3 Bedrock Runtime client used by this module.
 
     Kept as a thin wrapper (rather than each caller importing ``boto3``
     directly) so the profile/region choice documented in the module
-    docstring lives in exactly one place.
+    docstring lives in exactly one place. A finite read/connect timeout
+    is set explicitly (rather than relying on botocore's default) so a
+    slow/hanging Bedrock call surfaces as a ``BotoCoreError`` (caught by
+    ``review_patient_prescriptions`` and normalized into
+    ``PrescriptionReviewError``) instead of blocking the Streamlit app
+    indefinitely.
 
     Args:
         profile_name: AWS named profile to use (the "bedrock" profile
             assumes the ``bedrock-user-personal-role`` IAM role, per the
             task brief).
         region_name: AWS region for the client.
+        read_timeout_s: Socket read timeout in seconds.
+        connect_timeout_s: Socket connect timeout in seconds.
 
     Returns:
         A ``boto3`` ``bedrock-runtime`` client instance.
     """
     import boto3
+    from botocore.config import Config
 
     session = boto3.Session(profile_name=profile_name)
-    return session.client("bedrock-runtime", region_name=region_name)
+    config = Config(read_timeout=read_timeout_s, connect_timeout=connect_timeout_s)
+    return session.client("bedrock-runtime", region_name=region_name, config=config)
 
 
 # ── CSV/Excel loading + validation ───────────────────────────────────
