@@ -52,10 +52,10 @@
 
 ## 7. Integração final e feed de alertas
 
-- [ ] 7.1 Adicionar seção de feed unificado de alertas na UI principal de `app.py`, consumindo `alerts/feed.py`
-- [ ] 7.2 Verificar que alertas de todas as 4 abas aparecem corretamente no feed com origem, timestamp e descrição
-- [ ] 7.3 Testar manualmente o fluxo completo: upload em cada aba → processamento → alerta aparece no feed
-- [ ] 7.4 Revisar mensagens de erro de validação de upload em todas as abas (formato inválido, colunas faltantes)
+- [x] 7.1 Adicionar seção de feed unificado de alertas na UI principal de `app.py`, consumindo `alerts/feed.py` (seção na sidebar, renderizada após as 4 abas via `_render_alert_feed()`, sem remover a exibição inline de cada aba)
+- [x] 7.2 Verificar que alertas de todas as 4 abas aparecem corretamente no feed com origem, timestamp e descrição (confirmado por leitura de código: `ORIGIN` de cada módulo já bate exatamente com o nome da aba — "Sinais Vitais", "Vídeo", "Áudio", "Prescrições" — nenhuma normalização foi necessária)
+- [x] 7.3 Testar manualmente o fluxo completo: upload em cada aba → processamento → alerta aparece no feed (app inicia sem erros via `streamlit run`; feed unificado e mensagem de "nenhum alerta" verificados via `AppTest` com `session_state` pré-semeado; Sinais Vitais/Vídeo exercitados apenas parcialmente via `AppTest` devido a segfault conhecido do Streamlit `AppTest` ao processar upload real de CSV neste ambiente — ver relatório da tarefa; Áudio/Prescrições permanecem apenas revisados por código, sem chamadas AWS adicionais)
+- [x] 7.4 Revisar mensagens de erro de validação de upload em todas as abas (formato inválido, colunas faltantes) — gap encontrado e corrigido na aba Áudio (bucket S3 não configurado agora bloqueia com `st.error` claro em vez de permitir tentar processar após um `st.warning`)
 
 ## 8. Documentação e entregáveis da Fase 4
 

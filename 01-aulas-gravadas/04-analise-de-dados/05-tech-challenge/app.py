@@ -16,6 +16,7 @@ import cv2
 import pandas as pd
 import streamlit as st
 
+from alerts.feed import get_alerts
 from audio.analysis import DEFAULT_THRESHOLD as AUDIO_DEFAULT_THRESHOLD
 from audio.analysis import DEFAULT_WINDOW as AUDIO_DEFAULT_WINDOW
 from audio.analysis import analyze as analyze_audio
@@ -55,6 +56,29 @@ from video.pose import extract_frame_series
 
 st.set_page_config(page_title="Monitoramento Multimodal de Pacientes", layout="wide")
 st.title("Monitoramento Multimodal de Pacientes")
+
+
+def _render_alert_feed() -> None:
+    """Render the unified cross-tab alert feed in the sidebar.
+
+    Consumes ``alerts.feed.get_alerts()`` (clinical-alerting spec) to show
+    every alert raised by any of the 4 tabs — Sinais Vitais, Vídeo, Áudio
+    and Prescrições — in one place, newest-first, as a simulation of
+    real-time notification to the medical team. This is in addition to
+    each tab's own inline alert display; it does not replace it.
+    """
+    st.sidebar.header("Feed de Alertas (todas as abas)")
+    alerts = get_alerts()
+
+    if not alerts:
+        st.sidebar.info("Nenhum alerta registrado na sessão atual.")
+        return
+
+    st.sidebar.caption(f"{len(alerts)} alerta(s) na sessão, do mais recente para o mais antigo.")
+    for alert in alerts:
+        st.sidebar.warning(
+            f"**[{alert.origin}]** {alert.timestamp:%Y-%m-%d %H:%M:%S}\n\n{alert.description}"
+        )
 
 
 @st.cache_resource(show_spinner=False)
@@ -343,7 +367,14 @@ with tab_audio:
                 + ", ".join(AUDIO_ALLOWED_EXTENSIONS)
                 + "."
             )
-        elif bucket_name:
+        elif not bucket_name:
+            st.error(
+                "Não é possível processar o áudio: nenhum bucket S3 está "
+                f"configurado (variável de ambiente `{AUDIO_S3_BUCKET_ENV_VAR}`). "
+                "Configure a variável de ambiente e reinicie a aplicação antes "
+                "de enviar um áudio."
+            )
+        else:
             critical_terms_input = st.text_input(
                 "Termos críticos (separados por vírgula)",
                 value=", ".join(DEFAULT_CRITICAL_TERMS),
@@ -493,3 +524,9 @@ with tab_prescriptions:
                         )
     else:
         st.info("Faça upload de um CSV ou Excel de prescrições para iniciar a análise.")
+
+# Unified cross-tab alert feed (clinical-alerting spec), rendered after
+# all 4 tabs so it reflects any alert generated during this run, not just
+# alerts accumulated in previous reruns. This is an additional view on
+# top of each tab's own inline alert display above — not a replacement.
+_render_alert_feed()
