@@ -125,7 +125,7 @@ def _decode_video_frames(video_bytes: bytes, extension: str):
 
 
 @st.cache_data(show_spinner=False)
-def _extract_pose_frame_series(video_bytes, extension, _pose_model, _on_frame_processed=None):
+def _extract_pose_frame_series(video_bytes, extension, _pose_model):
     """Decode ``video_bytes`` and run pose extraction, cached by video content.
 
     The expensive step here is ``extract_frame_series`` (YOLOv8-pose
@@ -136,12 +136,21 @@ def _extract_pose_frame_series(video_bytes, extension, _pose_model, _on_frame_pr
     again after only adjusting the sensitivity/zone sliders — reuses the
     previous inference result instead of re-running YOLO over every frame.
 
-    ``_pose_model`` and ``_on_frame_processed`` are prefixed with an
-    underscore per Streamlit's caching convention, which excludes them
-    from the cache key: a loaded model instance and a per-render progress
-    callback are not meaningfully stable/hashable across reruns, and
-    aren't part of what should invalidate the cache anyway (the video
-    content is).
+    ``_pose_model`` is prefixed with an underscore per Streamlit's caching
+    convention, which excludes it from the cache key: a loaded model
+    instance is not meaningfully stable/hashable across reruns, and isn't
+    part of what should invalidate the cache anyway (the video content is).
+
+    The progress bar is created and updated *inside* this function rather
+    than passed in as an external callback: ``st.cache_data`` replays every
+    Streamlit element call recorded during a cache miss when a later call
+    is a cache hit, but only if those elements were created inside the
+    cached function itself. A progress bar created by the caller and
+    mutated from inside this function references a UI block from a
+    *previous* script run on replay, which no longer exists — raising
+    ``CacheReplayClosureError``. Keeping the whole progress bar self-
+    contained here means the recorded replay is internally consistent on
+    a cache hit (it just re-renders the bar briefly, then removes it).
 
     Returns:
         Tuple of ``(frame_series, frame_width, frame_height)``. ``frame_series``
@@ -152,9 +161,19 @@ def _extract_pose_frame_series(video_bytes, extension, _pose_model, _on_frame_pr
     if not frames:
         return [], 0, 0
 
+    progress_bar = st.progress(0.0, text="Processando vídeo frame a frame...")
+
+    def _update_progress(frame_index, total_frames):
+        progress_bar.progress(
+            (frame_index + 1) / total_frames,
+            text=f"Processando vídeo frame a frame... ({frame_index + 1}/{total_frames})",
+        )
+
     frame_series = extract_frame_series(
-        _pose_model, frames, fps=fps, on_frame_processed=_on_frame_processed
+        _pose_model, frames, fps=fps, on_frame_processed=_update_progress
     )
+    progress_bar.empty()
+
     frame_height, frame_width = frames[0].shape[:2]
     return frame_series, frame_width, frame_height
 
@@ -314,29 +333,19 @@ with tab_video:
                         st.error(f"Não foi possível carregar o modelo YOLOv8-pose: {exc}")
 
                 if pose_model is not None:
-                    progress_bar = st.progress(0.0, text="Processando vídeo frame a frame...")
-
-                    def _update_progress(frame_index, total_frames):
-                        progress_bar.progress(
-                            (frame_index + 1) / total_frames,
-                            text=f"Processando vídeo frame a frame... ({frame_index + 1}/{total_frames})",
-                        )
-
                     # Pose extraction (expensive YOLOv8-pose inference over
                     # every frame) is cached by the video's own bytes, so
                     # re-clicking "Processar vídeo" for the *same* video
                     # after only changing a slider reuses the cached result
                     # instead of re-running inference (Finding 2). The
-                    # progress bar only animates on a cache miss, since the
-                    # callback is not invoked when the cached result is
-                    # reused.
+                    # progress bar is created inside the cached function
+                    # itself (see its docstring) so cache replay doesn't
+                    # reference a UI block from a previous run.
                     frame_series, frame_width, frame_height = _extract_pose_frame_series(
                         video_file.getvalue(),
                         extension,
                         pose_model,
-                        _on_frame_processed=_update_progress,
                     )
-                    progress_bar.empty()
 
                     if not frame_series:
                         st.error("Não foi possível ler nenhum frame do vídeo enviado. Verifique o arquivo.")
