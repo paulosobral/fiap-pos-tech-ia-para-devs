@@ -251,17 +251,6 @@ duas modalidades é reutilizada sem alteração.
   permissão (`list_foundation_models`/`list_inference_profiles` funcionam normalmente nessa
   região). A região `us-east-2` (e também `us-west-2`, testada) funcionou imediatamente. Contas
   AWS diferentes podem não ter essa restrição.
-- **Segfault conhecido do `streamlit.testing.v1.AppTest` neste ambiente.** Ao processar upload de
-  CSV/arquivo dentro de um script rerun do `AppTest`, o processo trava com `SIGSEGV` (exit code
-  139). O crash foi isolado à combinação `pandas==3.0.3` + `pyarrow==25.0.0` rodando dentro da
-  thread de background do `AppTest`, reproduzido inclusive em um script trivial de duas linhas
-  sem nenhum código deste projeto envolvido — ou seja, é uma incompatibilidade de
-  ambiente/dependências (Streamlit 1.59.1 + pandas/pyarrow nesta build Python em WSL2), não um
-  defeito de qualquer aba da aplicação. Por esse motivo, a cobertura automatizada de ponta a ponta
-  das abas Sinais Vitais e Vídeo (upload → processamento → renderização) via `AppTest` é parcial;
-  a verificação real dessas abas foi feita via `streamlit run` real (boot sem erros, HTTP 200) e
-  via a suíte de testes unitários (que exercita a lógica de cada módulo diretamente, sem passar
-  pelo `AppTest`).
 - **Threshold/janela fixos em Áudio e no rolling z-score de Sinais Vitais (parcialmente).** Por
   decisão de design (D4), apenas o slider de sensibilidade da aba Vídeo (e o par
   window/threshold da aba Sinais Vitais, que também é ajustável na UI) é interativo; o

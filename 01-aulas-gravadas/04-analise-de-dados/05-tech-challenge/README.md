@@ -56,6 +56,15 @@ pip install -r requirements.txt
 `ultralytics` traz uma árvore de dependências grande (torch/torchvision), então a instalação
 pode demorar e ocupar bastante espaço em disco na primeira vez.
 
+`requirements.txt` fixa `pyarrow<25` explicitamente. `pyarrow==25.0.0` tem um bug real de
+segfault (`libarrow.so`, dentro de `pyarrow/pandas_compat.py::convert_column`) ao renderizar
+`st.dataframe`/`st.table` quando `scikit-learn` está importado no processo — o que este app
+sempre faz, para a aba Sinais Vitais — **e** a renderização ocorre num rerun do Streamlit
+posterior ao primeiro (ex.: dentro de `if st.button(...):`, como em "Processar vídeo"). Sem
+esse pin, uma reinstalação do `venv/` pode resolver `pyarrow` para a série 25.x e a aplicação
+trava com `segmentation fault` ao clicar em qualquer botão de processamento que exiba uma
+tabela.
+
 ## Como executar
 
 ```bash
@@ -127,9 +136,7 @@ já resolve os imports corretamente por conta própria (confirmado executando o 
 tem 107 testes e passa integralmente (`107 passed`).
 
 Observação: os testes automatizados cobrem a lógica de cada módulo isoladamente (com mocks para
-as chamadas AWS); eles não exercitam a UI do Streamlit ponta a ponta. Há uma incompatibilidade
-conhecida entre `streamlit.testing.v1.AppTest` e `pandas`/`pyarrow` neste ambiente (segfault ao
-processar upload de CSV) — ver "Limitações conhecidas" no relatório técnico.
+as chamadas AWS); eles não exercitam a UI do Streamlit ponta a ponta.
 
 ## Pendências
 

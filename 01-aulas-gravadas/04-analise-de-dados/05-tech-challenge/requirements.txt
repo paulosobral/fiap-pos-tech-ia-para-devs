@@ -16,5 +16,15 @@ pandas>=2.2.0
 numpy>=1.26.0
 openpyxl>=3.1.0
 
+# pyarrow<25 fixado explicitamente: pyarrow==25.0.0 segfaulta
+# (libarrow.so, em pyarrow/pandas_compat.py:convert_column) ao renderizar
+# st.dataframe/st.table quando scikit-learn está importado no processo E
+# a renderização ocorre num script-rerun do Streamlit posterior ao
+# primeiro (ex.: dentro de "if st.button(...)"). Reproduzido de forma
+# isolada e mínima (apenas `from sklearn.ensemble import IsolationForest`
+# sem nem instanciar o modelo). Ver openspec/changes/
+# fix-pyarrow-segfault/design.md.
+pyarrow<25
+
 # ── Testes ───────────────────────────────────────────────────
 pytest>=8.0.0
