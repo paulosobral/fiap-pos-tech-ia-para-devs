@@ -51,7 +51,9 @@ from vital_signs.analysis import (
 )
 from video.analysis import DEFAULT_WINDOW as VIDEO_DEFAULT_WINDOW
 from video.analysis import DEFAULT_ZONE as VIDEO_DEFAULT_ZONE
+from video.analysis import FALLBACK_SENSITIVITY_THRESHOLD
 from video.analysis import analyze as analyze_video
+from video.analysis import suggest_sensitivity_threshold
 from video.pose import extract_frame_series
 
 st.set_page_config(page_title="Monitoramento Multimodal de Pacientes", layout="wide")
@@ -287,18 +289,61 @@ with tab_video:
                 + "."
             )
         else:
+            pose_model = None
+            frame_series: list = []
+            frame_width = frame_height = 0
+
+            with st.spinner(
+                "Carregando modelo YOLOv8-pose e lendo o vídeo "
+                "(pode baixar pesos na primeira execução)..."
+            ):
+                try:
+                    pose_model = _load_pose_model()
+                except Exception as exc:  # pragma: no cover - defensive, requires network/model failure
+                    st.error(f"Não foi possível carregar o modelo YOLOv8-pose: {exc}")
+
+                if pose_model is not None:
+                    # Pose extraction (expensive YOLOv8-pose inference over
+                    # every frame) runs right after upload — not only after
+                    # clicking "Processar vídeo" — so the sensitivity slider
+                    # below can already open pre-filled with a suggestion
+                    # calibrated to this video's own motion. It's cached by
+                    # the video's own bytes (see the function's docstring),
+                    # so clicking "Processar vídeo" afterwards, or moving a
+                    # slider, reuses this same result instead of re-running
+                    # YOLO inference.
+                    frame_series, frame_width, frame_height = _extract_pose_frame_series(
+                        video_file.getvalue(),
+                        extension,
+                        pose_model,
+                    )
+
+            if pose_model is not None and not frame_series:
+                st.error("Não foi possível ler nenhum frame do vídeo enviado. Verifique o arquivo.")
+
+            suggested_threshold = (
+                suggest_sensitivity_threshold(frame_series, window=VIDEO_DEFAULT_WINDOW)
+                if frame_series
+                else FALLBACK_SENSITIVITY_THRESHOLD
+            )
+            st.caption(
+                f"Sensibilidade sugerida para este vídeo: **{suggested_threshold:.1f}** "
+                "(calculada a partir da variação de movimento detectada nele). "
+                "Você pode ajustar livremente abaixo."
+            )
             sensitivity_threshold = st.slider(
                 "Sensibilidade a movimentos anormais",
                 min_value=0.5,
                 max_value=5.0,
-                value=2.0,
+                value=suggested_threshold,
                 step=0.1,
                 help=(
                     "Controla o quão diferente um movimento precisa ser do padrão "
                     "recente do paciente para virar alerta. Exemplos: **1.0** "
                     "(bem sensível — sinaliza até pequenas variações, gera mais "
                     "alertas) · **2.0** (padrão, equilíbrio razoável) · **4.0** "
-                    "(pouco sensível — só sinaliza desvios bem bruscos)."
+                    "(pouco sensível — só sinaliza desvios bem bruscos). O valor "
+                    "inicial já vem sugerido para o vídeo carregado."
                 ),
             )
 
@@ -335,65 +380,41 @@ with tab_video:
             critical_zone = (zone_x_range[0], zone_y_range[0], zone_x_range[1], zone_y_range[1])
 
             if st.button("Processar vídeo", key="video_process_button"):
-                with st.spinner(
-                    "Carregando modelo YOLOv8-pose (pode baixar pesos na primeira execução)..."
-                ):
-                    try:
-                        pose_model = _load_pose_model()
-                    except Exception as exc:  # pragma: no cover - defensive, requires network/model failure
-                        pose_model = None
-                        st.error(f"Não foi possível carregar o modelo YOLOv8-pose: {exc}")
-
-                if pose_model is not None:
-                    # Pose extraction (expensive YOLOv8-pose inference over
-                    # every frame) is cached by the video's own bytes, so
-                    # re-clicking "Processar vídeo" for the *same* video
-                    # after only changing a slider reuses the cached result
-                    # instead of re-running inference (Finding 2). The
-                    # progress bar is created inside the cached function
-                    # itself (see its docstring) so cache replay doesn't
-                    # reference a UI block from a previous run.
-                    frame_series, frame_width, frame_height = _extract_pose_frame_series(
-                        video_file.getvalue(),
-                        extension,
-                        pose_model,
+                if not frame_series:
+                    st.error("Não foi possível ler nenhum frame do vídeo enviado. Verifique o arquivo.")
+                else:
+                    total_frames = len(frame_series)
+                    frames_with_pose = sum(1 for f in frame_series if f["has_pose"])
+                    st.success(
+                        f"Vídeo processado: {total_frames} frames, "
+                        f"{frames_with_pose} com pose detectada "
+                        f"({total_frames - frames_with_pose} sem dados de pose)."
                     )
 
-                    if not frame_series:
-                        st.error("Não foi possível ler nenhum frame do vídeo enviado. Verifique o arquivo.")
+                    video_result = analyze_video(
+                        frame_series,
+                        threshold=float(sensitivity_threshold),
+                        window=VIDEO_DEFAULT_WINDOW,
+                        zone=critical_zone,
+                        frame_width=frame_width,
+                        frame_height=frame_height,
+                    )
+
+                    st.subheader("Relatório de desvios do vídeo")
+                    deviation_report = video_result["deviation_report"]
+                    if not deviation_report:
+                        st.info("Nenhum desvio foi encontrado no vídeo processado.")
                     else:
-                        total_frames = len(frame_series)
-                        frames_with_pose = sum(1 for f in frame_series if f["has_pose"])
-                        st.success(
-                            f"Vídeo processado: {total_frames} frames, "
-                            f"{frames_with_pose} com pose detectada "
-                            f"({total_frames - frames_with_pose} sem dados de pose)."
+                        report_df = pd.DataFrame(deviation_report)
+                        report_df["kind"] = report_df["kind"].map(
+                            {"postural": "Anomalia postural", "zona_critica": "Zona crítica"}
                         )
+                        st.dataframe(report_df, use_container_width=True)
 
-                        video_result = analyze_video(
-                            frame_series,
-                            threshold=float(sensitivity_threshold),
-                            window=VIDEO_DEFAULT_WINDOW,
-                            zone=critical_zone,
-                            frame_width=frame_width,
-                            frame_height=frame_height,
-                        )
-
-                        st.subheader("Relatório de desvios do vídeo")
-                        deviation_report = video_result["deviation_report"]
-                        if not deviation_report:
-                            st.info("Nenhum desvio foi encontrado no vídeo processado.")
-                        else:
-                            report_df = pd.DataFrame(deviation_report)
-                            report_df["kind"] = report_df["kind"].map(
-                                {"postural": "Anomalia postural", "zona_critica": "Zona crítica"}
-                            )
-                            st.dataframe(report_df, use_container_width=True)
-
-                        if video_result["alerts"]:
-                            st.subheader("Alertas gerados (feed compartilhado)")
-                            for alert in video_result["alerts"]:
-                                st.warning(f"[{alert.timestamp}] {alert.description}")
+                    if video_result["alerts"]:
+                        st.subheader("Alertas gerados (feed compartilhado)")
+                        for alert in video_result["alerts"]:
+                            st.warning(f"[{alert.timestamp}] {alert.description}")
     else:
         st.info("Faça upload de um vídeo para iniciar a análise.")
 

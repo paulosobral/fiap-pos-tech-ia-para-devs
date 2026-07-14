@@ -19,7 +19,13 @@ No real YOLO model is involved — tests operate directly on the
 import pytest
 import streamlit as st
 
-from video.analysis import DEFAULT_ZONE, analyze, box_intersects_zone
+from video.analysis import (
+    DEFAULT_ZONE,
+    FALLBACK_SENSITIVITY_THRESHOLD,
+    analyze,
+    box_intersects_zone,
+    suggest_sensitivity_threshold,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -232,3 +238,89 @@ def test_deviation_report_is_empty_when_no_anomaly_detected():
     result = analyze(frames, threshold=5.0, window=4)
 
     assert result["deviation_report"] == []
+
+
+# ── suggest_sensitivity_threshold ──────────────────────────────────────
+
+
+def test_suggest_sensitivity_threshold_falls_back_when_no_frame_has_pose():
+    frames = [_frame(t, angle=None, velocity=None, has_pose=False) for t in range(20)]
+
+    suggestion = suggest_sensitivity_threshold(frames, window=6)
+
+    assert suggestion == FALLBACK_SENSITIVITY_THRESHOLD
+
+
+def test_suggest_sensitivity_threshold_falls_back_when_series_shorter_than_window():
+    frames = [_frame(t, angle=90.0 + t, velocity=1.0 + t) for t in range(4)]
+
+    suggestion = suggest_sensitivity_threshold(frames, window=6)
+
+    assert suggestion == FALLBACK_SENSITIVITY_THRESHOLD
+
+
+# Small, non-zero, deterministic jitter pattern (not exactly constant),
+# so the rolling window has nonzero variance and suggestions are
+# computed from a real quantile, not the zero-variance fallback path.
+_JITTER_PATTERN = (0.0, 0.3, -0.2, 0.1, -0.1, 0.2)
+
+
+def test_suggest_sensitivity_threshold_is_within_slider_bounds_for_stable_motion():
+    # Small jitter around a baseline: little natural variation, but
+    # nonzero — exercises the real quantile computation, not the
+    # zero-variance fallback (which would trivially satisfy the bounds
+    # check without verifying the computation at all).
+    frames = [
+        _frame(
+            t,
+            angle=90.0 + _JITTER_PATTERN[t % len(_JITTER_PATTERN)],
+            velocity=1.0 + _JITTER_PATTERN[t % len(_JITTER_PATTERN)] * 0.05,
+        )
+        for t in range(40)
+    ]
+
+    suggestion = suggest_sensitivity_threshold(frames, window=6)
+
+    assert 0.5 <= suggestion <= 5.0
+    # Not the fallback: this video has plenty of valid pose data, so the
+    # suggestion must come from the real computation.
+    assert suggestion != FALLBACK_SENSITIVITY_THRESHOLD
+
+
+def test_suggest_sensitivity_threshold_is_higher_for_more_variable_motion():
+    # Same jitter baseline for both, but "variable" adds a real outlier
+    # spike every 8th frame. Uniform/periodic oscillation would be
+    # scale-invariant under z-score (same suggestion either way), so the
+    # discriminating factor here is the outlier's distribution shape,
+    # not just its amplitude.
+    stable_frames = [
+        _frame(
+            t,
+            angle=90.0 + _JITTER_PATTERN[t % len(_JITTER_PATTERN)],
+            velocity=1.0 + _JITTER_PATTERN[t % len(_JITTER_PATTERN)] * 0.05,
+        )
+        for t in range(40)
+    ]
+    variable_frames = [
+        _frame(
+            t,
+            angle=90.0 + (60.0 if t % 8 == 0 else _JITTER_PATTERN[t % len(_JITTER_PATTERN)]),
+            velocity=1.0 + (8.0 if t % 8 == 0 else _JITTER_PATTERN[t % len(_JITTER_PATTERN)] * 0.05),
+        )
+        for t in range(40)
+    ]
+
+    stable_suggestion = suggest_sensitivity_threshold(stable_frames, window=6)
+    variable_suggestion = suggest_sensitivity_threshold(variable_frames, window=6)
+
+    assert variable_suggestion > stable_suggestion
+
+
+def test_suggest_sensitivity_threshold_ignores_frames_without_pose():
+    frames = [_frame(t, angle=90.0, velocity=1.0) for t in range(15)]
+    frames += [_frame(t, angle=None, velocity=None, has_pose=False) for t in range(15, 25)]
+
+    # Should not raise despite the trailing frames having no angle/velocity data.
+    suggestion = suggest_sensitivity_threshold(frames, window=6)
+
+    assert 0.5 <= suggestion <= 5.0

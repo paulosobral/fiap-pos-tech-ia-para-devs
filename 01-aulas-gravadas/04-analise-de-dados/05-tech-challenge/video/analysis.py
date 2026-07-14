@@ -34,7 +34,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 import pandas as pd
 
 from alerts.feed import add_alert
-from anomaly.zscore import detect_anomalies
+from anomaly.zscore import detect_anomalies, rolling_zscore
 
 ORIGIN = "Vídeo"
 
@@ -63,6 +63,65 @@ ZONE_CRITICAL_CLASSES = {0}
 DEFAULT_ZONE: Tuple[float, float, float, float] = (0.7, 0.0, 1.0, 1.0)
 
 _CLASS_LABELS = {0: "person"}
+
+# Fallback sensitivity suggestion when no series has enough valid data to
+# compute one (e.g. no frame in the video has a detected pose) — matches
+# the slider's own hard-coded default in app.py before this change.
+FALLBACK_SENSITIVITY_THRESHOLD = 2.0
+
+# Percentile of the observed |z-score| distribution used as the
+# suggested threshold. Chosen so the suggestion flags roughly the top
+# 5% most unusual frames of THIS video as a starting point — sensitive
+# enough to be useful, not so sensitive that a naturally variable but
+# healthy movement floods the report on first upload.
+_SUGGESTION_PERCENTILE = 95.0
+
+# Slider bounds from the Vídeo tab (app.py) — the suggestion is clamped
+# to this range so it's always a valid starting value for that control.
+_SUGGESTION_MIN = 0.5
+_SUGGESTION_MAX = 5.0
+
+
+def suggest_sensitivity_threshold(
+    frame_series: List[Dict[str, Any]], window: int = DEFAULT_WINDOW
+) -> float:
+    """Suggest a starting sensitivity threshold from this video's own motion.
+
+    Computes the rolling z-score of the angle and velocity series (same
+    series used by ``analyze``'s postural-anomaly path) and suggests a
+    threshold near the top of the observed |z-score| distribution for
+    this specific video (see ``_SUGGESTION_PERCENTILE``), clamped to the
+    Vídeo tab's slider range. This gives each video a starting point
+    calibrated to its own natural amount of movement noise, instead of
+    one fixed value for every video.
+
+    Args:
+        frame_series: Per-frame dicts as produced by
+            ``video.pose.extract_frame_series``.
+        window: Rolling window size, matching whatever will be passed to
+            ``analyze`` for the real detection.
+
+    Returns:
+        Suggested threshold in ``[_SUGGESTION_MIN, _SUGGESTION_MAX]``.
+        Falls back to ``FALLBACK_SENSITIVITY_THRESHOLD`` when no frame
+        has pose data, or when there isn't enough valid data to compute
+        any rolling z-score (e.g. fewer than ``window`` frames with pose).
+    """
+    angle_series = pd.Series([frame["angle"] for frame in frame_series], dtype="float64")
+    velocity_series = pd.Series([frame["velocity"] for frame in frame_series], dtype="float64")
+
+    z_values = pd.concat(
+        [rolling_zscore(angle_series, window).abs(), rolling_zscore(velocity_series, window).abs()]
+    ).dropna()
+
+    if z_values.empty:
+        return FALLBACK_SENSITIVITY_THRESHOLD
+
+    suggestion = float(z_values.quantile(_SUGGESTION_PERCENTILE / 100.0))
+    if pd.isna(suggestion):
+        return FALLBACK_SENSITIVITY_THRESHOLD
+
+    return max(_SUGGESTION_MIN, min(_SUGGESTION_MAX, suggestion))
 
 
 def box_intersects_zone(

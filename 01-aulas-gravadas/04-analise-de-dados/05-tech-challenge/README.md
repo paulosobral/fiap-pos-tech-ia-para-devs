@@ -73,10 +73,12 @@ A aplicação abre em `http://localhost:8501` com 4 abas e uma sidebar de alerta
   rolling z-score linha a linha (alerta "em tempo real", threshold/janela ajustáveis na UI) e
   Isolation Forest treinado em lote sobre o CSV carregado (validação complementar). O relatório
   combinado destaca leituras em que as duas camadas concordam ("alta confiança") ou divergem.
-- **Vídeo** — upload de vídeo (mp4/avi/mov/mkv) de fisioterapia/exercício ou cirurgia. Processa
-  frame a frame com YOLOv8-pose, extraindo o ângulo do cotovelo direito e a velocidade do punho
-  direito por frame. Duas detecções independentes: anomalia postural via rolling z-score
-  (slider de sensibilidade na UI) e alerta de zona crítica (interseção da bounding box da
+- **Vídeo** — upload de vídeo (mp4/avi/mov/mkv) de fisioterapia/exercício ou cirurgia. Ao fazer
+  o upload, o sistema já extrai a pose do vídeo com YOLOv8-pose (ângulo do cotovelo direito e
+  velocidade do punho direito por frame) e calcula automaticamente uma sensibilidade sugerida
+  para aquele vídeo específico, pré-populando o slider de sensibilidade — o valor é só um ponto
+  de partida, totalmente ajustável. Duas detecções independentes: anomalia postural via rolling
+  z-score (slider de sensibilidade) e alerta de zona crítica (interseção da bounding box da
   pessoa detectada com uma área configurável do quadro, também via sliders). Gera um relatório
   de desvios ordenado por timestamp.
 - **Áudio** — upload de áudio (mp3/wav) de consulta médica. Transcreve via AWS Transcribe
@@ -122,7 +124,7 @@ Não é necessário definir `PYTHONPATH=.` manualmente — o `pytest`, ao rodar 
 projeto (onde estão os pacotes `anomaly/`, `video/`, `vital_signs/` etc., sem `src/` layout),
 já resolve os imports corretamente por conta própria (confirmado executando o comando acima com
 `PYTHONPATH` explicitamente vazio). No momento em que esta seção foi escrita, a suíte completa
-tem 98 testes e passa integralmente (`98 passed`).
+tem 107 testes e passa integralmente (`107 passed`).
 
 Observação: os testes automatizados cobrem a lógica de cada módulo isoladamente (com mocks para
 as chamadas AWS); eles não exercitam a UI do Streamlit ponta a ponta. Há uma incompatibilidade
