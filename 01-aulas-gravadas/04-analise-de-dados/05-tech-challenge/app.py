@@ -159,7 +159,7 @@ def _extract_pose_frame_series(video_bytes, extension, _pose_model, _on_frame_pr
     return frame_series, frame_width, frame_height
 
 
-VIDEO_ALLOWED_EXTENSIONS = ("mp4", "avi", "mov")
+VIDEO_ALLOWED_EXTENSIONS = ("mp4", "avi", "mov", "mkv")
 AUDIO_ALLOWED_EXTENSIONS = ("mp3", "wav")
 PRESCRIPTIONS_ALLOWED_EXTENSIONS = ("csv", "xlsx", "xls")
 
@@ -252,7 +252,7 @@ with tab_video:
     )
 
     video_file = st.file_uploader(
-        "Selecione um vídeo (mp4, avi ou mov)",
+        "Selecione um vídeo (mp4, avi, mov ou mkv)",
         type=list(VIDEO_ALLOWED_EXTENSIONS),
         key="video_uploader",
         help="Formatos aceitos: " + ", ".join(VIDEO_ALLOWED_EXTENSIONS),

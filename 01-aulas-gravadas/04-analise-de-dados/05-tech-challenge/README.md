@@ -73,7 +73,7 @@ A aplicação abre em `http://localhost:8501` com 4 abas e uma sidebar de alerta
   rolling z-score linha a linha (alerta "em tempo real", threshold/janela ajustáveis na UI) e
   Isolation Forest treinado em lote sobre o CSV carregado (validação complementar). O relatório
   combinado destaca leituras em que as duas camadas concordam ("alta confiança") ou divergem.
-- **Vídeo** — upload de vídeo (mp4/avi/mov) de fisioterapia/exercício ou cirurgia. Processa
+- **Vídeo** — upload de vídeo (mp4/avi/mov/mkv) de fisioterapia/exercício ou cirurgia. Processa
   frame a frame com YOLOv8-pose, extraindo o ângulo do cotovelo direito e a velocidade do punho
   direito por frame. Duas detecções independentes: anomalia postural via rolling z-score
   (slider de sensibilidade na UI) e alerta de zona crítica (interseção da bounding box da
