@@ -288,36 +288,48 @@ with tab_video:
             )
         else:
             sensitivity_threshold = st.slider(
-                "Sensibilidade da detecção de anomalia postural (|z-score| >)",
+                "Sensibilidade a movimentos anormais",
                 min_value=0.5,
                 max_value=5.0,
                 value=2.0,
                 step=0.1,
-                help="Valores menores tornam a detecção mais sensível (mais anomalias reportadas).",
+                help=(
+                    "Controla o quão diferente um movimento precisa ser do padrão "
+                    "recente do paciente para virar alerta. Exemplos: **1.0** "
+                    "(bem sensível — sinaliza até pequenas variações, gera mais "
+                    "alertas) · **2.0** (padrão, equilíbrio razoável) · **4.0** "
+                    "(pouco sensível — só sinaliza desvios bem bruscos)."
+                ),
             )
 
             zone_x_range = st.slider(
-                "Zona crítica — faixa horizontal (x_min, x_max)",
+                "Área de risco no vídeo — de que ponto até que ponto, na horizontal",
                 min_value=0.0,
                 max_value=1.0,
                 value=(VIDEO_DEFAULT_ZONE[0], VIDEO_DEFAULT_ZONE[2]),
                 step=0.05,
                 help=(
-                    "Posição relativa da zona crítica no eixo horizontal do quadro "
-                    "(0.0 = borda esquerda, 1.0 = borda direita). Ajuste conforme o "
-                    "enquadramento do vídeo enviado."
+                    "Marca uma faixa vertical do quadro do vídeo (de 0 = borda "
+                    "esquerda até 1 = borda direita) como área de risco: se a "
+                    "pessoa entrar nela, gera um alerta imediato. Exemplos: "
+                    "**(0.0, 1.0)** cobre a largura toda do quadro · **(0.7, "
+                    "1.0)** cobre só a faixa mais à direita (ex.: perto de uma "
+                    "escada ou equipamento posicionado à direita na imagem)."
                 ),
             )
             zone_y_range = st.slider(
-                "Zona crítica — faixa vertical (y_min, y_max)",
+                "Área de risco no vídeo — de que ponto até que ponto, na vertical",
                 min_value=0.0,
                 max_value=1.0,
                 value=(VIDEO_DEFAULT_ZONE[1], VIDEO_DEFAULT_ZONE[3]),
                 step=0.05,
                 help=(
-                    "Posição relativa da zona crítica no eixo vertical do quadro "
-                    "(0.0 = topo, 1.0 = base). Ajuste conforme o enquadramento do "
-                    "vídeo enviado."
+                    "Marca uma faixa horizontal do quadro do vídeo (de 0 = topo "
+                    "até 1 = base) como área de risco, combinada com a faixa "
+                    "horizontal acima para formar um retângulo. Exemplos: "
+                    "**(0.0, 1.0)** cobre a altura toda do quadro · **(0.0, "
+                    "0.3)** cobre só a parte de cima da imagem (ex.: uma "
+                    "prateleira alta ou porta)."
                 ),
             )
             critical_zone = (zone_x_range[0], zone_y_range[0], zone_x_range[1], zone_y_range[1])
