@@ -569,8 +569,8 @@ def group_events_for_display(
 
     Args:
         events: Event dicts as produced by ``analyze`` (each with
-            ``tipo``, ``articulacao``, ``t_inicio``, ``t_fim``,
-            ``frame_index_pior``, ``valor_pior``, ``z_pior``).
+            ``event_id``, ``tipo``, ``articulacao``, ``t_inicio``,
+            ``t_fim``, ``frame_index_pior``, ``valor_pior``, ``z_pior``).
         top_n: Max number of events kept per section.
 
     Returns:
