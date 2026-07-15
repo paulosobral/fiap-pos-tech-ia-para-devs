@@ -32,6 +32,6 @@
 
 ## 5. Verificação e documentação
 
-- [ ] 5.1 Rodar a suíte completa (`venv/bin/python -m pytest tests/ -q`) — tudo verde
-- [ ] 5.2 Validar o fluxo real via `AppTest` (upload de `data/demo_pose_walk.mp4` → "Processar vídeo") sem crash, e boot real via `streamlit run app.py`
-- [ ] 5.3 Atualizar `README.md` (descrição da aba Vídeo: multi-articulação, eventos visuais, zona opcional) e `RELATORIO_TECNICO.md` (seção de vídeo: articulações rastreadas, agrupamento em eventos, saída visual)
+- [x] 5.1 Rodar a suíte completa (`venv/bin/python -m pytest tests/ -q`) — tudo verde
+- [x] 5.2 Validar o fluxo real via `AppTest` (upload de `data/demo_pose_walk.mp4` → "Processar vídeo") sem crash, e boot real via `streamlit run app.py`
+- [x] 5.3 Atualizar `README.md` (descrição da aba Vídeo: multi-articulação, eventos visuais, zona opcional) e `RELATORIO_TECNICO.md` (seção de vídeo: articulações rastreadas, agrupamento em eventos, saída visual)

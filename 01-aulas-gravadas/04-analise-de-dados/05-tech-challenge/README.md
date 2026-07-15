@@ -82,14 +82,21 @@ A aplicação abre em `http://localhost:8501` com 4 abas e uma sidebar de alerta
   rolling z-score linha a linha (alerta "em tempo real", threshold/janela ajustáveis na UI) e
   Isolation Forest treinado em lote sobre o CSV carregado (validação complementar). O relatório
   combinado destaca leituras em que as duas camadas concordam ("alta confiança") ou divergem.
-- **Vídeo** — upload de vídeo (mp4/avi/mov/mkv) de fisioterapia/exercício ou cirurgia. Ao fazer
-  o upload, o sistema já extrai a pose do vídeo com YOLOv8-pose (ângulo do cotovelo direito e
-  velocidade do punho direito por frame) e calcula automaticamente uma sensibilidade sugerida
-  para aquele vídeo específico, pré-populando o slider de sensibilidade — o valor é só um ponto
-  de partida, totalmente ajustável. Duas detecções independentes: anomalia postural via rolling
-  z-score (slider de sensibilidade) e alerta de zona crítica (interseção da bounding box da
-  pessoa detectada com uma área configurável do quadro, também via sliders). Gera um relatório
-  de desvios ordenado por timestamp.
+- **Vídeo** — upload de vídeo (mp4/avi/mov/mkv) de fisioterapia/exercício ou cirurgia. O
+  processamento é disparado pelo botão "Processar vídeo" (a extração de pose fica em cache para
+  não reprocessar a cada rerun). Com YOLOv8-pose o sistema rastreia **múltiplas articulações** do
+  corpo por frame — cotovelos, joelhos, quadris/tronco e pescoço/cabeça, ambos os lados — além de
+  uma velocidade de movimento global (deslocamento do centro de massa) e das detecções de pessoa
+  no mesmo forward pass. Cada articulação (e a velocidade) passa por rolling z-score; os frames
+  irregulares consecutivos são **agrupados em eventos** (um alerta por evento, não por frame),
+  cada evento com a articulação afetada e o intervalo de tempo. A saída é um **relatório visual**:
+  um resumo no topo (número de eventos + articulação mais afetada) e, para cada evento, a imagem
+  do frame mais representativo com o esqueleto desenhado e a articulação afetada destacada. Uma
+  sensibilidade sugerida é calculada automaticamente para o vídeo e pré-popula o slider (ponto de
+  partida ajustável), com uma legenda auto-explicativa estimando o "~X% do vídeo" que seria
+  marcado como irregular no nível atual. A detecção de zona crítica (pessoa entrando em uma área
+  configurável do quadro) é **opcional, desativada por padrão** via checkbox; quando ligada,
+  mostra os sliders de zona e uma prévia do retângulo sobre o primeiro frame.
 - **Áudio** — upload de áudio (mp3/wav) de consulta médica. Transcreve via AWS Transcribe
   (texto + timestamps por palavra), analisa sentimento e entidades via AWS Comprehend, busca
   termos críticos configuráveis (ex.: "dor", "não consigo respirar") no texto transcrito, e
@@ -133,7 +140,7 @@ Não é necessário definir `PYTHONPATH=.` manualmente — o `pytest`, ao rodar 
 projeto (onde estão os pacotes `anomaly/`, `video/`, `vital_signs/` etc., sem `src/` layout),
 já resolve os imports corretamente por conta própria (confirmado executando o comando acima com
 `PYTHONPATH` explicitamente vazio). No momento em que esta seção foi escrita, a suíte completa
-tem 107 testes e passa integralmente (`107 passed`).
+tem 136 testes e passa integralmente (`136 passed`).
 
 Observação: os testes automatizados cobrem a lógica de cada módulo isoladamente (com mocks para
 as chamadas AWS); eles não exercitam a UI do Streamlit ponta a ponta.

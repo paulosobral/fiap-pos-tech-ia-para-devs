@@ -25,9 +25,10 @@ Fluxo resumido por aba:
 ```
 Sinais Vitais:  CSV → validação/parse → rolling z-score (linha a linha)
                                        → Isolation Forest (lote)      → relatório combinado + Alert
-Vídeo:          vídeo → YOLOv8-pose (frame a frame) → série de ângulo/velocidade → rolling z-score
-                                                     → bounding box da pessoa → regra de zona crítica
-                                                                                        → relatório de desvios + Alert
+Vídeo:          vídeo → YOLOv8-pose (frame a frame) → séries de ângulo por articulação + velocidade global → rolling z-score por série
+                                                     → agrupamento de frames irregulares em eventos (1 Alert por evento)
+                                                     → bounding box da pessoa → regra de zona crítica (opcional) → eventos
+                                                                                        → relatório visual (resumo + esqueletos anotados)
 Áudio:          áudio → AWS Transcribe (texto + timestamps) → AWS Comprehend (sentimento/entidades)
                                                              → busca de termos críticos
                                                              → taxa de fala / duração de pausa → rolling z-score
@@ -40,7 +41,7 @@ Prescrições:    CSV/Excel → histórico por paciente → prompt estruturado �
 
 | Modalidade | Técnica aplicada | Por quê |
 |---|---|---|
-| Vídeo | YOLOv8-pose (`yolov8n-pose.pt`, `ultralytics`) + rolling z-score sobre ângulo/velocidade + regra de zona | Um único forward pass fornece keypoints humanos **e** bounding boxes no mesmo modelo (ver D1 abaixo) |
+| Vídeo | YOLOv8-pose (`yolov8n-pose.pt`, `ultralytics`) + rolling z-score por articulação (cotovelos, joelhos, quadris/tronco, pescoço/cabeça) e sobre a velocidade global, agrupado em eventos + regra de zona | Um único forward pass fornece keypoints humanos **e** bounding boxes no mesmo modelo (ver D1 abaixo) |
 | Áudio | AWS Transcribe (fala→texto) + AWS Comprehend (sentimento/entidades) + rolling z-score sobre taxa de fala/pausa | Serviços gerenciados de nuvem, sem necessidade de treinar um ASR ou classificador de sentimento próprio (ver D5 abaixo) |
 | Sinais Vitais | Rolling z-score (linha a linha) + Isolation Forest (`sklearn`, lote) | Duas camadas complementares: uma "tempo real"/explicável, outra estatística/ML validando em lote sobre o dataset completo (ver D3) |
 | Prescrições | AWS Bedrock, Claude Sonnet (raciocínio de LLM, sem fine-tuning) | Dataset sintético pequeno, tarefa de interpretação semântica de texto/dados estruturados — mais adequada a um LLM instruído por prompt do que a um modelo estatístico treinado em poucos exemplos (ver D6) |
@@ -73,8 +74,9 @@ como exemplos ("modelos como"), não como exigência obrigatória e exclusiva. O
 um build Caffe antigo, difícil de instalar/manter em 2026. Optou-se por
 `ultralytics` YOLOv8-pose (`yolov8n-pose.pt`), que no mesmo forward pass fornece:
 
-1. Keypoints humanos (usados para calcular ângulo de articulação e velocidade de movimento —
-   análise postural).
+1. Keypoints humanos (usados para calcular os ângulos de múltiplas articulações — cotovelos,
+   joelhos, quadris/tronco e pescoço/cabeça, ambos os lados — e a velocidade de movimento global
+   pelo deslocamento do centro de massa — análise postural).
 2. Bounding boxes de detecção (usadas para a regra de zona crítica).
 
 Consequência documentada do modelo escolhido: `yolov8n-pose.pt` é de detecção **single-class**
@@ -177,23 +179,30 @@ Vídeo de demonstração: `data/demo_pose_walk.mp4`, recorte de 6s (re-encodado 
 pedestres caminhando — usado como fallback documentado na ausência de um vídeo de fisioterapia
 específico obtido sem credenciais.
 
-Execução real (não apenas testes unitários mockados) contra o modelo real `yolov8n-pose.pt` e o
-vídeo real:
+Execução real ponta a ponta (via `streamlit.testing.v1.AppTest`, upload real de
+`data/demo_pose_walk.mp4` → botão "Processar vídeo", inferência YOLOv8-pose real, sem mocks),
+com a sensibilidade sugerida automática (`threshold ≈ 2.0`) e a zona crítica **desativada**
+(padrão):
 
 ```
 frames lidos: 60          fps: 10.0
-frames com pose detectada: 47 / 60
-anomalias de ângulo: 0
-anomalias de velocidade: 1
-alertas gerados: 59
-entradas no relatório de desvios: 59
+frames com pose detectada: 47 / 60 (13 sem dados de pose)
+eventos irregulares detectados: 10
+articulação mais afetada: Joelho direito
+alertas gerados: 10        (1 por evento, não por frame)
+imagens do relatório visual: 10 (um esqueleto anotado por evento)
+% do vídeo estimado como irregular no nível atual: ~12%
 ```
 
-A zona crítica de demonstração (`(0.7, 0.0, 1.0, 1.0)` — 30% direito do quadro, configurável via
-sliders na UI) disparou alertas repetidamente conforme pedestres cruzavam essa região, e uma
-anomalia de velocidade do punho foi detectada — evidência de que a pipeline completa (extração de
-pose → cálculo de ângulo/velocidade → z-score → regra de zona → relatório) funciona de ponta a
-ponta contra o modelo real, e não só contra dados de teste sintéticos.
+O relatório visual apresenta, para cada um dos 10 eventos, a imagem do frame mais representativo
+(o de maior |z-score| do grupo) com o esqueleto COCO desenhado e a articulação afetada destacada
+em vermelho; eventos de velocidade destacam o corpo todo e, quando a zona crítica é ligada, os
+eventos de zona desenham o retângulo configurado. Esse é o comportamento novo (redesenho da aba
+Vídeo): o **agrupamento de frames irregulares consecutivos em eventos** substitui o antigo alerta
+por frame (que gerava dezenas de alertas quase idênticos), e a saída visual substitui a antiga
+lista textual de desvios. Evidência de que a pipeline completa (extração de pose multi-articulação
+→ z-score por série → agrupamento em eventos → relatório visual, com zona opcional) funciona de
+ponta a ponta contra o modelo real, e não só contra dados de teste sintéticos.
 
 ### 4.4 Áudio — validação real limitada, honestamente reportada
 
@@ -225,13 +234,14 @@ duas modalidades é reutilizada sem alteração.
   câmera/microfone). A mesma pipeline (extração de features → `detect_anomalies` →
   `alerts.feed.add_alert`) se estenderia a um fluxo de streaming real trocando apenas a fonte de
   entrada; isso é trabalho futuro, não implementado aqui.
-- **Rastreamento postural de uma única articulação.** `video/pose.py` calcula o ângulo apenas do
-  cotovelo direito (shoulder-elbow-wrist) e a velocidade apenas do punho direito, não um esqueleto
-  completo. Escolha documentada no código: o cotovelo é visível em mais enquadramentos de câmera
-  (planos superiores de corpo, comuns em demos de fisioterapia) do que o joelho, que exigiria um
-  plano de corpo inteiro. Um esqueleto completo (múltiplas articulações) é possível com o mesmo
-  modelo, mas não foi implementado — trade-off consciente de escopo, não uma limitação do
-  YOLOv8-pose em si.
+- **Rastreamento postural dependente de keypoints visíveis.** `video/pose.py` rastreia múltiplas
+  articulações (cotovelos, joelhos, quadris/tronco e pescoço/cabeça, ambos os lados) e uma
+  velocidade de movimento global, mas cada ângulo só é calculado nos frames em que os keypoints
+  necessários daquela articulação foram detectados (keypoints faltantes → articulação sem valor no
+  frame). Na prática, enquadramentos parciais (planos superiores de corpo, comuns em demos de
+  fisioterapia) produzem séries mais curtas/ruidosas para joelhos e quadris do que para cotovelos e
+  pescoço. A detecção degrada de forma graciosa (a articulação simplesmente não contribui naquele
+  frame), mas a cobertura efetiva por articulação depende do enquadramento do vídeo.
 - **Detecção de "objeto crítico" limitada a pessoas.** Como descrito na seção 2.2, o modelo
   `yolov8n-pose.pt` só detecta a classe "person" no mesmo forward pass que extrai a pose. A regra
   de zona crítica implementada, portanto, sinaliza entrada de **pessoas** em uma área configurada,
