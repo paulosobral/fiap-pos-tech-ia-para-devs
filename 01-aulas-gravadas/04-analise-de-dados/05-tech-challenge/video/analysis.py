@@ -95,6 +95,21 @@ JOINT_LABELS: Dict[str, str] = {
     "pescoco": "Pescoço",
 }
 
+# Body-region category per joint key, shown in the alert text so the user
+# reads the affected region at a glance (change ``alerta-video-id-categoria``,
+# design.md D2). A single vocabulary is used both here and in the bracket of
+# ``_event_description`` — the plural forms ("Braços", "Pernas") are the
+# canonical labels; there is no separate singular form.
+JOINT_CATEGORY: Dict[str, str] = {
+    "pescoco": "Cabeça",
+    "cotovelo_esquerdo": "Braços",
+    "cotovelo_direito": "Braços",
+    "quadril_esquerdo": "Tronco",
+    "quadril_direito": "Tronco",
+    "joelho_esquerdo": "Pernas",
+    "joelho_direito": "Pernas",
+}
+
 # Label used for the global velocity ("brusque movement") series, which
 # is not tied to a single joint (``articulacao is None``).
 VELOCITY_LABEL = "Movimento brusco"
@@ -141,6 +156,23 @@ def joint_label(joint_key: Optional[str]) -> str:
     if joint_key is None:
         return VELOCITY_LABEL
     return JOINT_LABELS.get(joint_key, joint_key)
+
+
+def event_category(event: Dict[str, Any]) -> str:
+    """Body-region category for an event, shown in the alert text.
+
+    ``postura`` events map to their joint's region via ``JOINT_CATEGORY``
+    (falling back to the raw joint key for any unmapped joint);
+    ``velocidade`` events (whole-body movement) map to ``"Corpo"`` and
+    ``zona_critica`` events to ``"Zona de risco"``.
+    """
+    if event["tipo"] == "velocidade":
+        return "Corpo"
+    if event["tipo"] == "zona_critica":
+        return "Zona de risco"
+    # postura
+    articulacao = event["articulacao"]
+    return JOINT_CATEGORY.get(articulacao, articulacao)
 
 
 def _joint_names(frame_series: List[Dict[str, Any]]) -> List[str]:
@@ -418,14 +450,23 @@ def _zone_events(
 
 
 def _event_description(event: Dict[str, Any]) -> str:
-    """Plain-language alert description for one event (design.md D2)."""
+    """Plain-language alert description for one event.
+
+    Prefixed with the event's short unique id and body-region category
+    (change ``alerta-video-id-categoria``, design.md D3), e.g.
+    ``"#V03 [Braços] Cotovelo direito irregular entre 5.2s e 6.4s."`` —
+    the same id appears in the Vídeo tab gallery caption, letting the user
+    match an alert (chronological feed) to its annotated frame (gallery by
+    severity).
+    """
     interval = f"entre {event['t_inicio']:.1f}s e {event['t_fim']:.1f}s"
+    prefix = f"{event['event_id']} [{event_category(event)}] "
     if event["tipo"] == "postura":
-        return f"{joint_label(event['articulacao'])} irregular {interval}."
+        return f"{prefix}{joint_label(event['articulacao'])} irregular {interval}."
     if event["tipo"] == "velocidade":
-        return f"{VELOCITY_LABEL} irregular {interval}."
+        return f"{prefix}{VELOCITY_LABEL} irregular {interval}."
     # zona_critica
-    return f"Pessoa na zona de risco {interval}."
+    return f"{prefix}Pessoa na zona de risco {interval}."
 
 
 def _summarize(events: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -597,7 +638,10 @@ def analyze(
         Dict with:
             - ``events``: list of event dicts (``tipo``, ``articulacao``,
               ``t_inicio``, ``t_fim``, ``frame_index_pior``, ``valor_pior``,
-              ``z_pior``), sorted by ``t_inicio`` ascending.
+              ``z_pior``, ``event_id``), sorted by ``t_inicio`` ascending.
+              ``event_id`` (``#V01``, ``#V02``, ...) is assigned in that
+              final order and is the shared key between an alert and its
+              gallery image.
             - ``alerts``: list of ``Alert`` objects, one per event (also
               pushed to the shared feed), same order as ``events``.
             - ``summary``: dict with ``total_events``,
@@ -629,6 +673,12 @@ def analyze(
         events.extend(_zone_events(frame_series, zone, frame_width, frame_height))
 
     events.sort(key=lambda e: (e["t_inicio"], e["tipo"], e["articulacao"] or ""))
+
+    # Assign a short unique id per event in the final (chronological) order,
+    # BEFORE alerts are generated, and store it on the event dict itself so
+    # the alert text and the gallery caption read the SAME id (design.md D1).
+    for i, event in enumerate(events, start=1):
+        event["event_id"] = f"#V{i:02d}"
 
     alerts = [add_alert(origin=ORIGIN, description=_event_description(event)) for event in events]
 

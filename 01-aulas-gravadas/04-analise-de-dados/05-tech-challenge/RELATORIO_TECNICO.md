@@ -202,7 +202,8 @@ execução foram 6 seções — a mais afetada, "Joelho direito", com 3 eventos.
 os **10 eventos mais graves** (maior |z-score|; para zona crítica, maior área de interseção, já
 que `z_pior` é `NaN` por construção) são exibidos numa **galeria em grade de 3 colunas** — cada
 célula com a imagem do frame mais representativo (o de maior |z-score| do grupo), o esqueleto COCO
-desenhado e a articulação afetada destacada em vermelho, e o intervalo de tempo como legenda;
+desenhado e a articulação afetada destacada em vermelho, e como legenda o **identificador curto
+único do evento** (`#V01`, `#V02`, ...) seguido do intervalo de tempo (ex.: `#V02 — 2.0s a 2.2s`);
 eventos de velocidade destacam o corpo todo e, quando a zona crítica é ligada, os eventos de zona
 desenham o retângulo configurado. Quando uma seção tem mais eventos que o limite, a UI indica
 "Mostrando N de M". Esse agrupamento (change `galeria-eventos-video-por-articulacao`) substitui a
@@ -210,7 +211,17 @@ lista plana de uma imagem por evento — que num vídeo real chegou a ~500 image
 página — mantendo a saída navegável mesmo com centenas de eventos; a lógica de agrupamento/
 ordenação/top-N vive em `video.analysis.group_events_for_display` (testada), e `app.py` apenas
 renderiza. A contagem de eventos e de alertas não muda (o agrupamento é só de apresentação: 1
-`Alert` por evento). O **agrupamento de frames irregulares consecutivos em eventos** já substituía
+`Alert` por evento). Cada evento recebe, no `analyze` (após a ordenação cronológica final e antes
+de gerar os alertas), um **identificador curto único** `event_id` (`#V01`, `#V02`, ...,
+determinístico e sequencial) gravado no próprio dict do evento; esse mesmo `event_id` é lido tanto
+pelo texto do alerta quanto pela legenda da galeria, então os dois sempre casam mesmo com ordens de
+exibição diferentes (feed cronológico vs. galeria por gravidade). O texto do alerta ganha ainda a
+**categoria/região do corpo** afetada — via `event_category` (`JOINT_CATEGORY`: pescoço→Cabeça,
+cotovelos→Braços, quadris→Tronco, joelhos→Pernas; velocidade→Corpo; zona→Zona de risco) — ficando,
+por exemplo, `#V02 [Braços] Cotovelo direito irregular entre 2.0s e 2.2s.` no feed, com a foto
+correspondente na galeria legendada `#V02 — 2.0s a 2.2s` (change `alerta-video-id-categoria`; id e
+categoria vão embutidos no `description`, sem alterar o dataclass `Alert` nem `alerts/feed.py`). O
+**agrupamento de frames irregulares consecutivos em eventos** já substituía
 o antigo alerta por frame (que gerava dezenas de alertas quase idênticos). Evidência de que a
 pipeline completa (extração de pose multi-articulação → z-score por série → agrupamento em eventos
 → relatório visual agrupado por articulação, com zona opcional) funciona de ponta a ponta contra o

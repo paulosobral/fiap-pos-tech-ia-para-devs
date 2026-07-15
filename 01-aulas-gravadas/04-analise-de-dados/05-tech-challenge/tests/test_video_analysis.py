@@ -29,13 +29,16 @@ import streamlit as st
 from video.analysis import (
     DEFAULT_ZONE,
     FALLBACK_SENSITIVITY_THRESHOLD,
+    JOINT_CATEGORY,
     JOINT_LABELS,
     VELOCITY_SECTION_LABEL,
     ZONE_SECTION_LABEL,
+    _event_description,
     _group_consecutive,
     analyze,
     box_intersects_zone,
     estimate_flagged_fraction,
+    event_category,
     group_events_for_display,
     joint_label,
     suggest_sensitivity_threshold,
@@ -152,6 +155,7 @@ def test_analyze_event_has_expected_schema_and_worst_frame_value():
         "frame_index_pior",
         "valor_pior",
         "z_pior",
+        "event_id",
     }
     assert event["articulacao"] == "joelho_direito"
     # The worst frame (max |z|) is the first frame of the drop (index 10),
@@ -573,3 +577,109 @@ def test_group_events_for_display_zone_section_with_nan_z_orders_by_valor_pior()
     section = group_events_for_display(events)[0]  # must not crash on NaN
 
     assert [e["valor_pior"] for e in section["eventos"]] == [99.0, 42.0, 10.0]
+
+
+# ── event_id assignment (unique, deterministic, sequential) ───────────
+
+
+def _multi_event_frames():
+    """Frames producing several events across joints + velocity, so the
+    resulting event list has more than one entry to id."""
+    joelho = [170.0] * 40
+    cotovelo = [90.0] * 40
+    for i in (10, 11, 12, 24, 25, 26):
+        joelho[i] = 90.0
+    for i in (5, 6, 7):
+        cotovelo[i] = 40.0
+    vel = [1.0] * 40
+    for i in (30, 31, 32):
+        vel[i] = 12.0
+    return [
+        _frame(
+            float(t),
+            angles={"joelho_direito": joelho[t], "cotovelo_direito": cotovelo[t]},
+            velocity=vel[t],
+        )
+        for t in range(40)
+    ]
+
+
+def test_analyze_assigns_event_id_to_every_event():
+    result = analyze(_multi_event_frames(), threshold=1.3, window=6)
+
+    assert result["events"], "expected several events"
+    assert all("event_id" in e for e in result["events"])
+
+
+def test_event_ids_are_unique_across_events():
+    result = analyze(_multi_event_frames(), threshold=1.3, window=6)
+
+    ids = [e["event_id"] for e in result["events"]]
+    assert len(ids) == len(set(ids))
+
+
+def test_event_ids_are_sequential_in_t_inicio_order():
+    result = analyze(_multi_event_frames(), threshold=1.3, window=6)
+
+    events = result["events"]
+    # events come sorted by t_inicio; ids must be #V01, #V02, ... in that order
+    assert [e["event_id"] for e in events] == [f"#V{i:02d}" for i in range(1, len(events) + 1)]
+    # sanity: still sorted by t_inicio
+    assert [e["t_inicio"] for e in events] == sorted(e["t_inicio"] for e in events)
+
+
+def test_event_ids_are_deterministic_across_runs():
+    frames = _multi_event_frames()
+    first = [e["event_id"] for e in analyze(frames, threshold=1.3, window=6)["events"]]
+    st.session_state.clear()
+    second = [e["event_id"] for e in analyze(frames, threshold=1.3, window=6)["events"]]
+    assert first == second
+
+
+# ── event_category mapping ────────────────────────────────────────────
+
+
+def test_joint_category_maps_regions():
+    assert JOINT_CATEGORY["pescoco"] == "Cabeça"
+    assert JOINT_CATEGORY["cotovelo_esquerdo"] == "Braços"
+    assert JOINT_CATEGORY["cotovelo_direito"] == "Braços"
+    assert JOINT_CATEGORY["quadril_esquerdo"] == "Tronco"
+    assert JOINT_CATEGORY["quadril_direito"] == "Tronco"
+    assert JOINT_CATEGORY["joelho_esquerdo"] == "Pernas"
+    assert JOINT_CATEGORY["joelho_direito"] == "Pernas"
+
+
+def test_event_category_for_postura_uses_joint_region():
+    assert event_category(_event("postura", "pescoco")) == "Cabeça"
+    assert event_category(_event("postura", "cotovelo_direito")) == "Braços"
+    assert event_category(_event("postura", "quadril_esquerdo")) == "Tronco"
+    assert event_category(_event("postura", "joelho_direito")) == "Pernas"
+
+
+def test_event_category_for_velocity_and_zone():
+    assert event_category(_event("velocidade", None)) == "Corpo"
+    assert event_category(_event("zona_critica", None)) == "Zona de risco"
+
+
+# ── description includes id + category + interval ─────────────────────
+
+
+def test_event_description_prepends_id_and_category():
+    event = _event("postura", "cotovelo_direito", t_inicio=5.2)
+    event["t_fim"] = 6.4
+    event["event_id"] = "#V03"
+
+    text = _event_description(event)
+
+    assert text.startswith("#V03 [Braços] ")
+    assert "Cotovelo direito" in text
+    assert "entre 5.2s e 6.4s" in text
+
+
+def test_alert_descriptions_contain_id_and_category_and_interval():
+    result = analyze(_multi_event_frames(), threshold=1.3, window=6)
+
+    for event, alert in zip(result["events"], result["alerts"]):
+        assert event["event_id"] in alert.description
+        assert f"[{event_category(event)}]" in alert.description
+        assert "entre" in alert.description and "s e " in alert.description

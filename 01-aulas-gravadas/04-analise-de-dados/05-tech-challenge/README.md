@@ -89,13 +89,18 @@ A aplicação abre em `http://localhost:8501` com 4 abas e uma sidebar de alerta
   uma velocidade de movimento global (deslocamento do centro de massa) e das detecções de pessoa
   no mesmo forward pass. Cada articulação (e a velocidade) passa por rolling z-score; os frames
   irregulares consecutivos são **agrupados em eventos** (um alerta por evento, não por frame),
-  cada evento com a articulação afetada e o intervalo de tempo. A saída é um **relatório visual**:
+  cada evento com um **identificador curto único** (`#V01`, `#V02`, ...), a **categoria/região do
+  corpo** afetada (Cabeça, Braços, Tronco, Pernas, Corpo para velocidade, Zona de risco) e o
+  intervalo de tempo — o texto do alerta fica, por exemplo,
+  `#V02 [Braços] Cotovelo direito irregular entre 2.0s e 2.2s.`. A saída é um **relatório visual**:
   um resumo no topo (número de eventos + articulação mais afetada) e, em seguida, os eventos
   **agrupados por articulação/tipo em seções colapsáveis** (`st.expander`, fechadas por padrão),
   ordenadas da mais afetada (mais eventos) para a menos. Cada seção mostra os **10 eventos mais
   graves** daquela articulação numa **galeria em grade** (3 colunas) — cada célula com a imagem do
-  frame mais representativo, esqueleto desenhado e articulação afetada destacada, e o intervalo de
-  tempo como legenda; quando há mais eventos que o limite, exibe "Mostrando N de M". Esse
+  frame mais representativo, esqueleto desenhado e articulação afetada destacada, e como legenda o
+  **mesmo identificador** do alerta seguido do intervalo de tempo (ex.: `#V02 — 2.0s a 2.2s`),
+  permitindo casar o alerta do feed (cronológico) com sua foto na galeria (ordenada por gravidade);
+  quando há mais eventos que o limite, exibe "Mostrando N de M". Esse
   agrupamento mantém a página navegável mesmo em vídeos com centenas de eventos (a lista plana
   anterior renderizava uma imagem por evento). Uma
   sensibilidade sugerida é calculada automaticamente para o vídeo e pré-popula o slider (ponto de

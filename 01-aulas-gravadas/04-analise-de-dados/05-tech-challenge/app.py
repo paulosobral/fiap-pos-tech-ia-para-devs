@@ -518,7 +518,12 @@ with tab_video:
                                     cols = st.columns(columns_per_row)
                                     for col, event in zip(cols, row_events):
                                         idx = event["frame_index_pior"]
+                                        # Prefix the same short unique id shown
+                                        # in the alert text so the user can match
+                                        # this frame to its feed alert (change
+                                        # alerta-video-id-categoria, design.md D4).
                                         interval = (
+                                            f"{event['event_id']} — "
                                             f"{event['t_inicio']:.1f}s a {event['t_fim']:.1f}s"
                                         )
 
