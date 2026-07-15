@@ -53,7 +53,12 @@ from video.analysis import DEFAULT_WINDOW as VIDEO_DEFAULT_WINDOW
 from video.analysis import DEFAULT_ZONE as VIDEO_DEFAULT_ZONE
 from video.analysis import FALLBACK_SENSITIVITY_THRESHOLD
 from video.analysis import analyze as analyze_video
-from video.analysis import suggest_sensitivity_threshold
+from video.analysis import (
+    estimate_flagged_fraction,
+    joint_label,
+    suggest_sensitivity_threshold,
+)
+from video.draw import draw_pose_on_frame, draw_zone_on_frame
 from video.pose import extract_frame_series
 
 st.set_page_config(page_title="Monitoramento Multimodal de Pacientes", layout="wide")
@@ -180,6 +185,24 @@ def _extract_pose_frame_series(video_bytes, extension, _pose_model):
     return frame_series, frame_width, frame_height
 
 
+@st.cache_data(show_spinner=False)
+def _decode_video_frames_cached(video_bytes, extension):
+    """Decode the video's BGR frames, cached by the video's own bytes.
+
+    The event report needs the original frame image at each event's
+    ``frame_index_pior`` (and the first frame for the zone preview) to draw
+    the pose skeleton / zone rectangle on it. Only ``_extract_pose_frame_series``
+    keeps the pose *series* (not the frames), so the frames are decoded here
+    separately. This deliberately reuses ``_decode_video_frames`` — plain
+    ``cv2`` decoding, which is cheap compared to the YOLOv8-pose inference —
+    and is cached on the same key (video bytes + extension) so it runs at
+    most once per uploaded video and never re-runs YOLO. Returns only the
+    frames list (the fps is not needed at render time).
+    """
+    frames, _fps = _decode_video_frames(video_bytes, extension)
+    return frames
+
+
 VIDEO_ALLOWED_EXTENSIONS = ("mp4", "avi", "mov", "mkv")
 AUDIO_ALLOWED_EXTENSIONS = ("mp3", "wav")
 PRESCRIPTIONS_ALLOWED_EXTENSIONS = ("csv", "xlsx", "xls")
@@ -263,13 +286,15 @@ with tab_video:
     st.header("Vídeo")
     st.caption(
         "Upload de vídeo de fisioterapia/exercício ou cirurgia gravada. O "
-        "vídeo é processado frame a frame com YOLOv8-pose, extraindo "
-        "keypoints posturais (ângulo do cotovelo direito e velocidade do "
-        "punho direito) e detecções de pessoa no mesmo forward pass. Duas "
-        "detecções de desvio são independentes: anomalia postural "
-        "(rolling z-score, sensibilidade ajustável pelo slider abaixo) e "
-        "alerta de zona crítica (interseção de bounding box com uma área "
-        "configurada do quadro)."
+        "vídeo é processado frame a frame com YOLOv8-pose, extraindo os "
+        "ângulos de múltiplas articulações do corpo (cotovelos, joelhos, "
+        "quadris/tronco e pescoço, ambos os lados) e uma velocidade de "
+        "movimento global, além das detecções de pessoa no mesmo forward "
+        "pass. Os desvios são detectados por rolling z-score (sensibilidade "
+        "ajustável abaixo) e apresentados como eventos visuais: para cada "
+        "momento irregular, a imagem do frame mais representativo com o "
+        "esqueleto desenhado e a articulação afetada destacada. A detecção "
+        "de zona crítica é opcional (desativada por padrão)."
     )
 
     video_file = st.file_uploader(
@@ -346,38 +371,81 @@ with tab_video:
                     "inicial já vem sugerido para o vídeo carregado."
                 ),
             )
+            # Dynamic feedback: recomputed from this video on every slider
+            # move (spec "Feedback do efeito da sensibilidade escolhida"), so
+            # the user sees the concrete effect of the threshold without
+            # interpreting a raw z-score value.
+            if frame_series:
+                flagged_fraction = estimate_flagged_fraction(
+                    frame_series, float(sensitivity_threshold), VIDEO_DEFAULT_WINDOW
+                )
+                st.caption(
+                    f"Neste nível, ~{flagged_fraction * 100:.0f}% do vídeo seria "
+                    "marcado como irregular."
+                )
 
-            zone_x_range = st.slider(
-                "Área de risco no vídeo — de que ponto até que ponto, na horizontal",
-                min_value=0.0,
-                max_value=1.0,
-                value=(VIDEO_DEFAULT_ZONE[0], VIDEO_DEFAULT_ZONE[2]),
-                step=0.05,
-                help=(
-                    "Marca uma faixa vertical do quadro do vídeo (de 0 = borda "
-                    "esquerda até 1 = borda direita) como área de risco: se a "
-                    "pessoa entrar nela, gera um alerta imediato. Exemplos: "
-                    "**(0.0, 1.0)** cobre a largura toda do quadro · **(0.7, "
-                    "1.0)** cobre só a faixa mais à direita (ex.: perto de uma "
-                    "escada ou equipamento posicionado à direita na imagem)."
-                ),
-            )
-            zone_y_range = st.slider(
-                "Área de risco no vídeo — de que ponto até que ponto, na vertical",
-                min_value=0.0,
-                max_value=1.0,
-                value=(VIDEO_DEFAULT_ZONE[1], VIDEO_DEFAULT_ZONE[3]),
-                step=0.05,
-                help=(
-                    "Marca uma faixa horizontal do quadro do vídeo (de 0 = topo "
-                    "até 1 = base) como área de risco, combinada com a faixa "
-                    "horizontal acima para formar um retângulo. Exemplos: "
-                    "**(0.0, 1.0)** cobre a altura toda do quadro · **(0.0, "
-                    "0.3)** cobre só a parte de cima da imagem (ex.: uma "
-                    "prateleira alta ou porta)."
-                ),
-            )
-            critical_zone = (zone_x_range[0], zone_y_range[0], zone_x_range[1], zone_y_range[1])
+            # Zone detection is opt-in (spec "Detecção opcional de zona
+            # crítica"): the x/y sliders and the preview only appear when the
+            # checkbox is on, and ``zone`` is only passed to ``analyze`` in
+            # that case (``None`` otherwise ⇒ no zone events generated).
+            analyze_zone = st.checkbox("Analisar zona de risco", value=False)
+            critical_zone = None
+            if analyze_zone:
+                zone_x_range = st.slider(
+                    "Área de risco no vídeo — de que ponto até que ponto, na horizontal",
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=(VIDEO_DEFAULT_ZONE[0], VIDEO_DEFAULT_ZONE[2]),
+                    step=0.05,
+                    help=(
+                        "Marca uma faixa vertical do quadro do vídeo (de 0 = borda "
+                        "esquerda até 1 = borda direita) como área de risco: se a "
+                        "pessoa entrar nela, gera um alerta imediato. Exemplos: "
+                        "**(0.0, 1.0)** cobre a largura toda do quadro · **(0.7, "
+                        "1.0)** cobre só a faixa mais à direita (ex.: perto de uma "
+                        "escada ou equipamento posicionado à direita na imagem)."
+                    ),
+                )
+                zone_y_range = st.slider(
+                    "Área de risco no vídeo — de que ponto até que ponto, na vertical",
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=(VIDEO_DEFAULT_ZONE[1], VIDEO_DEFAULT_ZONE[3]),
+                    step=0.05,
+                    help=(
+                        "Marca uma faixa horizontal do quadro do vídeo (de 0 = topo "
+                        "até 1 = base) como área de risco, combinada com a faixa "
+                        "horizontal acima para formar um retângulo. Exemplos: "
+                        "**(0.0, 1.0)** cobre a altura toda do quadro · **(0.0, "
+                        "0.3)** cobre só a parte de cima da imagem (ex.: uma "
+                        "prateleira alta ou porta)."
+                    ),
+                )
+                critical_zone = (zone_x_range[0], zone_y_range[0], zone_x_range[1], zone_y_range[1])
+
+                # Preview: draw the zone rectangle on the first frame so the
+                # user sees where it lands before processing (spec "Prévia da
+                # zona sobre o frame ao ativar"). ``draw_zone_on_frame`` maps
+                # x_max/y_max=1.0 to width/height, i.e. one pixel past the last
+                # index; clamp the bottom-right to width-1/height-1 here (Task
+                # 3 review note) so a full-extent zone stays visible on-frame
+                # rather than being clipped off. Handled at the call site to
+                # keep video/draw.py (out of scope) untouched.
+                preview_frames = _decode_video_frames_cached(video_file.getvalue(), extension)
+                if preview_frames:
+                    first_frame = preview_frames[0]
+                    ph, pw = first_frame.shape[:2]
+                    preview_zone = (
+                        critical_zone[0],
+                        critical_zone[1],
+                        min(critical_zone[2], (pw - 1) / pw),
+                        min(critical_zone[3], (ph - 1) / ph),
+                    )
+                    st.image(
+                        draw_zone_on_frame(first_frame, preview_zone),
+                        channels="BGR",
+                        caption="Prévia da zona de risco sobre o primeiro frame do vídeo.",
+                    )
 
             if st.button("Processar vídeo", key="video_process_button"):
                 if not frame_series:
@@ -400,16 +468,81 @@ with tab_video:
                         frame_height=frame_height,
                     )
 
+                    events = video_result["events"]
+                    summary = video_result["summary"]
+
                     st.subheader("Relatório de desvios do vídeo")
-                    deviation_report = video_result["deviation_report"]
-                    if not deviation_report:
+                    if not events:
                         st.info("Nenhum desvio foi encontrado no vídeo processado.")
                     else:
-                        report_df = pd.DataFrame(deviation_report)
-                        report_df["kind"] = report_df["kind"].map(
-                            {"postural": "Anomalia postural", "zona_critica": "Zona crítica"}
-                        )
-                        st.dataframe(report_df, use_container_width=True)
+                        # Summary: event count + most-affected joint. The
+                        # affected-joint line is only shown when there are
+                        # postural events (velocity/zone events aren't tied to
+                        # a joint, so ``most_affected_label`` is then None).
+                        if summary["most_affected_label"]:
+                            st.markdown(
+                                f"**{summary['total_events']} evento(s)** irregular(es) "
+                                f"detectado(s). Articulação mais afetada: "
+                                f"**{summary['most_affected_label']}**."
+                            )
+                        else:
+                            st.markdown(
+                                f"**{summary['total_events']} evento(s)** irregular(es) "
+                                "detectado(s)."
+                            )
+
+                        # Decode the frames once (cached, cheap — no YOLO) to
+                        # draw each event's worst frame. frame_index_pior
+                        # indexes both frame_series and this frames list.
+                        report_frames = _decode_video_frames_cached(video_file.getvalue(), extension)
+
+                        for event in events:
+                            idx = event["frame_index_pior"]
+                            interval = f"{event['t_inicio']:.1f}s a {event['t_fim']:.1f}s"
+
+                            if 0 <= idx < len(report_frames):
+                                frame = report_frames[idx]
+                                keypoints = frame_series[idx].get("keypoints_xy")
+
+                                if event["tipo"] == "postura":
+                                    caption = (
+                                        f"{joint_label(event['articulacao'])} irregular "
+                                        f"— {interval}"
+                                    )
+                                    annotated = (
+                                        draw_pose_on_frame(
+                                            frame, keypoints, highlight_joint=event["articulacao"]
+                                        )
+                                        if keypoints is not None
+                                        else frame
+                                    )
+                                elif event["tipo"] == "velocidade":
+                                    caption = f"Movimento brusco (corpo todo) — {interval}"
+                                    # No single joint to highlight for a global
+                                    # velocity event: draw the whole skeleton.
+                                    annotated = (
+                                        draw_pose_on_frame(frame, keypoints)
+                                        if keypoints is not None
+                                        else frame
+                                    )
+                                else:  # zona_critica
+                                    caption = f"Pessoa na zona de risco — {interval}"
+                                    ph, pw = frame.shape[:2]
+                                    zone_draw = (
+                                        critical_zone[0],
+                                        critical_zone[1],
+                                        min(critical_zone[2], (pw - 1) / pw),
+                                        min(critical_zone[3], (ph - 1) / ph),
+                                    )
+                                    annotated = draw_zone_on_frame(frame, zone_draw)
+
+                                st.image(annotated, channels="BGR", caption=caption)
+                            else:
+                                # Defensive: no decoded frame for this index
+                                # (shouldn't happen — same source video).
+                                st.warning(
+                                    f"{joint_label(event['articulacao'])} irregular — {interval}"
+                                )
 
                     if video_result["alerts"]:
                         st.subheader("Alertas gerados (feed compartilhado)")

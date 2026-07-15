@@ -24,11 +24,11 @@
 
 ## 4. UI da aba Vídeo (`app.py`)
 
-- [ ] 4.1 Substituir a renderização atual (lista/`st.dataframe` de texto) pelo relatório visual: resumo no topo (nº de eventos + articulação mais afetada) e, por evento, `st.image(draw_pose_on_frame(frame_do_evento, keypoints, highlight=articulacao))` + legenda simples
-- [ ] 4.2 Sensibilidade: manter o slider e adicionar `st.caption` dinâmico com a estimativa de "% do vídeo marcado como irregular" no valor atual (de 2.6)
-- [ ] 4.3 Zona de risco: `st.checkbox` desativado por padrão; quando marcado, mostrar os sliders x/y e a prévia `st.image(draw_zone_on_frame(primeiro_frame, zona_atual))`; passar `zone=None` quando desmarcado
-- [ ] 4.4 Garantir acesso ao frame-imagem do índice-pior de cada evento na hora de renderizar, reaproveitando o cache de extração de pose existente (guardar os frames decodificados ou re-decodificar sob demanda dos bytes já cacheados), sem reprocessar YOLO
-- [ ] 4.5 Preservar: cache de extração de pose, gate por botão "Processar vídeo", e não tocar nas outras 3 abas
+- [x] 4.1 Substituir a renderização atual (lista/`st.dataframe` de texto) pelo relatório visual: resumo no topo (nº de eventos + articulação mais afetada) e, por evento, `st.image(draw_pose_on_frame(frame_do_evento, keypoints, highlight=articulacao))` + legenda simples
+- [x] 4.2 Sensibilidade: manter o slider e adicionar `st.caption` dinâmico com a estimativa de "% do vídeo marcado como irregular" no valor atual (de 2.6)
+- [x] 4.3 Zona de risco: `st.checkbox` desativado por padrão; quando marcado, mostrar os sliders x/y e a prévia `st.image(draw_zone_on_frame(primeiro_frame, zona_atual))`; passar `zone=None` quando desmarcado
+- [x] 4.4 Garantir acesso ao frame-imagem do índice-pior de cada evento na hora de renderizar, reaproveitando o cache de extração de pose existente (guardar os frames decodificados ou re-decodificar sob demanda dos bytes já cacheados), sem reprocessar YOLO
+- [x] 4.5 Preservar: cache de extração de pose, gate por botão "Processar vídeo", e não tocar nas outras 3 abas
 
 ## 5. Verificação e documentação
 
