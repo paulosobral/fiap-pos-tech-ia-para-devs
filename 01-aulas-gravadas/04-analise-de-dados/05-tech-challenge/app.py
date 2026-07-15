@@ -500,15 +500,24 @@ with tab_video:
                             idx = event["frame_index_pior"]
                             interval = f"{event['t_inicio']:.1f}s a {event['t_fim']:.1f}s"
 
+                            # Caption depends on the event type, not on assuming
+                            # a joint — a velocidade/zona_critica event has no
+                            # articulação, so labelling it via joint_label would
+                            # be wrong. Computed once here so the frame-render
+                            # branch and the defensive fallback below stay
+                            # consistent.
+                            if event["tipo"] == "postura":
+                                caption = f"{joint_label(event['articulacao'])} irregular — {interval}"
+                            elif event["tipo"] == "velocidade":
+                                caption = f"Movimento brusco (corpo todo) — {interval}"
+                            else:  # zona_critica
+                                caption = f"Pessoa na zona de risco — {interval}"
+
                             if 0 <= idx < len(report_frames):
                                 frame = report_frames[idx]
                                 keypoints = frame_series[idx].get("keypoints_xy")
 
                                 if event["tipo"] == "postura":
-                                    caption = (
-                                        f"{joint_label(event['articulacao'])} irregular "
-                                        f"— {interval}"
-                                    )
                                     annotated = (
                                         draw_pose_on_frame(
                                             frame, keypoints, highlight_joint=event["articulacao"]
@@ -517,7 +526,6 @@ with tab_video:
                                         else frame
                                     )
                                 elif event["tipo"] == "velocidade":
-                                    caption = f"Movimento brusco (corpo todo) — {interval}"
                                     # No single joint to highlight for a global
                                     # velocity event: draw the whole skeleton.
                                     annotated = (
@@ -526,7 +534,6 @@ with tab_video:
                                         else frame
                                     )
                                 else:  # zona_critica
-                                    caption = f"Pessoa na zona de risco — {interval}"
                                     ph, pw = frame.shape[:2]
                                     zone_draw = (
                                         critical_zone[0],
@@ -540,9 +547,7 @@ with tab_video:
                             else:
                                 # Defensive: no decoded frame for this index
                                 # (shouldn't happen — same source video).
-                                st.warning(
-                                    f"{joint_label(event['articulacao'])} irregular — {interval}"
-                                )
+                                st.warning(caption)
 
                     if video_result["alerts"]:
                         st.subheader("Alertas gerados (feed compartilhado)")

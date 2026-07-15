@@ -81,8 +81,6 @@ ZONE_CRITICAL_CLASSES = {0}
 # video's framing of the critical area.
 DEFAULT_ZONE: Tuple[float, float, float, float] = (0.7, 0.0, 1.0, 1.0)
 
-_CLASS_LABELS = {0: "person"}
-
 # Human-readable labels for the internal joint keys (from video.pose's
 # ``JOINTS`` / ``NECK_JOINT``), used in plain-language alert descriptions
 # and the UI. Kept here (not imported from video.pose) so the analysis /
