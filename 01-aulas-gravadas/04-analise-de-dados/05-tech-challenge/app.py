@@ -55,7 +55,7 @@ from video.analysis import FALLBACK_SENSITIVITY_THRESHOLD
 from video.analysis import analyze as analyze_video
 from video.analysis import (
     estimate_flagged_fraction,
-    joint_label,
+    group_events_for_display,
     suggest_sensitivity_threshold,
 )
 from video.draw import draw_pose_on_frame, draw_zone_on_frame
@@ -496,58 +496,70 @@ with tab_video:
                         # indexes both frame_series and this frames list.
                         report_frames = _decode_video_frames_cached(video_file.getvalue(), extension)
 
-                        for event in events:
-                            idx = event["frame_index_pior"]
-                            interval = f"{event['t_inicio']:.1f}s a {event['t_fim']:.1f}s"
+                        # Group events by joint/type into collapsible sections
+                        # with a top-N gallery each (change
+                        # galeria-eventos-video-por-articulacao). The grouping/
+                        # sorting/top-N logic lives in the tested analysis
+                        # helper; here we only render. Sections come ordered
+                        # most-affected first; each expander is closed by
+                        # default so the page opens light even with hundreds of
+                        # events.
+                        columns_per_row = 3
+                        for secao in group_events_for_display(events, top_n=10):
+                            eventos = secao["eventos"]
+                            with st.expander(
+                                f"{secao['label']} — {secao['total']} evento(s)", expanded=False
+                            ):
+                                if secao["total"] > len(eventos):
+                                    st.caption(f"Mostrando {len(eventos)} de {secao['total']}")
 
-                            # Caption depends on the event type, not on assuming
-                            # a joint — a velocidade/zona_critica event has no
-                            # articulação, so labelling it via joint_label would
-                            # be wrong. Computed once here so the frame-render
-                            # branch and the defensive fallback below stay
-                            # consistent.
-                            if event["tipo"] == "postura":
-                                caption = f"{joint_label(event['articulacao'])} irregular — {interval}"
-                            elif event["tipo"] == "velocidade":
-                                caption = f"Movimento brusco (corpo todo) — {interval}"
-                            else:  # zona_critica
-                                caption = f"Pessoa na zona de risco — {interval}"
-
-                            if 0 <= idx < len(report_frames):
-                                frame = report_frames[idx]
-                                keypoints = frame_series[idx].get("keypoints_xy")
-
-                                if event["tipo"] == "postura":
-                                    annotated = (
-                                        draw_pose_on_frame(
-                                            frame, keypoints, highlight_joint=event["articulacao"]
+                                for row_start in range(0, len(eventos), columns_per_row):
+                                    row_events = eventos[row_start : row_start + columns_per_row]
+                                    cols = st.columns(columns_per_row)
+                                    for col, event in zip(cols, row_events):
+                                        idx = event["frame_index_pior"]
+                                        interval = (
+                                            f"{event['t_inicio']:.1f}s a {event['t_fim']:.1f}s"
                                         )
-                                        if keypoints is not None
-                                        else frame
-                                    )
-                                elif event["tipo"] == "velocidade":
-                                    # No single joint to highlight for a global
-                                    # velocity event: draw the whole skeleton.
-                                    annotated = (
-                                        draw_pose_on_frame(frame, keypoints)
-                                        if keypoints is not None
-                                        else frame
-                                    )
-                                else:  # zona_critica
-                                    ph, pw = frame.shape[:2]
-                                    zone_draw = (
-                                        critical_zone[0],
-                                        critical_zone[1],
-                                        min(critical_zone[2], (pw - 1) / pw),
-                                        min(critical_zone[3], (ph - 1) / ph),
-                                    )
-                                    annotated = draw_zone_on_frame(frame, zone_draw)
 
-                                st.image(annotated, channels="BGR", caption=caption)
-                            else:
-                                # Defensive: no decoded frame for this index
-                                # (shouldn't happen — same source video).
-                                st.warning(caption)
+                                        if 0 <= idx < len(report_frames):
+                                            frame = report_frames[idx]
+                                            keypoints = frame_series[idx].get("keypoints_xy")
+
+                                            if event["tipo"] == "postura":
+                                                annotated = (
+                                                    draw_pose_on_frame(
+                                                        frame,
+                                                        keypoints,
+                                                        highlight_joint=event["articulacao"],
+                                                    )
+                                                    if keypoints is not None
+                                                    else frame
+                                                )
+                                            elif event["tipo"] == "velocidade":
+                                                # No single joint to highlight for
+                                                # a global velocity event: draw the
+                                                # whole skeleton.
+                                                annotated = (
+                                                    draw_pose_on_frame(frame, keypoints)
+                                                    if keypoints is not None
+                                                    else frame
+                                                )
+                                            else:  # zona_critica
+                                                ph, pw = frame.shape[:2]
+                                                zone_draw = (
+                                                    critical_zone[0],
+                                                    critical_zone[1],
+                                                    min(critical_zone[2], (pw - 1) / pw),
+                                                    min(critical_zone[3], (ph - 1) / ph),
+                                                )
+                                                annotated = draw_zone_on_frame(frame, zone_draw)
+
+                                            col.image(annotated, channels="BGR", caption=interval)
+                                        else:
+                                            # Defensive: no decoded frame for this
+                                            # index (shouldn't happen — same video).
+                                            col.warning(interval)
 
                     if video_result["alerts"]:
                         st.subheader("Alertas gerados (feed compartilhado)")

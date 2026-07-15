@@ -30,10 +30,13 @@ from video.analysis import (
     DEFAULT_ZONE,
     FALLBACK_SENSITIVITY_THRESHOLD,
     JOINT_LABELS,
+    VELOCITY_SECTION_LABEL,
+    ZONE_SECTION_LABEL,
     _group_consecutive,
     analyze,
     box_intersects_zone,
     estimate_flagged_fraction,
+    group_events_for_display,
     joint_label,
     suggest_sensitivity_threshold,
 )
@@ -436,3 +439,137 @@ def test_suggest_sensitivity_threshold_ignores_frames_without_pose():
 
     suggestion = suggest_sensitivity_threshold(frames, window=6)  # must not raise
     assert 0.5 <= suggestion <= 5.0
+
+
+# ── group_events_for_display (grouping for the gallery UI) ────────────
+
+
+def _event(tipo, articulacao=None, t_inicio=0.0, z_pior=0.0, valor_pior=0.0):
+    """Minimal event dict in the shape analyze() produces."""
+    return {
+        "tipo": tipo,
+        "articulacao": articulacao,
+        "t_inicio": t_inicio,
+        "t_fim": t_inicio + 1.0,
+        "frame_index_pior": int(t_inicio),
+        "valor_pior": valor_pior,
+        "z_pior": z_pior,
+    }
+
+
+def test_group_events_for_display_empty_input_returns_empty_list():
+    assert group_events_for_display([]) == []
+
+
+def test_group_events_for_display_groups_postura_by_joint():
+    events = [
+        _event("postura", "joelho_direito", t_inicio=0.0, z_pior=2.0),
+        _event("postura", "joelho_direito", t_inicio=5.0, z_pior=3.0),
+        _event("postura", "cotovelo_esquerdo", t_inicio=1.0, z_pior=4.0),
+    ]
+
+    sections = group_events_for_display(events)
+
+    by_chave = {s["chave"]: s for s in sections}
+    assert set(by_chave) == {"joelho_direito", "cotovelo_esquerdo"}
+    assert by_chave["joelho_direito"]["total"] == 2
+    assert by_chave["joelho_direito"]["label"] == "Joelho direito"
+    assert by_chave["cotovelo_esquerdo"]["total"] == 1
+
+
+def test_group_events_for_display_velocity_and_zone_each_one_section():
+    events = [
+        _event("velocidade", None, t_inicio=0.0, z_pior=2.0),
+        _event("velocidade", None, t_inicio=3.0, z_pior=1.0),
+        _event("zona_critica", None, t_inicio=1.0, z_pior=float("nan"), valor_pior=50.0),
+    ]
+
+    sections = group_events_for_display(events)
+    by_chave = {s["chave"]: s for s in sections}
+
+    assert by_chave["velocidade"]["total"] == 2
+    assert by_chave["velocidade"]["label"] == VELOCITY_SECTION_LABEL
+    assert by_chave["zona_critica"]["total"] == 1
+    assert by_chave["zona_critica"]["label"] == ZONE_SECTION_LABEL
+
+
+def test_group_events_for_display_orders_events_by_severity_within_section():
+    events = [
+        _event("postura", "joelho_direito", t_inicio=0.0, z_pior=1.0),
+        _event("postura", "joelho_direito", t_inicio=5.0, z_pior=-4.0),
+        _event("postura", "joelho_direito", t_inicio=2.0, z_pior=2.5),
+    ]
+
+    section = group_events_for_display(events)[0]
+
+    zs = [abs(e["z_pior"]) for e in section["eventos"]]
+    assert zs == sorted(zs, reverse=True)
+    assert zs[0] == 4.0  # most severe first (uses abs)
+
+
+def test_group_events_for_display_severity_tie_broken_by_t_inicio():
+    events = [
+        _event("postura", "joelho_direito", t_inicio=9.0, z_pior=2.0),
+        _event("postura", "joelho_direito", t_inicio=1.0, z_pior=2.0),
+    ]
+
+    section = group_events_for_display(events)[0]
+
+    assert [e["t_inicio"] for e in section["eventos"]] == [1.0, 9.0]
+
+
+def test_group_events_for_display_truncates_to_top_n_preserving_total():
+    events = [
+        _event("postura", "joelho_direito", t_inicio=float(i), z_pior=float(i))
+        for i in range(15)
+    ]
+
+    section = group_events_for_display(events, top_n=10)[0]
+
+    assert section["total"] == 15
+    assert len(section["eventos"]) == 10
+    # kept the 10 most severe (highest z), i.e. i = 14..5
+    assert [e["z_pior"] for e in section["eventos"]] == [float(i) for i in range(14, 4, -1)]
+
+
+def test_group_events_for_display_orders_sections_by_count_desc():
+    events = [
+        _event("postura", "cotovelo_esquerdo", t_inicio=0.0, z_pior=1.0),
+        _event("postura", "joelho_direito", t_inicio=1.0, z_pior=1.0),
+        _event("postura", "joelho_direito", t_inicio=2.0, z_pior=1.0),
+        _event("postura", "joelho_direito", t_inicio=3.0, z_pior=1.0),
+    ]
+
+    sections = group_events_for_display(events)
+
+    assert [s["chave"] for s in sections] == ["joelho_direito", "cotovelo_esquerdo"]
+
+
+def test_group_events_for_display_velocity_zone_sections_last_on_tie():
+    # Each section has one event: tie on count must place joints first (in
+    # JOINT_LABELS order), then velocity/zone last.
+    events = [
+        _event("velocidade", None, t_inicio=0.0, z_pior=1.0),
+        _event("zona_critica", None, t_inicio=1.0, z_pior=float("nan"), valor_pior=5.0),
+        _event("postura", "joelho_direito", t_inicio=2.0, z_pior=1.0),
+        _event("postura", "cotovelo_direito", t_inicio=3.0, z_pior=1.0),
+    ]
+
+    chaves = [s["chave"] for s in group_events_for_display(events)]
+
+    # joints in canonical JOINT_LABELS order first, then velocidade/zona
+    assert chaves.index("cotovelo_direito") < chaves.index("joelho_direito")
+    assert chaves.index("joelho_direito") < chaves.index("velocidade")
+    assert chaves.index("joelho_direito") < chaves.index("zona_critica")
+
+
+def test_group_events_for_display_zone_section_with_nan_z_orders_by_valor_pior():
+    events = [
+        _event("zona_critica", None, t_inicio=0.0, z_pior=float("nan"), valor_pior=10.0),
+        _event("zona_critica", None, t_inicio=1.0, z_pior=float("nan"), valor_pior=99.0),
+        _event("zona_critica", None, t_inicio=2.0, z_pior=float("nan"), valor_pior=42.0),
+    ]
+
+    section = group_events_for_display(events)[0]  # must not crash on NaN
+
+    assert [e["valor_pior"] for e in section["eventos"]] == [99.0, 42.0, 10.0]

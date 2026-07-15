@@ -28,7 +28,7 @@ Sinais Vitais:  CSV → validação/parse → rolling z-score (linha a linha)
 Vídeo:          vídeo → YOLOv8-pose (frame a frame) → séries de ângulo por articulação + velocidade global → rolling z-score por série
                                                      → agrupamento de frames irregulares em eventos (1 Alert por evento)
                                                      → bounding box da pessoa → regra de zona crítica (opcional) → eventos
-                                                                                        → relatório visual (resumo + esqueletos anotados)
+                                                                                        → relatório visual (resumo + seções colapsáveis por articulação, galeria top-N de esqueletos anotados)
 Áudio:          áudio → AWS Transcribe (texto + timestamps) → AWS Comprehend (sentimento/entidades)
                                                              → busca de termos críticos
                                                              → taxa de fala / duração de pausa → rolling z-score
@@ -190,19 +190,31 @@ frames com pose detectada: 47 / 60 (13 sem dados de pose)
 eventos irregulares detectados: 10
 articulação mais afetada: Joelho direito
 alertas gerados: 10        (1 por evento, não por frame)
-imagens do relatório visual: 10 (um esqueleto anotado por evento)
+seções colapsáveis no relatório: 6 (Joelho direito 3, Joelho esquerdo 2, Quadril esquerdo 2,
+                                     Cotovelo esquerdo 1, Pescoço 1, Movimento brusco 1)
+imagens do relatório visual: 10 (um esqueleto anotado por evento, em galeria por seção)
 % do vídeo estimado como irregular no nível atual: ~12%
 ```
 
-O relatório visual apresenta, para cada um dos 10 eventos, a imagem do frame mais representativo
-(o de maior |z-score| do grupo) com o esqueleto COCO desenhado e a articulação afetada destacada
-em vermelho; eventos de velocidade destacam o corpo todo e, quando a zona crítica é ligada, os
-eventos de zona desenham o retângulo configurado. Esse é o comportamento novo (redesenho da aba
-Vídeo): o **agrupamento de frames irregulares consecutivos em eventos** substitui o antigo alerta
-por frame (que gerava dezenas de alertas quase idênticos), e a saída visual substitui a antiga
-lista textual de desvios. Evidência de que a pipeline completa (extração de pose multi-articulação
-→ z-score por série → agrupamento em eventos → relatório visual, com zona opcional) funciona de
-ponta a ponta contra o modelo real, e não só contra dados de teste sintéticos.
+O relatório visual agrupa os eventos **por articulação/tipo em seções colapsáveis**
+(`st.expander`, fechadas por padrão), ordenadas da mais afetada (mais eventos) para a menos; nesta
+execução foram 6 seções — a mais afetada, "Joelho direito", com 3 eventos. Dentro de cada seção,
+os **10 eventos mais graves** (maior |z-score|; para zona crítica, maior área de interseção, já
+que `z_pior` é `NaN` por construção) são exibidos numa **galeria em grade de 3 colunas** — cada
+célula com a imagem do frame mais representativo (o de maior |z-score| do grupo), o esqueleto COCO
+desenhado e a articulação afetada destacada em vermelho, e o intervalo de tempo como legenda;
+eventos de velocidade destacam o corpo todo e, quando a zona crítica é ligada, os eventos de zona
+desenham o retângulo configurado. Quando uma seção tem mais eventos que o limite, a UI indica
+"Mostrando N de M". Esse agrupamento (change `galeria-eventos-video-por-articulacao`) substitui a
+lista plana de uma imagem por evento — que num vídeo real chegou a ~500 imagens e travava a
+página — mantendo a saída navegável mesmo com centenas de eventos; a lógica de agrupamento/
+ordenação/top-N vive em `video.analysis.group_events_for_display` (testada), e `app.py` apenas
+renderiza. A contagem de eventos e de alertas não muda (o agrupamento é só de apresentação: 1
+`Alert` por evento). O **agrupamento de frames irregulares consecutivos em eventos** já substituía
+o antigo alerta por frame (que gerava dezenas de alertas quase idênticos). Evidência de que a
+pipeline completa (extração de pose multi-articulação → z-score por série → agrupamento em eventos
+→ relatório visual agrupado por articulação, com zona opcional) funciona de ponta a ponta contra o
+modelo real, e não só contra dados de teste sintéticos.
 
 ### 4.4 Áudio — validação real limitada, honestamente reportada
 

@@ -90,8 +90,14 @@ A aplicação abre em `http://localhost:8501` com 4 abas e uma sidebar de alerta
   no mesmo forward pass. Cada articulação (e a velocidade) passa por rolling z-score; os frames
   irregulares consecutivos são **agrupados em eventos** (um alerta por evento, não por frame),
   cada evento com a articulação afetada e o intervalo de tempo. A saída é um **relatório visual**:
-  um resumo no topo (número de eventos + articulação mais afetada) e, para cada evento, a imagem
-  do frame mais representativo com o esqueleto desenhado e a articulação afetada destacada. Uma
+  um resumo no topo (número de eventos + articulação mais afetada) e, em seguida, os eventos
+  **agrupados por articulação/tipo em seções colapsáveis** (`st.expander`, fechadas por padrão),
+  ordenadas da mais afetada (mais eventos) para a menos. Cada seção mostra os **10 eventos mais
+  graves** daquela articulação numa **galeria em grade** (3 colunas) — cada célula com a imagem do
+  frame mais representativo, esqueleto desenhado e articulação afetada destacada, e o intervalo de
+  tempo como legenda; quando há mais eventos que o limite, exibe "Mostrando N de M". Esse
+  agrupamento mantém a página navegável mesmo em vídeos com centenas de eventos (a lista plana
+  anterior renderizava uma imagem por evento). Uma
   sensibilidade sugerida é calculada automaticamente para o vídeo e pré-popula o slider (ponto de
   partida ajustável), com uma legenda auto-explicativa estimando o "~X% do vídeo" que seria
   marcado como irregular no nível atual. A detecção de zona crítica (pessoa entrando em uma área

@@ -99,6 +99,15 @@ JOINT_LABELS: Dict[str, str] = {
 # is not tied to a single joint (``articulacao is None``).
 VELOCITY_LABEL = "Movimento brusco"
 
+# Section labels for the grouped-by-joint gallery report
+# (``group_events_for_display``). Velocity and zone events are not tied to
+# a joint, so they get their own dedicated sections; these labels match
+# what the Vídeo tab already shows per-event ("Movimento brusco (corpo
+# todo)" / "Pessoa na zona de risco"). Kept next to the helper so the
+# presentation vocabulary lives in one place.
+VELOCITY_SECTION_LABEL = "Movimento brusco (corpo todo)"
+ZONE_SECTION_LABEL = "Zona de risco"
+
 # Fallback sensitivity suggestion when no series has enough valid data to
 # compute one (e.g. no frame in the video has a detected pose) — matches
 # the slider's own hard-coded default in app.py before this change.
@@ -448,6 +457,111 @@ def _summarize(events: List[Dict[str, Any]]) -> Dict[str, Any]:
         "most_affected_joint": most_joint,
         "most_affected_label": joint_label(most_joint),
     }
+
+
+# Sort key of a section's ``chave`` for the "canonical joints first, then
+# velocidade/zona last" section tie-break (design.md D1/D2). Joints keep
+# the ``JOINT_LABELS`` order; the two non-joint sections come after every
+# joint, in a fixed order.
+_SECTION_ORDER: Dict[str, int] = {
+    **{chave: i for i, chave in enumerate(JOINT_LABELS)},
+    "velocidade": len(JOINT_LABELS),
+    "zona_critica": len(JOINT_LABELS) + 1,
+}
+
+
+def _section_severity(event: Dict[str, Any]) -> float:
+    """Severity used to rank events *within* a section (higher = worse).
+
+    Postura/velocidade events rank by ``abs(z_pior)``. Zone events have no
+    z-score (``z_pior`` is ``NaN`` by design — see ``_zone_events``), so
+    they rank by ``valor_pior`` (the box/zone intersection area) instead.
+    A ``NaN`` on either field is treated as ``-inf`` so it never crashes
+    the sort and always sinks to the bottom.
+    """
+    if event["tipo"] == "zona_critica":
+        value = event.get("valor_pior")
+    else:
+        z = event.get("z_pior")
+        value = abs(z) if z is not None else None
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return float("-inf")
+    return float(value)
+
+
+def _section_label(chave: str) -> str:
+    """Presentation label for a section key (joint / velocity / zone)."""
+    if chave == "velocidade":
+        return VELOCITY_SECTION_LABEL
+    if chave == "zona_critica":
+        return ZONE_SECTION_LABEL
+    return joint_label(chave)
+
+
+def group_events_for_display(
+    events: List[Dict[str, Any]], top_n: int = 10
+) -> List[Dict[str, Any]]:
+    """Group events into per-joint / per-type sections for the gallery UI.
+
+    Presentation-only helper for the Vídeo tab's visual report
+    (change ``galeria-eventos-video-por-articulacao``, design.md D1). It
+    does not change detection or the count of alerts — it only reshapes an
+    already-computed event list into navigable, collapsible sections so a
+    video with hundreds of events stays browsable.
+
+    Grouping:
+        - ``tipo == "postura"`` events are grouped by ``articulacao`` (one
+          section per joint, keyed by the joint key).
+        - all ``velocidade`` events go into one section (``chave="velocidade"``).
+        - all ``zona_critica`` events go into one section
+          (``chave="zona_critica"``).
+
+    Within each section, events are sorted by severity descending
+    (``abs(z_pior)`` for postura/velocidade; ``valor_pior`` for zone, whose
+    ``z_pior`` is ``NaN`` — see ``_section_severity``), tie-broken by
+    ``t_inicio`` ascending, then truncated to ``top_n``. ``total`` keeps the
+    count *before* truncation so the UI can show "N de M".
+
+    Sections are ordered by ``total`` descending (most-affected first),
+    tie-broken by the canonical ``JOINT_LABELS`` order with the
+    velocidade/zona sections placed last (see ``_SECTION_ORDER``).
+
+    Args:
+        events: Event dicts as produced by ``analyze`` (each with
+            ``tipo``, ``articulacao``, ``t_inicio``, ``t_fim``,
+            ``frame_index_pior``, ``valor_pior``, ``z_pior``).
+        top_n: Max number of events kept per section.
+
+    Returns:
+        A list of section dicts, ready for display:
+        ``{"chave": str, "label": str, "total": int, "eventos": List[dict]}``.
+        Empty when ``events`` is empty.
+    """
+    grouped: Dict[str, List[Dict[str, Any]]] = {}
+    for event in events:
+        if event["tipo"] == "postura":
+            chave = event["articulacao"]
+        else:
+            chave = event["tipo"]  # "velocidade" or "zona_critica"
+        grouped.setdefault(chave, []).append(event)
+
+    sections: List[Dict[str, Any]] = []
+    for chave, section_events in grouped.items():
+        ordered = sorted(
+            section_events,
+            key=lambda e: (-_section_severity(e), e["t_inicio"]),
+        )
+        sections.append(
+            {
+                "chave": chave,
+                "label": _section_label(chave),
+                "total": len(section_events),
+                "eventos": ordered[:top_n],
+            }
+        )
+
+    sections.sort(key=lambda s: (-s["total"], _SECTION_ORDER.get(s["chave"], len(_SECTION_ORDER))))
+    return sections
 
 
 def analyze(
