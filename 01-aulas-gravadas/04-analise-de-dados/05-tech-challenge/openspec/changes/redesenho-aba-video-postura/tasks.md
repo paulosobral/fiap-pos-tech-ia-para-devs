@@ -18,9 +18,9 @@
 
 ## 3. Desenho do esqueleto (`video/draw.py`, novo)
 
-- [ ] 3.1 Implementar `draw_pose_on_frame(frame_bgr, keypoints_xy, highlight_joint=None)` — desenha conexões e pontos do esqueleto COCO via `cv2`, com a articulação destacada em vermelho quando informada; keypoints faltantes (0,0) não são desenhados
-- [ ] 3.2 Implementar `draw_zone_on_frame(frame_bgr, zone_rel)` — desenha o retângulo da zona (coords relativas → pixels) sobre o frame
-- [ ] 3.3 Testes: desenho não altera o frame original (opera sobre cópia), keypoints faltantes são ignorados, e o highlight afeta só a articulação alvo — usando um frame sintético (`np.zeros`) e keypoints mock, verificando que pixels mudam nas regiões esperadas
+- [x] 3.1 Implementar `draw_pose_on_frame(frame_bgr, keypoints_xy, highlight_joint=None)` — desenha conexões e pontos do esqueleto COCO via `cv2`, com a articulação destacada em vermelho quando informada; keypoints faltantes (0,0) não são desenhados
+- [x] 3.2 Implementar `draw_zone_on_frame(frame_bgr, zone_rel)` — desenha o retângulo da zona (coords relativas → pixels) sobre o frame
+- [x] 3.3 Testes: desenho não altera o frame original (opera sobre cópia), keypoints faltantes são ignorados, e o highlight afeta só a articulação alvo — usando um frame sintético (`np.zeros`) e keypoints mock, verificando que pixels mudam nas regiões esperadas
 
 ## 4. UI da aba Vídeo (`app.py`)
 
