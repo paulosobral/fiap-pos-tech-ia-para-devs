@@ -1,20 +1,27 @@
-"""Tests for video/analysis.py — postural anomaly detection (rolling
-z-score over angle/velocity), zone-critical-object alerting, and the
-combined, timestamp-ordered deviation report.
+"""Tests for video/analysis.py — per-joint postural anomaly detection
+(rolling z-score over each joint-angle series and the global velocity
+series), grouping of consecutive irregular frames into events, one alert
+per event, the event summary (most-affected joint), and the optional
+zone-critical grouping.
 
-Covers scenarios from the video-motion-analysis spec:
-- Requirement: Detecção de anomalia postural com sensibilidade ajustável
-  - Scenario: Frame com desvio postural acima do threshold
-  - Scenario: Ajuste de sensibilidade pelo usuário
-- Requirement: Detecção de objeto ou área crítica
-  - Scenario: Objeto detectado em área crítica configurada
-- Requirement: Relatório automático de desvios do vídeo
-  - Scenario: Vídeo processado com anomalias detectadas
-  - Scenario: Vídeo processado sem anomalias detectadas
+Covers scenarios from the redesenho-aba-video-postura
+video-motion-analysis spec:
+- Requirement: Detecção de anomalia postural por articulação
+  - Scenario: Frame com desvio postural acima do threshold em alguma articulação
+  - Scenario: Feedback do efeito da sensibilidade escolhida
+- Requirement: Agrupamento de frames irregulares consecutivos em eventos
+  - Scenario: Sequência de frames irregulares da mesma articulação vira um evento
+  - Scenario: Feed unificado recebe um alerta por evento, não por frame
+- Requirement: Detecção opcional de zona crítica
+  - Scenario: Zona crítica desativada por padrão
+  - Scenario: Detecção de zona agrupada em evento
+- Requirement: Relatório visual de desvios do vídeo
+  - Scenario: resumo com contagem de eventos e articulação mais afetada
 
 No real YOLO model is involved — tests operate directly on the
 ``frame_series`` structure produced by ``video.pose.extract_frame_series``
-(built here by hand) and on plain bounding boxes.
+(built here by hand: ``angles`` dict, ``velocity``, ``keypoints_xy``,
+``detections``) and on plain bounding boxes.
 """
 import pytest
 import streamlit as st
@@ -22,8 +29,12 @@ import streamlit as st
 from video.analysis import (
     DEFAULT_ZONE,
     FALLBACK_SENSITIVITY_THRESHOLD,
+    JOINT_LABELS,
+    _group_consecutive,
     analyze,
     box_intersects_zone,
+    estimate_flagged_fraction,
+    joint_label,
     suggest_sensitivity_threshold,
 )
 
@@ -35,246 +46,350 @@ def clean_session_state():
     st.session_state.clear()
 
 
-def _frame(timestamp_s, angle=None, velocity=None, has_pose=True, detections=None):
+def _frame(timestamp_s, angles=None, velocity=None, has_pose=True, detections=None, keypoints_xy=None):
+    """Build a frame in the new (Task 1) shape."""
     return {
         "timestamp_s": timestamp_s,
         "has_pose": has_pose,
-        "angle": angle,
+        "angles": angles if angles is not None else {},
         "velocity": velocity,
+        "keypoints_xy": keypoints_xy,
         "detections": detections or [],
     }
 
 
-# ── box_intersects_zone ───────────────────────────────────────────────
+# ── box_intersects_zone (unchanged behaviour) ─────────────────────────
 
 
 def test_box_intersects_zone_true_when_boxes_overlap():
-    # zone occupies the right half of the frame (relative coords)
     zone = (0.5, 0.0, 1.0, 1.0)
-    box_xyxy = [80, 10, 100, 20]  # within right half of a 100x100 frame
-
+    box_xyxy = [80, 10, 100, 20]
     assert box_intersects_zone(box_xyxy, zone, frame_width=100, frame_height=100) is True
 
 
 def test_box_intersects_zone_false_when_boxes_do_not_overlap():
     zone = (0.5, 0.0, 1.0, 1.0)
-    box_xyxy = [0, 10, 10, 20]  # entirely in the left half
-
+    box_xyxy = [0, 10, 10, 20]
     assert box_intersects_zone(box_xyxy, zone, frame_width=100, frame_height=100) is False
 
 
 def test_box_intersects_zone_true_for_partial_overlap_at_boundary():
     zone = (0.5, 0.0, 1.0, 1.0)
-    box_xyxy = [40, 10, 60, 20]  # straddles the zone boundary at x=50
-
+    box_xyxy = [40, 10, 60, 20]
     assert box_intersects_zone(box_xyxy, zone, frame_width=100, frame_height=100) is True
 
 
-# ── analyze(): postural anomaly (angle/velocity z-score) ─────────────
+def test_default_zone_matches_documented_right_hand_fifth_of_frame():
+    assert DEFAULT_ZONE == (0.7, 0.0, 1.0, 1.0)
 
 
-def test_analyze_flags_postural_anomaly_above_threshold_and_generates_alert():
-    # Stable angle series with a single clear spike.
-    frames = [_frame(t, angle=90.0, velocity=1.0) for t in range(8)]
-    frames.append(_frame(8.0, angle=10.0, velocity=1.0))  # sudden angle change
-    frames += [_frame(t, angle=90.0, velocity=1.0) for t in range(9, 13)]
-
-    result = analyze(frames, threshold=2.0, window=6)
-
-    assert result["angle_anomalies"].iloc[8] in (True, 1)
-    postural_alerts = [a for a in result["alerts"] if "postural" in a.description.lower() or "ângulo" in a.description.lower() or "velocidade" in a.description.lower()]
-    assert len(postural_alerts) >= 1
+# ── _group_consecutive: grouping + gap tolerance ──────────────────────
 
 
-def test_analyze_lower_threshold_detects_more_anomalies_than_higher_threshold():
-    frames = [_frame(t, angle=90.0, velocity=float(t % 3)) for t in range(20)]
-    frames[10] = _frame(10.0, angle=140.0, velocity=6.0)  # moderate deviation
-
-    strict = analyze(frames, threshold=5.0, window=6)
-    sensitive = analyze(frames, threshold=0.5, window=6)
-
-    strict_count = int(strict["angle_anomalies"].sum() + strict["velocity_anomalies"].sum())
-    sensitive_count = int(sensitive["angle_anomalies"].sum() + sensitive["velocity_anomalies"].sum())
-    assert sensitive_count >= strict_count
+def test_group_consecutive_merges_strictly_consecutive_indices():
+    assert _group_consecutive([3, 4, 5]) == [[3, 4, 5]]
 
 
-def test_analyze_handles_frames_without_pose_data_without_raising():
-    frames = [_frame(t, angle=90.0, velocity=1.0) for t in range(5)]
-    frames.append(_frame(5.0, has_pose=False))
-    frames += [_frame(t, angle=90.0, velocity=1.0) for t in range(6, 10)]
-
-    result = analyze(frames, threshold=3.0, window=4)
-
-    assert len(result["angle_anomalies"]) == len(frames)
-    assert result["angle_anomalies"].iloc[5] in (False, 0)  # no data -> not anomalous
+def test_group_consecutive_merges_across_small_gap():
+    # gap tolerance 1: a single missing frame (index 4) between 3 and 5
+    # must not fragment the event.
+    assert _group_consecutive([3, 5, 6]) == [[3, 5, 6]]
 
 
-# ── analyze(): zone-critical-object alert ─────────────────────────────
+def test_group_consecutive_splits_on_large_gap():
+    # A gap larger than the tolerance starts a new event.
+    assert _group_consecutive([3, 4, 20, 21]) == [[3, 4], [20, 21]]
 
 
-def test_analyze_generates_immediate_alert_when_critical_object_enters_zone():
-    frames = [
-        _frame(
-            0.0,
-            angle=90.0,
-            velocity=1.0,
-            detections=[{"cls": 0, "label": "person", "xyxy": [80, 10, 100, 20]}],
-        )
-    ]
+def test_group_consecutive_empty():
+    assert _group_consecutive([]) == []
+
+
+# ── per-joint detection ───────────────────────────────────────────────
+
+
+def _spike_frames(joint, baseline, spike, n=16, spike_at=(10, 11, 12), other=None, velocity=1.0):
+    """Frames where ``joint`` sits at ``baseline`` except ``spike_at`` at ``spike``.
+
+    Optionally carries a second constant joint (``other``) that must never
+    be flagged (constant series -> zero variance -> no z-score).
+    """
+    frames = []
+    for t in range(n):
+        angles = {joint: spike if t in spike_at else baseline}
+        if other is not None:
+            angles[other] = 90.0
+        frames.append(_frame(float(t), angles=angles, velocity=velocity))
+    return frames
+
+
+def test_analyze_flags_only_the_joint_with_the_spike():
+    frames = _spike_frames("joelho_direito", baseline=170.0, spike=90.0, other="cotovelo_direito")
+
+    result = analyze(frames, threshold=1.3, window=6)
+
+    postura_joints = {e["articulacao"] for e in result["events"] if e["tipo"] == "postura"}
+    assert "joelho_direito" in postura_joints
+    assert "cotovelo_direito" not in postura_joints  # constant -> never flagged
+
+
+def test_analyze_event_has_expected_schema_and_worst_frame_value():
+    frames = _spike_frames("joelho_direito", baseline=170.0, spike=90.0)
+
+    result = analyze(frames, threshold=1.3, window=6)
+
+    postura = [e for e in result["events"] if e["tipo"] == "postura"]
+    assert postura, "expected at least one postura event"
+    event = postura[0]
+    assert set(event.keys()) == {
+        "tipo",
+        "articulacao",
+        "t_inicio",
+        "t_fim",
+        "frame_index_pior",
+        "valor_pior",
+        "z_pior",
+    }
+    assert event["articulacao"] == "joelho_direito"
+    # The worst frame (max |z|) is the first frame of the drop (index 10),
+    # whose value is the spike value.
+    assert event["frame_index_pior"] == 10
+    assert event["valor_pior"] == pytest.approx(90.0)
+    assert abs(event["z_pior"]) > 1.3
+
+
+# ── event grouping ────────────────────────────────────────────────────
+
+
+def test_consecutive_anomalies_group_into_one_event_with_correct_worst_frame():
+    # Velocity series: flat 1.0, a run of 10.0, then flat again. Only the
+    # first two frames of the run exceed threshold=1.3; they are one event
+    # and the worst frame (max |z|) is the first (index 10).
+    frames = [_frame(float(t), velocity=1.0) for t in range(10)]
+    frames += [_frame(float(t), velocity=10.0) for t in range(10, 13)]
+    frames += [_frame(float(t), velocity=1.0) for t in range(13, 16)]
+
+    result = analyze(frames, threshold=1.3, window=6)
+
+    vel_events = [e for e in result["events"] if e["tipo"] == "velocidade"]
+    assert len(vel_events) == 1
+    assert vel_events[0]["frame_index_pior"] == 10
+    assert vel_events[0]["t_inicio"] == 10.0
+
+
+def test_one_alert_per_event():
+    frames = _spike_frames("joelho_direito", baseline=170.0, spike=90.0)
+
+    result = analyze(frames, threshold=1.3, window=6)
+
+    assert len(result["events"]) >= 1
+    assert len(result["alerts"]) == len(result["events"])
+
+
+def test_alert_description_is_human_readable_with_joint_and_interval():
+    frames = _spike_frames("joelho_direito", baseline=170.0, spike=90.0)
+
+    result = analyze(frames, threshold=1.3, window=6)
+
+    descriptions = " ".join(a.description for a in result["alerts"])
+    assert "Joelho direito" in descriptions
+    assert "entre" in descriptions and "s" in descriptions
+    # origin is always the Vídeo tab
+    assert all(a.origin == "Vídeo" for a in result["alerts"])
+
+
+def test_events_sorted_by_start_time():
+    # A zone event early and a postural event late; events must come out
+    # ordered by t_inicio.
+    frames = [_frame(float(t), angles={"joelho_direito": 170.0}, velocity=1.0) for t in range(10)]
+    frames += [_frame(float(t), angles={"joelho_direito": 90.0}, velocity=1.0) for t in range(10, 13)]
+    frames += [_frame(float(t), angles={"joelho_direito": 170.0}, velocity=1.0) for t in range(13, 16)]
+    # zone intersection at the very first frames
+    for t in (0, 1):
+        frames[t]["detections"] = [{"cls": 0, "label": "person", "xyxy": [80, 10, 100, 20]}]
 
     zone = (0.5, 0.0, 1.0, 1.0)
+    result = analyze(frames, threshold=1.3, window=6, zone=zone, frame_width=100, frame_height=100)
+
+    starts = [e["t_inicio"] for e in result["events"]]
+    assert starts == sorted(starts)
+    tipos = {e["tipo"] for e in result["events"]}
+    assert "zona_critica" in tipos
+    assert "postura" in tipos
+
+
+# ── summary ───────────────────────────────────────────────────────────
+
+
+def _two_joint_frames():
+    """joelho_direito has two separate events; cotovelo_direito has one."""
+    joelho = [170.0] * 40
+    cotovelo = [90.0] * 40
+    for i in (10, 11, 12, 24, 25, 26):
+        joelho[i] = 90.0
+    for i in (10, 11, 12):
+        cotovelo[i] = 40.0
+    return [
+        _frame(
+            float(t),
+            angles={"joelho_direito": joelho[t], "cotovelo_direito": cotovelo[t]},
+            velocity=1.0,
+        )
+        for t in range(40)
+    ]
+
+
+def test_summary_reports_most_affected_joint():
+    result = analyze(_two_joint_frames(), threshold=1.3, window=6)
+
+    summary = result["summary"]
+    assert summary["most_affected_joint"] == "joelho_direito"
+    assert summary["most_affected_label"] == "Joelho direito"
+    assert summary["total_events"] == len(result["events"])
+
+
+def test_summary_when_no_events():
+    frames = [_frame(float(t), angles={"joelho_direito": 90.0}, velocity=1.0) for t in range(10)]
+
+    result = analyze(frames, threshold=5.0, window=4)
+
+    assert result["events"] == []
+    assert result["alerts"] == []
+    assert result["summary"]["total_events"] == 0
+    assert result["summary"]["most_affected_joint"] is None
+    assert result["summary"]["most_affected_label"] is None
+
+
+def test_analyze_handles_frames_without_pose_without_raising():
+    frames = [_frame(float(t), angles={"joelho_direito": 90.0}, velocity=1.0) for t in range(5)]
+    frames.append(_frame(5.0, angles={"joelho_direito": None}, velocity=None, has_pose=False))
+    frames += [_frame(float(t), angles={"joelho_direito": 90.0}, velocity=1.0) for t in range(6, 10)]
+
+    result = analyze(frames, threshold=3.0, window=4)  # must not raise
+    assert "events" in result
+
+
+# ── zone-critical grouping ────────────────────────────────────────────
+
+
+def test_zone_intersections_group_into_one_event():
+    box = [80, 10, 100, 20]
+    frames = [
+        _frame(float(t), velocity=1.0, detections=[{"cls": 0, "label": "person", "xyxy": box}])
+        for t in range(5)
+    ]
+    zone = (0.5, 0.0, 1.0, 1.0)
+
     result = analyze(frames, threshold=3.0, window=4, zone=zone, frame_width=100, frame_height=100)
 
+    zone_events = [e for e in result["events"] if e["tipo"] == "zona_critica"]
+    assert len(zone_events) == 1
+    assert zone_events[0]["t_inicio"] == 0.0
+    assert zone_events[0]["t_fim"] == 4.0
     zone_alerts = [a for a in result["alerts"] if "zona" in a.description.lower()]
-    assert len(zone_alerts) == 1
-    assert "person" in zone_alerts[0].description.lower()
+    assert len(zone_alerts) == 1  # one alert per event, not per frame
 
 
-def test_analyze_zone_alert_is_independent_of_zscore_threshold():
-    # Even with a very high (insensitive) postural threshold, the zone
-    # alert must still fire — it is a separate detection path.
+def test_zone_alert_is_independent_of_zscore_threshold():
+    box = [80, 10, 100, 20]
     frames = [
-        _frame(
-            0.0,
-            angle=90.0,
-            velocity=1.0,
-            detections=[{"cls": 0, "label": "person", "xyxy": [80, 10, 100, 20]}],
-        )
+        _frame(0.0, velocity=1.0, detections=[{"cls": 0, "label": "person", "xyxy": box}])
     ]
     zone = (0.5, 0.0, 1.0, 1.0)
 
     result = analyze(frames, threshold=999.0, window=4, zone=zone, frame_width=100, frame_height=100)
 
-    zone_alerts = [a for a in result["alerts"] if "zona" in a.description.lower()]
-    assert len(zone_alerts) == 1
+    zone_events = [e for e in result["events"] if e["tipo"] == "zona_critica"]
+    assert len(zone_events) == 1
 
 
-def test_default_zone_matches_documented_right_hand_fifth_of_frame():
-    # DEFAULT_ZONE is the canonical pre-filled starting value shared by
-    # the app.py zone controls; it must stay the value that keeps the
-    # bundled demo video's behavior unchanged (right-hand fifth of the
-    # frame, full height).
-    assert DEFAULT_ZONE == (0.7, 0.0, 1.0, 1.0)
-
-
-def test_analyze_with_default_zone_flags_detection_inside_it():
+def test_zero_zone_events_when_zone_is_none():
+    box = [80, 10, 100, 20]
     frames = [
-        _frame(
-            0.0,
-            angle=90.0,
-            velocity=1.0,
-            detections=[{"cls": 0, "label": "person", "xyxy": [80, 10, 100, 20]}],
-        )
-    ]
-
-    result = analyze(
-        frames, threshold=3.0, window=4, zone=DEFAULT_ZONE, frame_width=100, frame_height=100
-    )
-
-    zone_alerts = [a for a in result["alerts"] if "zona" in a.description.lower()]
-    assert len(zone_alerts) == 1
-
-
-def test_analyze_zone_still_skipped_when_zone_is_none_despite_default_zone_existing():
-    # DEFAULT_ZONE existing as a named constant must not change the
-    # "None means skip the zone path entirely" contract of analyze().
-    frames = [
-        _frame(
-            0.0,
-            angle=90.0,
-            velocity=1.0,
-            detections=[{"cls": 0, "label": "person", "xyxy": [80, 10, 100, 20]}],
-        )
+        _frame(0.0, velocity=1.0, detections=[{"cls": 0, "label": "person", "xyxy": box}])
     ]
 
     result = analyze(frames, threshold=3.0, window=4, zone=None, frame_width=100, frame_height=100)
 
-    zone_alerts = [a for a in result["alerts"] if "zona" in a.description.lower()]
-    assert zone_alerts == []
+    assert [e for e in result["events"] if e["tipo"] == "zona_critica"] == []
 
 
-def test_analyze_no_zone_alert_when_no_detection_intersects_zone():
+def test_no_zone_event_when_no_detection_intersects_zone():
+    box = [0, 0, 10, 10]  # left corner, outside the right-half zone
     frames = [
-        _frame(
-            0.0,
-            angle=90.0,
-            velocity=1.0,
-            detections=[{"cls": 0, "label": "person", "xyxy": [0, 0, 10, 10]}],
-        )
+        _frame(0.0, velocity=1.0, detections=[{"cls": 0, "label": "person", "xyxy": box}])
     ]
     zone = (0.5, 0.0, 1.0, 1.0)
 
     result = analyze(frames, threshold=3.0, window=4, zone=zone, frame_width=100, frame_height=100)
 
-    zone_alerts = [a for a in result["alerts"] if "zona" in a.description.lower()]
-    assert zone_alerts == []
+    assert [e for e in result["events"] if e["tipo"] == "zona_critica"] == []
 
 
-# ── deviation report ordering ─────────────────────────────────────────
+# ── joint label mapping ───────────────────────────────────────────────
 
 
-def test_deviation_report_is_ordered_by_timestamp_combining_both_alert_types():
-    frames = [_frame(t, angle=90.0, velocity=1.0) for t in range(8)]
-    frames.append(_frame(8.0, angle=10.0, velocity=1.0))  # postural anomaly at t=8
-    frames += [_frame(t, angle=90.0, velocity=1.0) for t in range(9, 12)]
-    # zone alert at an earlier timestamp than the postural anomaly
-    frames[2]["detections"] = [{"cls": 0, "label": "person", "xyxy": [80, 10, 100, 20]}]
-
-    zone = (0.5, 0.0, 1.0, 1.0)
-    result = analyze(frames, threshold=2.0, window=6, zone=zone, frame_width=100, frame_height=100)
-
-    report = result["deviation_report"]
-    timestamps = [row["timestamp_s"] for row in report]
-    assert timestamps == sorted(timestamps)
-    assert len(report) >= 2
-    kinds = {row["kind"] for row in report}
-    assert "zona_critica" in kinds
-    assert "postural" in kinds
+def test_joint_label_maps_internal_keys_to_human_labels():
+    assert JOINT_LABELS["joelho_direito"] == "Joelho direito"
+    assert joint_label("cotovelo_esquerdo") == "Cotovelo esquerdo"
+    assert joint_label("pescoco") == "Pescoço"
+    # velocity (None) and unknown keys degrade gracefully
+    assert joint_label(None)  # returns a non-empty label
 
 
-def test_deviation_report_is_empty_when_no_anomaly_detected():
-    frames = [_frame(t, angle=90.0, velocity=1.0) for t in range(10)]
-
-    result = analyze(frames, threshold=5.0, window=4)
-
-    assert result["deviation_report"] == []
+# ── estimate_flagged_fraction ─────────────────────────────────────────
 
 
-# ── suggest_sensitivity_threshold ──────────────────────────────────────
+def test_estimate_flagged_fraction_between_zero_and_one():
+    frames = _two_joint_frames()
+    frac = estimate_flagged_fraction(frames, threshold=1.3, window=6)
+    assert 0.0 <= frac <= 1.0
+    assert frac > 0.0  # this video does have flagged frames
+
+
+def test_estimate_flagged_fraction_is_higher_for_lower_threshold():
+    frames = _two_joint_frames()
+    frac_sensitive = estimate_flagged_fraction(frames, threshold=0.5, window=6)
+    frac_strict = estimate_flagged_fraction(frames, threshold=5.0, window=6)
+    assert frac_sensitive >= frac_strict
+
+
+def test_estimate_flagged_fraction_empty_series_is_zero():
+    assert estimate_flagged_fraction([], threshold=1.0, window=6) == 0.0
+
+
+# ── suggest_sensitivity_threshold (over ALL joint series) ─────────────
 
 
 def test_suggest_sensitivity_threshold_falls_back_when_no_frame_has_pose():
-    frames = [_frame(t, angle=None, velocity=None, has_pose=False) for t in range(20)]
+    frames = [
+        _frame(float(t), angles={"joelho_direito": None}, velocity=None, has_pose=False)
+        for t in range(20)
+    ]
 
-    suggestion = suggest_sensitivity_threshold(frames, window=6)
-
-    assert suggestion == FALLBACK_SENSITIVITY_THRESHOLD
+    assert suggest_sensitivity_threshold(frames, window=6) == FALLBACK_SENSITIVITY_THRESHOLD
 
 
 def test_suggest_sensitivity_threshold_falls_back_when_series_shorter_than_window():
-    frames = [_frame(t, angle=90.0 + t, velocity=1.0 + t) for t in range(4)]
+    frames = [
+        _frame(float(t), angles={"joelho_direito": 90.0 + t}, velocity=1.0 + t) for t in range(4)
+    ]
 
-    suggestion = suggest_sensitivity_threshold(frames, window=6)
-
-    assert suggestion == FALLBACK_SENSITIVITY_THRESHOLD
-
-
-# Small, non-zero, deterministic jitter pattern (not exactly constant),
-# so the rolling window has nonzero variance and suggestions are
-# computed from a real quantile, not the zero-variance fallback path.
-_JITTER_PATTERN = (0.0, 0.3, -0.2, 0.1, -0.1, 0.2)
+    assert suggest_sensitivity_threshold(frames, window=6) == FALLBACK_SENSITIVITY_THRESHOLD
 
 
-def test_suggest_sensitivity_threshold_is_within_slider_bounds_for_stable_motion():
-    # Small jitter around a baseline: little natural variation, but
-    # nonzero — exercises the real quantile computation, not the
-    # zero-variance fallback (which would trivially satisfy the bounds
-    # check without verifying the computation at all).
+_JITTER = (0.0, 0.3, -0.2, 0.1, -0.1, 0.2)
+
+
+def test_suggest_sensitivity_threshold_within_bounds_for_stable_motion():
     frames = [
         _frame(
-            t,
-            angle=90.0 + _JITTER_PATTERN[t % len(_JITTER_PATTERN)],
-            velocity=1.0 + _JITTER_PATTERN[t % len(_JITTER_PATTERN)] * 0.05,
+            float(t),
+            angles={
+                "cotovelo_direito": 90.0 + _JITTER[t % len(_JITTER)],
+                "joelho_direito": 170.0 + _JITTER[t % len(_JITTER)],
+            },
+            velocity=1.0 + _JITTER[t % len(_JITTER)] * 0.05,
         )
         for t in range(40)
     ]
@@ -282,45 +397,42 @@ def test_suggest_sensitivity_threshold_is_within_slider_bounds_for_stable_motion
     suggestion = suggest_sensitivity_threshold(frames, window=6)
 
     assert 0.5 <= suggestion <= 5.0
-    # Not the fallback: this video has plenty of valid pose data, so the
-    # suggestion must come from the real computation.
     assert suggestion != FALLBACK_SENSITIVITY_THRESHOLD
 
 
-def test_suggest_sensitivity_threshold_is_higher_for_more_variable_motion():
-    # Same jitter baseline for both, but "variable" adds a real outlier
-    # spike every 8th frame. Uniform/periodic oscillation would be
-    # scale-invariant under z-score (same suggestion either way), so the
-    # discriminating factor here is the outlier's distribution shape,
-    # not just its amplitude.
-    stable_frames = [
+def test_suggest_sensitivity_threshold_higher_for_more_variable_motion():
+    stable = [
         _frame(
-            t,
-            angle=90.0 + _JITTER_PATTERN[t % len(_JITTER_PATTERN)],
-            velocity=1.0 + _JITTER_PATTERN[t % len(_JITTER_PATTERN)] * 0.05,
+            float(t),
+            angles={"cotovelo_direito": 90.0 + _JITTER[t % len(_JITTER)]},
+            velocity=1.0 + _JITTER[t % len(_JITTER)] * 0.05,
         )
         for t in range(40)
     ]
-    variable_frames = [
+    variable = [
         _frame(
-            t,
-            angle=90.0 + (60.0 if t % 8 == 0 else _JITTER_PATTERN[t % len(_JITTER_PATTERN)]),
-            velocity=1.0 + (8.0 if t % 8 == 0 else _JITTER_PATTERN[t % len(_JITTER_PATTERN)] * 0.05),
+            float(t),
+            angles={
+                "cotovelo_direito": 90.0 + (60.0 if t % 8 == 0 else _JITTER[t % len(_JITTER)])
+            },
+            velocity=1.0 + (8.0 if t % 8 == 0 else _JITTER[t % len(_JITTER)] * 0.05),
         )
         for t in range(40)
     ]
 
-    stable_suggestion = suggest_sensitivity_threshold(stable_frames, window=6)
-    variable_suggestion = suggest_sensitivity_threshold(variable_frames, window=6)
-
-    assert variable_suggestion > stable_suggestion
+    assert suggest_sensitivity_threshold(variable, window=6) > suggest_sensitivity_threshold(
+        stable, window=6
+    )
 
 
 def test_suggest_sensitivity_threshold_ignores_frames_without_pose():
-    frames = [_frame(t, angle=90.0, velocity=1.0) for t in range(15)]
-    frames += [_frame(t, angle=None, velocity=None, has_pose=False) for t in range(15, 25)]
+    frames = [
+        _frame(float(t), angles={"cotovelo_direito": 90.0}, velocity=1.0) for t in range(15)
+    ]
+    frames += [
+        _frame(float(t), angles={"cotovelo_direito": None}, velocity=None, has_pose=False)
+        for t in range(15, 25)
+    ]
 
-    # Should not raise despite the trailing frames having no angle/velocity data.
-    suggestion = suggest_sensitivity_threshold(frames, window=6)
-
+    suggestion = suggest_sensitivity_threshold(frames, window=6)  # must not raise
     assert 0.5 <= suggestion <= 5.0

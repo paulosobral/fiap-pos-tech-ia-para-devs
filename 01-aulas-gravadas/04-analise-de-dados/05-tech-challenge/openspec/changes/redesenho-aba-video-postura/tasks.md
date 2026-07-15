@@ -8,13 +8,13 @@
 
 ## 2. Detecção por articulação + agrupamento em eventos (`video/analysis.py`)
 
-- [ ] 2.1 Aplicar `detect_anomalies` (reuso) por série de articulação e sobre a série de velocidade, marcando frames irregulares por articulação/velocidade
-- [ ] 2.2 Implementar agrupamento de índices anômalos consecutivos (com tolerância pequena de gap) em eventos `{tipo, articulacao, t_inicio, t_fim, frame_index_pior, valor_pior, z_pior}`, com o frame-pior = maior |z-score| do grupo
-- [ ] 2.3 Gerar 1 `Alert` por evento (origem "Vídeo", descrição em linguagem simples com articulação e intervalo), substituindo o alerta-por-frame
-- [ ] 2.4 Zona crítica: manter o parâmetro `zone` (default `None` = não executa) e agrupar as interseções de zona em eventos com a mesma lógica
-- [ ] 2.5 Substituir `deviation_report` (lista por frame) por lista de eventos; adicionar um resumo (contagem de eventos, articulação mais afetada)
-- [ ] 2.6 Atualizar `suggest_sensitivity_threshold` para operar sobre a distribuição combinada de z-scores de todas as articulações (não só um ângulo) e expor a estimativa de "% do vídeo marcado" no valor atual do threshold
-- [ ] 2.7 Testes: detecção por articulação, agrupamento em eventos (frames consecutivos → 1 evento; frame-pior correto), 1 alerta por evento, resumo (articulação mais afetada), zona agrupada em evento
+- [x] 2.1 Aplicar `detect_anomalies` (reuso) por série de articulação e sobre a série de velocidade, marcando frames irregulares por articulação/velocidade
+- [x] 2.2 Implementar agrupamento de índices anômalos consecutivos (com tolerância pequena de gap) em eventos `{tipo, articulacao, t_inicio, t_fim, frame_index_pior, valor_pior, z_pior}`, com o frame-pior = maior |z-score| do grupo
+- [x] 2.3 Gerar 1 `Alert` por evento (origem "Vídeo", descrição em linguagem simples com articulação e intervalo), substituindo o alerta-por-frame
+- [x] 2.4 Zona crítica: manter o parâmetro `zone` (default `None` = não executa) e agrupar as interseções de zona em eventos com a mesma lógica
+- [x] 2.5 Substituir `deviation_report` (lista por frame) por lista de eventos; adicionar um resumo (contagem de eventos, articulação mais afetada)
+- [x] 2.6 Atualizar `suggest_sensitivity_threshold` para operar sobre a distribuição combinada de z-scores de todas as articulações (não só um ângulo) e expor a estimativa de "% do vídeo marcado" no valor atual do threshold
+- [x] 2.7 Testes: detecção por articulação, agrupamento em eventos (frames consecutivos → 1 evento; frame-pior correto), 1 alerta por evento, resumo (articulação mais afetada), zona agrupada em evento
 
 ## 3. Desenho do esqueleto (`video/draw.py`, novo)
 
