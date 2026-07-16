@@ -128,19 +128,26 @@ Dataset: **MIMIC-III Clinical Database Demo v1.4** (PhysioNet), um estágio de U
 respiratória e pressão arterial sistólica/diastólica (`data/vital_signs_sample.csv`) — dado
 clínico real e de-identificado, não sintético.
 
-Resultado real, com os thresholds padrão do código (`window=6`, `threshold=3.0`):
-- **0 alertas via rolling z-score** — a série real de UTI é naturalmente ruidosa, sem um pico
-  isoladamente extremo o suficiente para cruzar um threshold conservador escolhido para não
-  saturar o feed de alertas a cada leitura horária.
-- **24 leituras marcadas exclusivamente pelo Isolation Forest** (`isolation_forest_only`, com
-  `contamination=0.05`) — nenhuma delas coincidiu com um alerta de z-score.
+Resultado real, com os thresholds padrão do código (`window=13`, `threshold=3.0`):
+- **19 leituras marcadas pelo rolling z-score** — anomalias locais reais (picos isolados fora do
+  padrão da janela recente), não ruído.
+- **5 leituras de alta confiança** (`alta_confianca`) em que z-score e Isolation Forest
+  (`contamination=0.05`) concordam — o rótulo que a aba se propõe a evidenciar.
+- **14 leituras marcadas exclusivamente pelo Isolation Forest** (`isolation_forest_only`) e outras
+  só pelo z-score (`zscore_only`) — a **divergência entre as duas camadas** ainda aparece: o
+  Isolation Forest, olhando o padrão multivariado do lote completo, aponta leituras que o z-score
+  linha-a-linha (cada sinal isoladamente, janela local) não captura, e vice-versa. É exatamente o
+  cenário "Isolation Forest identifica anomalia não capturada pelo z-score" descrito no spec de
+  `vital-signs-monitoring`.
 
-Esse é o exemplo concreto de **divergência entre as duas camadas de detecção**: o Isolation
-Forest, olhando o padrão multivariado do lote completo, aponta leituras que o z-score
-linha-a-linha (olhando cada sinal isoladamente, janela curta) não captura. O relatório combinado
-na UI rotula essas leituras como `isolation_forest_only`, tornando essa divergência visível — que
-é exatamente o cenário "Isolation Forest identifica anomalia não capturada pelo z-score" descrito
-no spec de `vital-signs-monitoring`.
+> **Nota sobre a janela padrão (`window=13`).** O rolling z-score de `anomaly/zscore.py` usa
+> desvio-padrão populacional (ddof=0) sobre uma janela que **inclui o próprio ponto**, o que limita
+> o `|z|` máximo alcançável a `sqrt(janela-1)`, independentemente de quão extremo seja o pico. Com
+> a antiga janela padrão 6 o teto era `sqrt(5) ≈ 2.24 < 3.0`, então a camada z-score **nunca**
+> disparava nos defaults (ficava inerte). A janela padrão foi ajustada para **13** (`sqrt(12) ≈
+> 3.46 > 3.0`), dando folga para picos reais cruzarem o threshold. A UI da aba avisa (via
+> `st.warning`) quando o usuário escolhe manualmente uma combinação inefetiva
+> (`threshold ≥ sqrt(janela-1)`), para não reintroduzir o problema silenciosamente.
 
 ### 4.2 Prescrições — AWS Bedrock, achados reais sobre o dataset sintético
 

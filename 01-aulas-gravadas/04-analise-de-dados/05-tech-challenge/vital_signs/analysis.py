@@ -14,6 +14,7 @@ high-confidence anomalies (both layers agree) from single-layer signals.
 
 Spec: openspec/changes/monitoramento-multimodal-pacientes/specs/vital-signs-monitoring/spec.md
 """
+import math
 import warnings
 from typing import Any, Dict
 
@@ -40,8 +41,43 @@ ORIGIN = "Sinais Vitais"
 
 # Fixed thresholds for the rolling z-score layer (Global Constraints:
 # "áudio e sinais vitais use a fixed threshold documented in code").
-DEFAULT_WINDOW = 6
+#
+# ``anomaly.zscore`` uses population std (ddof=0) over a window that
+# includes the point itself, so the maximum achievable |z| for any point
+# is ``sqrt(window - 1)`` (limit as a single outlier → ∞). The default
+# window must therefore be large enough that this ceiling clears
+# DEFAULT_THRESHOLD, otherwise the z-score layer can never fire. With
+# threshold 3.0, window=13 gives a ceiling of sqrt(12) ≈ 3.46 (comfortable
+# headroom); window=11 → sqrt(10) ≈ 3.16 would be too tight.
+DEFAULT_WINDOW = 13
 DEFAULT_THRESHOLD = 3.0
+
+
+def zscore_threshold_is_reachable(window: int, threshold: float) -> bool:
+    """Whether a z-score anomaly is mathematically detectable for these params.
+
+    ``anomaly.zscore`` computes each point's z-score against the population
+    mean/std (ddof=0) of a rolling window that includes the point itself.
+    For a window of ``n`` points, the largest achievable |z| (a single
+    extreme outlier, limit as it → ∞) is ``sqrt(n - 1)``. So a reading can
+    only be flagged when ``threshold < sqrt(window - 1)``.
+
+    Boundary: with ``window < 2`` the ceiling ``sqrt(window - 1)`` is either
+    zero (window == 1) or undefined (window < 1), so no positive threshold is
+    ever reachable — treated as not reachable (returns ``False``). Equality
+    (``threshold == sqrt(window - 1)``) is also not reachable, since the
+    detector requires ``|z| > threshold`` (strictly greater).
+
+    Args:
+        window: Rolling window size for the z-score layer.
+        threshold: Z-score magnitude above which a reading is anomalous.
+
+    Returns:
+        ``True`` if some reading could exceed ``threshold``, else ``False``.
+    """
+    if window < 2:
+        return False
+    return threshold < math.sqrt(window - 1)
 
 
 class VitalSignsValidationError(ValueError):

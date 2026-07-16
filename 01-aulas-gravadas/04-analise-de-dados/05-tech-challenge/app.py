@@ -8,6 +8,7 @@ function, which internally pushes ``Alert``s to the shared feed
 Tabs implemented: Sinais Vitais (Task 3), Vídeo (Task 4), Áudio (Task 5),
 Prescrições (Task 6).
 """
+import math
 import os
 import tempfile
 import uuid
@@ -48,6 +49,7 @@ from vital_signs.analysis import (
     VitalSignsValidationError,
     analyze,
     load_vital_signs_csv,
+    zscore_threshold_is_reachable,
 )
 from video.analysis import DEFAULT_WINDOW as VIDEO_DEFAULT_WINDOW
 from video.analysis import DEFAULT_ZONE as VIDEO_DEFAULT_ZONE
@@ -249,6 +251,16 @@ with tab_vitals:
             threshold = st.number_input(
                 "Threshold do z-score (|z| >)", min_value=0.1, value=DEFAULT_THRESHOLD, step=0.1
             )
+
+            if not zscore_threshold_is_reachable(int(window), float(threshold)):
+                max_z = math.sqrt(int(window) - 1) if int(window) >= 2 else 0.0
+                st.warning(
+                    "Nenhuma anomalia de rolling z-score é detectável com esses valores: "
+                    f"o |z| máximo alcançável para uma janela de {int(window)} é "
+                    f"sqrt(janela-1) ≈ {max_z:.2f}, que não supera o threshold de "
+                    f"{float(threshold):.2f}. Aumente a janela ou reduza o threshold para "
+                    "que a camada z-score possa marcar anomalias."
+                )
 
             if st.button("Processar sinais vitais", key="vital_signs_process_button"):
                 result = analyze(vitals_df, window=int(window), threshold=float(threshold))

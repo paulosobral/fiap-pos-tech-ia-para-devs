@@ -20,10 +20,13 @@ import pytest
 import streamlit as st
 
 from vital_signs.analysis import (
+    DEFAULT_THRESHOLD,
+    DEFAULT_WINDOW,
     RECOGNIZED_VITAL_SIGN_COLUMNS,
     VitalSignsValidationError,
     analyze,
     load_vital_signs_csv,
+    zscore_threshold_is_reachable,
 )
 
 
@@ -149,6 +152,42 @@ def test_analyze_flags_spike_and_generates_alert_referencing_signal_and_timestam
     assert alert.origin == "Sinais Vitais"
     assert "heart_rate" in alert.description
     assert "200" in alert.description
+
+
+def test_analyze_flags_clear_spike_with_default_window_and_threshold():
+    # Regression proof: with the shipped DEFAULT_WINDOW / DEFAULT_THRESHOLD,
+    # a clearly anomalous spike must be flagged by the z-score layer. This
+    # test FAILS under the old DEFAULT_WINDOW=6 (ceiling sqrt(5)≈2.24 < 3.0,
+    # so |z| can never exceed the threshold) and PASSES under window=13
+    # (ceiling sqrt(12)≈3.46 > 3.0).
+    periods = 2 * DEFAULT_WINDOW
+    timestamps = pd.date_range("2024-01-01", periods=periods, freq="h")
+    heart_rate = [80] * periods
+    spike_index = DEFAULT_WINDOW  # ensure a full trailing window exists
+    heart_rate[spike_index] = 100000  # single, extreme, isolated spike
+    df = pd.DataFrame({"timestamp": timestamps, "heart_rate": heart_rate})
+
+    result = analyze(df, window=DEFAULT_WINDOW, threshold=DEFAULT_THRESHOLD)
+
+    assert bool(result["zscore_anomalies"]["heart_rate"].iloc[spike_index])
+    assert len(result["alerts"]) >= 1
+
+
+def test_zscore_threshold_is_reachable_boundaries():
+    # window=13, threshold=3.0 → sqrt(12)≈3.46 > 3.0 → reachable
+    assert zscore_threshold_is_reachable(13, 3.0) is True
+    # window=6, threshold=3.0 → sqrt(5)≈2.24 < 3.0 → NOT reachable (the bug)
+    assert zscore_threshold_is_reachable(6, 3.0) is False
+    # window=10, threshold=3.0 → sqrt(9)=3.0 is NOT > 3.0 → NOT reachable
+    assert zscore_threshold_is_reachable(10, 3.0) is False
+    # window<2 guard: ceiling undefined/zero → NOT reachable
+    assert zscore_threshold_is_reachable(1, 0.1) is False
+    assert zscore_threshold_is_reachable(0, 3.0) is False
+
+
+def test_default_params_are_reachable():
+    # The shipped defaults must be an effective (reachable) combination.
+    assert zscore_threshold_is_reachable(DEFAULT_WINDOW, DEFAULT_THRESHOLD) is True
 
 
 def test_analyze_alert_timestamp_is_wall_clock_generation_time_not_clinical_reading_time():

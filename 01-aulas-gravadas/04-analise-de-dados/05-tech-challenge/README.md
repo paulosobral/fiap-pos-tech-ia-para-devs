@@ -79,9 +79,13 @@ A aplicação abre em `http://localhost:8501` com 4 abas e uma sidebar de alerta
 
 - **Sinais Vitais** — upload de CSV de série temporal (frequência cardíaca, SpO2, pressão
   arterial, frequência respiratória, temperatura). Aplica duas camadas de detecção de anomalia:
-  rolling z-score linha a linha (alerta "em tempo real", threshold/janela ajustáveis na UI) e
-  Isolation Forest treinado em lote sobre o CSV carregado (validação complementar). O relatório
-  combinado destaca leituras em que as duas camadas concordam ("alta confiança") ou divergem.
+  rolling z-score linha a linha (alerta "em tempo real", threshold/janela ajustáveis na UI;
+  padrões `janela=13`, `threshold=3.0`) e Isolation Forest treinado em lote sobre o CSV carregado
+  (validação complementar). O relatório combinado destaca leituras em que as duas camadas
+  concordam ("alta confiança") ou divergem. O z-score usa desvio-padrão populacional sobre uma
+  janela que inclui o próprio ponto, então o `|z|` máximo alcançável é `sqrt(janela-1)`; a janela
+  padrão 13 (`sqrt(12) ≈ 3.46 > 3.0`) mantém a camada efetiva, e a UI avisa quando uma combinação
+  manual `threshold ≥ sqrt(janela-1)` tornaria a detecção inerte.
 - **Vídeo** — upload de vídeo (mp4/avi/mov/mkv) de fisioterapia/exercício ou cirurgia. O
   processamento é disparado pelo botão "Processar vídeo" (a extração de pose fica em cache para
   não reprocessar a cada rerun). Com YOLOv8-pose o sistema rastreia **múltiplas articulações** do
