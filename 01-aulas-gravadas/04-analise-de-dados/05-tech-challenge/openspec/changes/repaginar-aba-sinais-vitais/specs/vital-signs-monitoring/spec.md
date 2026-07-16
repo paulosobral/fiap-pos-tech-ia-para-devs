@@ -22,3 +22,7 @@ O sistema SHALL apresentar o resultado da análise de sinais vitais em linguagem
 #### Scenario: Nenhuma anomalia detectada
 - **WHEN** a análise não detecta nenhuma leitura anômala em nenhuma das camadas
 - **THEN** o sistema exibe uma mensagem clara indicando que nenhuma anomalia foi encontrada
+
+#### Scenario: Confirmação de upload lista os sinais em nomes amigáveis com descrição
+- **WHEN** um CSV de sinais vitais é carregado com sucesso
+- **THEN** a mensagem de confirmação lista os sinais detectados por seus nomes amigáveis (não os nomes crus de coluna) e disponibiliza, via tooltip ou elemento equivalente, uma descrição curta de cada sinal — o que mede, sua unidade e uma faixa de referência normal para adulto, acompanhada de uma nota de que a faixa é referência geral, não diagnóstico

@@ -51,6 +51,7 @@ from vital_signs.analysis import (
     build_vitals_summary,
     confidence_level,
     load_vital_signs_csv,
+    vital_sign_description,
     vital_sign_label,
     zscore_threshold_is_reachable,
 )
@@ -246,7 +247,20 @@ with tab_vitals:
                 col for col in vitals_df.columns if col.strip().lower() in RECOGNIZED_VITAL_SIGN_COLUMNS
             ]
 
-            st.success(f"CSV carregado: {len(vitals_df)} leituras, sinais: {', '.join(signal_columns)}.")
+            friendly_signals = [vital_sign_label(col) for col in signal_columns]
+            st.success(
+                f"CSV carregado: {len(vitals_df)} leituras. "
+                f"Sinais: {', '.join(friendly_signals)}."
+            )
+            with st.expander("O que cada sinal significa"):
+                for col in signal_columns:
+                    st.markdown(
+                        f"- **{vital_sign_label(col)}**: {vital_sign_description(col)}"
+                    )
+                st.caption(
+                    "As faixas são apenas referência geral para adulto, não "
+                    "constituem diagnóstico."
+                )
 
             st.subheader("Série temporal")
             chart_df = vitals_df.set_index("timestamp")[signal_columns]

@@ -102,6 +102,29 @@ VITAL_SIGN_LABELS: Dict[str, str] = {
     "temperature": "Temperatura",
 }
 
+# Short, friendly descriptions of each vital sign for the upload
+# confirmation: what it measures, its unit, and a general adult reference
+# range. Same keys/case-insensitive matching style as ``VITAL_SIGN_LABELS``.
+# Reference ranges are general adult references, NOT a diagnosis — the UI
+# states this next to the descriptions.
+VITAL_SIGN_DESCRIPTIONS: Dict[str, str] = {
+    "heart_rate": "Batimentos por minuto (bpm). Referência adulto em repouso: ~60–100 bpm.",
+    "spo2": "Saturação de oxigênio no sangue (%). Referência: ~95–100%.",
+    "resp_rate": "Respirações por minuto (irpm). Referência adulto: ~12–20 irpm.",
+    "respiratory_rate": "Respirações por minuto (irpm). Referência adulto: ~12–20 irpm.",
+    "systolic_bp": "Pressão arterial sistólica (mmHg). Referência: ~90–120 mmHg.",
+    "diastolic_bp": "Pressão arterial diastólica (mmHg). Referência: ~60–80 mmHg.",
+    "blood_pressure": (
+        "Pressão arterial (mmHg). Referência aproximada: sistólica 90–120 / "
+        "diastólica 60–80."
+    ),
+    "temperature": "Temperatura corporal (°C). Referência: ~36,1–37,2 °C.",
+}
+
+# Fallback description for a recognized-but-undescribed / unknown column, so
+# ``vital_sign_description`` always returns something the UI can render.
+_DEFAULT_VITAL_SIGN_DESCRIPTION = "Sinal vital."
+
 # Signal label used when a row was flagged only by the batch Isolation
 # Forest layer, which scores the whole reading (all signals together)
 # rather than a single column — there is no one "responsible" signal.
@@ -181,6 +204,24 @@ def vital_sign_label(column: str) -> str:
         A human-readable label, or ``column`` unchanged when unknown.
     """
     return VITAL_SIGN_LABELS.get(column.strip().lower(), column)
+
+
+def vital_sign_description(column: str) -> str:
+    """Short friendly description of a vital-sign column (measure/unit/range).
+
+    Matches on the lowercased/stripped column name (case-insensitive, like
+    ``vital_sign_label``), e.g. ``"Heart_Rate"`` → the heart-rate description.
+    Returns a generic fallback (``"Sinal vital."``) for any unmapped/unknown
+    column so the UI always has something to render. Reference ranges are
+    general adult references, not a diagnosis.
+
+    Args:
+        column: Raw column name from the uploaded CSV / combined report.
+
+    Returns:
+        A human-readable description, or a generic fallback when unknown.
+    """
+    return VITAL_SIGN_DESCRIPTIONS.get(column.strip().lower(), _DEFAULT_VITAL_SIGN_DESCRIPTION)
 
 
 def confidence_level(agreement: str) -> Dict[str, str]:

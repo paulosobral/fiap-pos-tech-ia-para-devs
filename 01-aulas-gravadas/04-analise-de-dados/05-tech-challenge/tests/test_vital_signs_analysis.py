@@ -28,6 +28,7 @@ from vital_signs.analysis import (
     build_vitals_summary,
     confidence_level,
     load_vital_signs_csv,
+    vital_sign_description,
     vital_sign_label,
     zscore_threshold_is_reachable,
 )
@@ -299,6 +300,39 @@ def test_vital_sign_label_is_case_insensitive_and_strips():
 def test_vital_sign_label_falls_back_to_raw_column_when_unknown():
     assert vital_sign_label("glucose") == "glucose"
     assert vital_sign_label("Custom Column") == "Custom Column"
+
+
+# ── presentation helpers: vital_sign_description ────────────────────
+
+
+def test_vital_sign_description_known_signals_include_unit_and_range():
+    hr = vital_sign_description("heart_rate")
+    assert "bpm" in hr
+    assert "60" in hr and "100" in hr  # reference range present
+
+    spo2 = vital_sign_description("spo2")
+    assert "%" in spo2
+    assert "95" in spo2
+
+    systolic = vital_sign_description("systolic_bp")
+    assert "mmHg" in systolic
+
+    resp = vital_sign_description("resp_rate")
+    assert "irpm" in resp
+    assert vital_sign_description("respiratory_rate") == resp
+
+    temp = vital_sign_description("temperature")
+    assert "°C" in temp
+
+
+def test_vital_sign_description_is_case_insensitive_and_strips():
+    assert vital_sign_description("Heart_Rate") == vital_sign_description("heart_rate")
+    assert vital_sign_description("  SPO2 ") == vital_sign_description("spo2")
+
+
+def test_vital_sign_description_falls_back_for_unknown_column():
+    assert vital_sign_description("glucose") == "Sinal vital."
+    assert vital_sign_description("Custom Column") == "Sinal vital."
 
 
 # ── presentation helpers: confidence_level ──────────────────────────

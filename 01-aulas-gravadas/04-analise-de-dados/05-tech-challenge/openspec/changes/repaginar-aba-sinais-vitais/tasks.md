@@ -19,3 +19,10 @@
 - [x] 3.1 Rodar a suíte completa (`venv/bin/python -m pytest tests/ -q`) — tudo verde
 - [x] 3.2 Validar via `AppTest` (upload `data/vital_signs_sample_anomalias.csv` → "Processar sinais vitais") sem exceção; se o segfault conhecido `AppTest`+`st.dataframe` atrapalhar, validar via boot real (`streamlit run app.py`, HTTP 200) + teste direto dos helpers. Confirmar que o `..._normal.csv` mostra a mensagem "nenhuma anomalia"
 - [x] 3.3 Atualizar `README.md`/`RELATORIO_TECNICO.md` (descrição da saída amigável da aba Sinais Vitais: nomes amigáveis das camadas, resumo, tabela traduzida, níveis de confiança explicados)
+
+## 4. Descrição amigável dos sinais na confirmação de upload (extensão)
+
+- [x] 4.1 Adicionar `VITAL_SIGN_DESCRIPTIONS` em `vital_signs/analysis.py`: por sinal reconhecido, uma descrição curta com o que mede, unidade e faixa de referência normal adulto (ex.: "Frequência cardíaca: batimentos por minuto (bpm); referência adulto em repouso ~60–100"); + helper `vital_sign_description(column) -> str` com fallback
+- [x] 4.2 Trocar a mensagem de upload (`st.success("CSV carregado: ... sinais: heart_rate, ...")`) para listar os sinais por nome amigável (via `vital_sign_label`) e anexar um tooltip/elemento com a descrição de cada sinal (via `vital_sign_description`), incluindo uma nota de que as faixas são referência geral, não diagnóstico
+- [x] 4.3 Testes: `vital_sign_description` (conhecidos trazem unidade+faixa; fallback para sinal desconhecido)
+- [x] 4.4 Rodar a suíte (`venv/bin/python -m pytest tests/ -q`) e validar via boot/AppTest que a confirmação de upload mostra os nomes amigáveis + descrições
