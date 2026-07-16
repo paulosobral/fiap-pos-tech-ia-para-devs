@@ -1,7 +1,7 @@
 ## 1. Script gerador
 
 - [x] 1.1 Criar `scripts/gen_vital_signs_demo.py`: carrega `data/vital_signs_sample.csv`, seleciona uma janela contígua estável (ex.: ~120 leituras) e, se necessário, suaviza minimamente para que `vital_signs.analysis.analyze` retorne ZERO anomalias nas duas camadas → grava `data/vital_signs_sample_normal.csv`
-- [x] 1.2 A partir do trecho normal, injetar eventos clínicos plausíveis em blocos consecutivos (taquicardia em `heart_rate`, hipoxemia em `spo2`, pico hipertensivo em `systolic_bp`/`diastolic_bp`), grandes o bastante para z-score (`|z|>3.0`, janela 6) e Isolation Forest concordarem → grava `data/vital_signs_sample_anomalias.csv`
+- [x] 1.2 A partir do trecho normal, injetar eventos clínicos plausíveis em blocos consecutivos (taquicardia em `heart_rate`, hipoxemia em `spo2`, pico hipertensivo em `systolic_bp`/`diastolic_bp`), grandes o bastante para z-score (`|z|>3.0`, janela padrão 13) e Isolation Forest concordarem → grava `data/vital_signs_sample_anomalias.csv`
 - [x] 1.3 Determinismo: seeds fixas para qualquer aleatoriedade; cabeçalho do script documenta trecho escolhido, eventos injetados e parâmetros
 - [x] 1.4 Auto-verificação no fim do script: roda `analyze` sobre cada CSV e imprime a contagem de rótulos; falha (exit ≠ 0) se o normal tiver qualquer anomalia ou o anômalo não tiver ao menos uma `alta_confianca`
 
