@@ -86,6 +86,15 @@ A aplicação abre em `http://localhost:8501` com 4 abas e uma sidebar de alerta
   janela que inclui o próprio ponto, então o `|z|` máximo alcançável é `sqrt(janela-1)`; a janela
   padrão 13 (`sqrt(12) ≈ 3.46 > 3.0`) mantém a camada efetiva, e a UI avisa quando uma combinação
   manual `threshold ≥ sqrt(janela-1)` tornaria a detecção inerte.
+  Para demonstrar o contraste "sem alertas" vs. "com alertas", há dois CSVs de demo em `data/`,
+  derivados da amostra MIMIC-III real: `vital_signs_sample_normal.csv` (nenhuma leitura anômala em
+  nenhuma das duas camadas — toda leitura sai `normal`) e `vital_signs_sample_anomalias.csv` (os
+  mesmos dados com 3 episódios clínicos de pico injetados — taquicardia, hipoxemia e pico
+  hipertensivo — que fazem as duas camadas concordarem em `alta_confianca` nas leituras de pico,
+  mantendo as leituras ao redor `normal`). Ambos são reproduzíveis pelo gerador versionado
+  `scripts/gen_vital_signs_demo.py` (`venv/bin/python scripts/gen_vital_signs_demo.py`), que ao
+  final roda `analyze` sobre cada arquivo nos parâmetros padrão e falha se o normal tiver qualquer
+  anomalia ou o anômalo não tiver ao menos uma `alta_confianca`.
 - **Vídeo** — upload de vídeo (mp4/avi/mov/mkv) de fisioterapia/exercício ou cirurgia. O
   processamento é disparado pelo botão "Processar vídeo" (a extração de pose fica em cache para
   não reprocessar a cada rerun). Com YOLOv8-pose o sistema rastreia **múltiplas articulações** do
