@@ -410,6 +410,8 @@ def test_build_vitals_summary_uses_padrao_geral_when_only_isolation_forest_flags
     assert len(summary["itens"]) == 1
     assert summary["itens"][0]["sinal_label"] == "padrão geral"
     assert summary["itens"][0]["nivel"] == "isolation_forest_only"
+    # Isolation-Forest-only rows have no single responsible column, so no value.
+    assert summary["itens"][0]["valor"] is None
 
 
 def test_build_vitals_summary_item_has_translated_signal_and_value():
@@ -425,6 +427,33 @@ def test_build_vitals_summary_item_has_translated_signal_and_value():
     assert item["sinal_label"] in ("Frequência cardíaca", "Saturação de O₂ (SpO₂)")
     assert item["valor"] is not None
     assert item["timestamp"] == "t0"
+
+
+def test_build_vitals_summary_picks_globally_most_extreme_signal_for_zscore_row():
+    # Multi-row report so every column has a real (non-zero) distribution and
+    # the "most extreme" proxy in _responsible_signal is actually exercised.
+    # On the anomalous row heart_rate has a large spike (300 vs a ~80 baseline)
+    # while spo2 barely moves, so heart_rate is unambiguously the most extreme
+    # signal relative to its own series' mean/std. A regression that picked the
+    # wrong column (e.g. first-by-order) would fail the exact-label assertion.
+    report = _build_combined_report(
+        [
+            _report_row("t0", False, False, "normal", heart_rate=80.0, spo2=98.0),
+            _report_row("t1", False, False, "normal", heart_rate=81.0, spo2=98.0),
+            _report_row("t2", False, False, "normal", heart_rate=79.0, spo2=97.0),
+            _report_row("t3", False, False, "normal", heart_rate=80.0, spo2=98.0),
+            _report_row("t4", True, True, "alta_confianca", heart_rate=300.0, spo2=98.0),
+        ]
+    )
+
+    summary = build_vitals_summary(report)
+    item = summary["itens"][0]
+
+    assert item["nivel"] == "alta_confianca"
+    assert item["timestamp"] == "t4"
+    # Exact: heart_rate wins the global z-score proxy by a clear margin.
+    assert item["sinal_label"] == "Frequência cardíaca"
+    assert item["valor"] == 300.0
 
 
 def test_build_vitals_summary_caps_itens_list():

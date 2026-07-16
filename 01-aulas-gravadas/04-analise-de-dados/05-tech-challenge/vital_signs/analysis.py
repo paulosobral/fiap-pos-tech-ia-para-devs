@@ -216,10 +216,14 @@ def _responsible_signal(row: dict, signal_columns: list, column_stats: Dict[str,
       responsible column, so the caller reports the sentinel
       ``GENERAL_PATTERN_LABEL`` ("padrão geral") instead of a specific signal.
 
-    Documented choice: this proxy may differ from the exact column the
-    z-score fired on when several signals spike together; it is presentation
-    only and never changes detection (``analyze`` is not modified to add
-    per-signal columns).
+    Documented choice: this proxy is GLOBAL (``|value - mean| / std`` over
+    the whole series), while the rolling z-score is LOCAL (deviation vs the
+    recent window). So the signal it points at may differ from the column
+    that actually fired the z-score — not only when several signals spike
+    together, but even for a single-signal row, if another signal is
+    globally more extreme at that timestamp. It is presentation only and
+    never changes detection (``analyze`` is not modified to add per-signal
+    columns).
 
     Args:
         row: One combined-report row as a plain dict.

@@ -15,7 +15,7 @@ variable "aws_region" {
 variable "transcribe_bucket_name" {
   description = "Nome do bucket S3 usado pelo AWS Transcribe (entrada/saída do job assíncrono). Corresponde à env AUDIO_TRANSCRIBE_BUCKET."
   type        = string
-  default     = "-psobral89-bucket-transcribe"
+  default     = "psobral89-bucket-transcribe"
 }
 
 variable "s3_force_destroy" {

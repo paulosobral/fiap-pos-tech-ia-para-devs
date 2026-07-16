@@ -171,8 +171,11 @@ nada fora do padrão foi encontrado.
 > detecção, `build_vitals_summary` deriva o "sinal responsável" como a coluna cujo valor é o **mais
 > extremo** em relação à própria distribuição da série (`|valor - média| / desvio`). Quando a leitura
 > foi marcada **só** pelo Isolation Forest (sem z-score), não há coluna única responsável e o item é
-> rotulado **"padrão geral"**. É um proxy de apresentação; pode divergir da coluna exata quando vários
-> sinais disparam juntos, e nunca altera a detecção.
+> rotulado **"padrão geral"**. É um proxy de apresentação: o proxy é **global** (`|valor - média| /
+> desvio` sobre toda a série), enquanto o z-score é **local** (compara com a janela recente); portanto
+> o sinal apontado pode divergir do que realmente disparou o z-score — não só quando vários sinais
+> sobem juntos, mas mesmo numa linha de um único sinal, se outro sinal for globalmente mais extremo
+> naquele instante. Nunca altera a detecção.
 
 ### 4.2 Prescrições — AWS Bedrock, achados reais sobre o dataset sintético
 
