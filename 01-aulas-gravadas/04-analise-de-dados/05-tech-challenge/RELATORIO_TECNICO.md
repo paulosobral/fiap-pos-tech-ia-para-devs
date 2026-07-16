@@ -30,6 +30,16 @@ Vídeo, `alert_id=event_id` (`#V01`), `category` (região do corpo) e `level` (t
 ("Inconsistência de prescrição") e `level` (o tipo da inconsistência). Isso habilita um export
 unificado a ler colunas limpas em vez de parsear a descrição.
 
+Sobre esses campos estruturados, o feed unificado oferece um **export do relatório da sessão**:
+junto do feed, um resumo mostra o total de alertas e a contagem por aba e por nível, e um botão
+"Baixar relatório (CSV)" gera, em memória, um CSV tabular com todos os alertas da sessão (colunas
+`id, origem, timestamp, categoria, nivel, nivel_label, descricao`; níveis ganham um rótulo amigável
+reaproveitando o vocabulário de confiança de Sinais Vitais e rótulos curtos dos eventos de Vídeo).
+A montagem do CSV e do resumo fica num helper puro e testável (`alerts.feed.build_alerts_report`,
+que recebe a lista de `Alert` e não lê `session_state`); o `app.py` só chama o helper, exibe o
+resumo e oferece o `st.download_button` (codificando o texto em UTF-8-SIG para o Excel abrir os
+acentos). Sem alertas na sessão, resumo e botão não aparecem.
+
 Fluxo resumido por aba:
 
 ```

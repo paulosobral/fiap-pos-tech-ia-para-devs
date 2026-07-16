@@ -6,9 +6,12 @@ reruns within the same browser session and are visible to every tab.
 
 Spec: openspec/changes/monitoramento-multimodal-pacientes/specs/clinical-alerting/spec.md
 """
+import csv
+import io
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import streamlit as st
 
@@ -125,3 +128,98 @@ def level_indicator(level: Optional[str]) -> tuple:
     if not level:
         return _DEFAULT_LEVEL_INDICATOR
     return _LEVEL_INDICATORS.get(level, _DEFAULT_LEVEL_INDICATOR)
+
+
+# Fixed column order for the exported session report (change
+# export-relatorio-alertas). Kept as a module constant so the tests and the
+# UI share one source of truth.
+_REPORT_COLUMNS = [
+    "id",
+    "origem",
+    "timestamp",
+    "categoria",
+    "nivel",
+    "nivel_label",
+    "descricao",
+]
+
+# Short PT labels for the Vídeo event levels (their level vocabulary is the
+# event ``tipo``). The Sinais Vitais levels reuse CONFIDENCE_LEVELS[...]["label"].
+# Any level not covered here nor in CONFIDENCE_LEVELS exports an empty label.
+_VIDEO_LEVEL_LABELS = {
+    "postura": "Postura",
+    "velocidade": "Velocidade",
+    "zona_critica": "Zona crítica",
+}
+
+# Key used in the summary's per-level breakdown for alerts that carry no level.
+_NO_LEVEL_KEY = "(sem nível)"
+
+
+def _level_label(level: Optional[str]) -> str:
+    """Friendly label for a raw ``level`` value, or ``""`` when unknown.
+
+    Reuses the Sinais Vitais confidence vocabulary (CONFIDENCE_LEVELS) and the
+    small Vídeo event-label map. Never raises.
+    """
+    if not level:
+        return ""
+    # Imported lazily: vital_signs.analysis imports add_alert from this
+    # module, so a top-level import here would be a circular import.
+    from vital_signs.analysis import CONFIDENCE_LEVELS
+
+    if level in CONFIDENCE_LEVELS:
+        return CONFIDENCE_LEVELS[level]["label"]
+    return _VIDEO_LEVEL_LABELS.get(level, "")
+
+
+def build_alerts_report(alerts: List[Alert]) -> Tuple[str, dict]:
+    """Build a CSV report + summary from a list of ``Alert`` (pure function).
+
+    Takes the same ``Alert`` objects ``get_alerts()`` returns (does NOT read
+    ``session_state``) so it is directly unit-testable.
+
+    Returns ``(csv_text, summary)`` where:
+      - ``csv_text`` is a CSV string built with the stdlib ``csv`` module: a
+        header row plus one row per alert. Columns are exactly
+        ``id, origem, timestamp, categoria, nivel, nivel_label, descricao``.
+        Missing ``alert_id``/``category``/``level`` become empty cells;
+        ``timestamp`` is ISO-formatted ``%Y-%m-%d %H:%M:%S``; ``nivel`` is the
+        raw ``alert.level`` value; ``nivel_label`` is a friendly label when the
+        level is known, else empty. The function returns ``str``; the UI is
+        responsible for encoding it as UTF-8-SIG so Excel shows accents.
+      - ``summary`` is
+        ``{"total": int, "por_origem": {origin: count}, "por_nivel": {level_or_"(sem nível)": count}}``,
+        deterministic (insertion-ordered by first appearance).
+    """
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(_REPORT_COLUMNS)
+
+    por_origem: "OrderedDict[str, int]" = OrderedDict()
+    por_nivel: "OrderedDict[str, int]" = OrderedDict()
+
+    for alert in alerts:
+        level = alert.level or ""
+        writer.writerow(
+            [
+                alert.alert_id or "",
+                alert.origin,
+                alert.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+                alert.category or "",
+                level,
+                _level_label(alert.level),
+                alert.description,
+            ]
+        )
+
+        por_origem[alert.origin] = por_origem.get(alert.origin, 0) + 1
+        level_key = alert.level if alert.level else _NO_LEVEL_KEY
+        por_nivel[level_key] = por_nivel.get(level_key, 0) + 1
+
+    summary = {
+        "total": len(alerts),
+        "por_origem": dict(por_origem),
+        "por_nivel": dict(por_nivel),
+    }
+    return buffer.getvalue(), summary

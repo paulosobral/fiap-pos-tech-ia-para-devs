@@ -158,7 +158,11 @@ A aplicação abre em `http://localhost:8501` com 4 abas e uma sidebar de alerta
   do sinal vital, região do corpo, "Termo crítico", "Inconsistência de prescrição") e `level` (ex.:
   o nível de confiança em Sinais Vitais) — preenchidos por cada aba quando aplicável e retrocompatíveis
   (abas que não os fornecem seguem funcionando, com os campos em `None`). Servem de base para um export
-  unificado ler colunas limpas em vez de parsear o texto.
+  unificado ler colunas limpas em vez de parsear o texto. Junto do feed, um **resumo** mostra a contagem
+  total de alertas da sessão, por aba e por nível, e um botão **"Baixar relatório (CSV)"** exporta todos
+  os alertas da sessão como um CSV tabular (colunas `id, origem, timestamp, categoria, nivel, nivel_label,
+  descricao`; gerado em memória, codificado em UTF-8-SIG para o Excel abrir com acentos). Quando não há
+  alertas na sessão, o resumo e o botão não aparecem.
 
 Detalhes de arquitetura e decisões de design (incluindo por que AWS no lugar de Azure e
 YOLOv8-pose no lugar de OpenPose) estão em

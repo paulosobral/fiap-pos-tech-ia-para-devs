@@ -11,12 +11,14 @@ outside a running `streamlit run` script (verified empirically: only
 emits bare-mode warnings, does not raise), so tests exercise the real
 `streamlit.session_state` object directly instead of a mock/wrapper.
 """
+import csv
+import io
 from datetime import datetime, timedelta
 
 import pytest
 import streamlit as st
 
-from alerts.feed import Alert, add_alert, get_alerts, level_indicator
+from alerts.feed import Alert, add_alert, build_alerts_report, get_alerts, level_indicator
 
 
 @pytest.fixture(autouse=True)
@@ -172,3 +174,130 @@ def test_level_indicator_falls_back_for_none_or_unknown_level():
         icon, severity = level_indicator(lvl)
         assert severity == "normal"
         assert icon  # neutral default icon, never empty / never raises
+
+
+# ── build_alerts_report: session-wide CSV export + summary (change
+#    export-relatorio-alertas) ──────────────────────────────────────────
+
+_REPORT_COLUMNS = [
+    "id",
+    "origem",
+    "timestamp",
+    "categoria",
+    "nivel",
+    "nivel_label",
+    "descricao",
+]
+
+
+def _parse_rows(csv_text):
+    return list(csv.DictReader(io.StringIO(csv_text)))
+
+
+def test_build_alerts_report_one_row_per_alert_with_exact_columns():
+    alerts = [
+        Alert(
+            origin="Sinais Vitais",
+            description="Leitura anômala",
+            timestamp=datetime(2026, 1, 1, 12, 0, 0),
+            alert_id="#S01",
+            category="Frequência cardíaca",
+            level="alta_confianca",
+        ),
+        Alert(
+            origin="Vídeo",
+            description="Zona crítica",
+            timestamp=datetime(2026, 1, 1, 12, 5, 0),
+            alert_id="#V03",
+            category="Pescoço",
+            level="zona_critica",
+        ),
+    ]
+
+    csv_text, _summary = build_alerts_report(alerts)
+
+    reader = csv.reader(io.StringIO(csv_text))
+    header = next(reader)
+    assert header == _REPORT_COLUMNS
+
+    rows = _parse_rows(csv_text)
+    assert len(rows) == 2
+    assert rows[0]["id"] == "#S01"
+    assert rows[0]["origem"] == "Sinais Vitais"
+    assert rows[0]["timestamp"] == "2026-01-01 12:00:00"
+    assert rows[0]["categoria"] == "Frequência cardíaca"
+    assert rows[0]["nivel"] == "alta_confianca"
+    assert rows[0]["nivel_label"] == "Alta confiança"
+    assert rows[0]["descricao"] == "Leitura anômala"
+    # Video level maps to a short PT label.
+    assert rows[1]["nivel"] == "zona_critica"
+    assert rows[1]["nivel_label"] == "Zona crítica"
+
+
+def test_build_alerts_report_missing_structured_fields_yield_empty_cells():
+    alerts = [
+        Alert(
+            origin="Áudio",
+            description="Termo crítico: dor",
+            timestamp=datetime(2026, 1, 1, 9, 30, 0),
+        )
+    ]
+
+    csv_text, _summary = build_alerts_report(alerts)
+
+    rows = _parse_rows(csv_text)
+    assert len(rows) == 1
+    assert rows[0]["id"] == ""
+    assert rows[0]["categoria"] == ""
+    assert rows[0]["nivel"] == ""
+    assert rows[0]["nivel_label"] == ""
+    assert rows[0]["origem"] == "Áudio"
+    assert rows[0]["descricao"] == "Termo crítico: dor"
+
+
+def test_build_alerts_report_unknown_level_leaves_label_empty():
+    alerts = [
+        Alert(
+            origin="Prescrições",
+            description="Interação medicamentosa",
+            timestamp=datetime(2026, 1, 1, 10, 0, 0),
+            level="algum_nivel_desconhecido",
+        )
+    ]
+
+    rows = _parse_rows(build_alerts_report(alerts)[0])
+    assert rows[0]["nivel"] == "algum_nivel_desconhecido"
+    assert rows[0]["nivel_label"] == ""
+
+
+def test_build_alerts_report_summary_counts_per_origin_and_level():
+    alerts = [
+        Alert(origin="Vídeo", description="a", level="postura"),
+        Alert(origin="Vídeo", description="b", level="zona_critica"),
+        Alert(origin="Sinais Vitais", description="c", level="alta_confianca"),
+        Alert(origin="Áudio", description="d"),  # no level
+    ]
+
+    _csv_text, summary = build_alerts_report(alerts)
+
+    assert summary["total"] == 4
+    assert summary["por_origem"] == {"Vídeo": 2, "Sinais Vitais": 1, "Áudio": 1}
+    assert summary["por_nivel"] == {
+        "postura": 1,
+        "zona_critica": 1,
+        "alta_confianca": 1,
+        "(sem nível)": 1,
+    }
+
+
+def test_build_alerts_report_empty_list_yields_header_only_and_zeroed_summary():
+    csv_text, summary = build_alerts_report([])
+
+    reader = csv.reader(io.StringIO(csv_text))
+    header = next(reader)
+    assert header == _REPORT_COLUMNS
+    assert next(reader, None) is None  # no data rows
+
+    assert summary["total"] == 0
+    assert summary["por_origem"] == {}
+    assert summary["por_nivel"] == {}

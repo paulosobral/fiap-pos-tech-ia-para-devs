@@ -17,7 +17,7 @@ import cv2
 import pandas as pd
 import streamlit as st
 
-from alerts.feed import get_alerts, level_indicator
+from alerts.feed import build_alerts_report, get_alerts, level_indicator
 from audio.analysis import DEFAULT_THRESHOLD as AUDIO_DEFAULT_THRESHOLD
 from audio.analysis import DEFAULT_WINDOW as AUDIO_DEFAULT_WINDOW
 from audio.analysis import analyze as analyze_audio
@@ -88,6 +88,25 @@ def _render_alert_feed() -> None:
         return
 
     st.sidebar.caption(f"{len(alerts)} alerta(s) na sessão, do mais recente para o mais antigo.")
+
+    # Session-wide export (clinical-alerting spec, change
+    # export-relatorio-alertas): a compact per-tab/per-level summary plus a
+    # button to download every session alert as one CSV. The CSV/summary
+    # building lives in the pure helper build_alerts_report; here we only
+    # render the summary and offer the download. The helper returns a str;
+    # encode it UTF-8-SIG (BOM) so Excel shows PT accents correctly.
+    csv_text, summary = build_alerts_report(alerts)
+    por_origem = ", ".join(f"{n} {origem}" for origem, n in summary["por_origem"].items())
+    por_nivel = ", ".join(f"{n} {nivel}" for nivel, n in summary["por_nivel"].items())
+    st.sidebar.caption(f"**Total:** {summary['total']} — por aba: {por_origem}.")
+    st.sidebar.caption(f"Por nível: {por_nivel}.")
+    st.sidebar.download_button(
+        "Baixar relatório (CSV)",
+        data=csv_text.encode("utf-8-sig"),
+        file_name="relatorio_alertas.csv",
+        mime="text/csv",
+    )
+
     for alert in alerts:
         # When the alert carries a structured level, show a per-level visual
         # indicator (clinical-alerting spec): an icon prefix, and a stronger
