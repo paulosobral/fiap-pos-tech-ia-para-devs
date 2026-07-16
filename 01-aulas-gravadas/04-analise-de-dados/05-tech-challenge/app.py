@@ -17,7 +17,7 @@ import cv2
 import pandas as pd
 import streamlit as st
 
-from alerts.feed import build_alerts_report, get_alerts, level_indicator
+from alerts.feed import build_alerts_report, get_alerts, level_indicator, level_label
 from audio.analysis import DEFAULT_THRESHOLD as AUDIO_DEFAULT_THRESHOLD
 from audio.analysis import DEFAULT_WINDOW as AUDIO_DEFAULT_WINDOW
 from audio.analysis import analyze as analyze_audio
@@ -97,7 +97,9 @@ def _render_alert_feed() -> None:
     # encode it UTF-8-SIG (BOM) so Excel shows PT accents correctly.
     csv_text, summary = build_alerts_report(alerts)
     por_origem = ", ".join(f"{n} {origem}" for origem, n in summary["por_origem"].items())
-    por_nivel = ", ".join(f"{n} {nivel}" for nivel, n in summary["por_nivel"].items())
+    por_nivel = ", ".join(
+        f"{n} {level_label(nivel) or nivel}" for nivel, n in summary["por_nivel"].items()
+    )
     st.sidebar.caption(f"**Total:** {summary['total']} — por aba: {por_origem}.")
     st.sidebar.caption(f"Por nível: {por_nivel}.")
     st.sidebar.download_button(

@@ -156,11 +156,13 @@ _VIDEO_LEVEL_LABELS = {
 _NO_LEVEL_KEY = "(sem nível)"
 
 
-def _level_label(level: Optional[str]) -> str:
+def level_label(level: Optional[str]) -> str:
     """Friendly label for a raw ``level`` value, or ``""`` when unknown.
 
     Reuses the Sinais Vitais confidence vocabulary (CONFIDENCE_LEVELS) and the
-    small Vídeo event-label map. Never raises.
+    small Vídeo event-label map. Never raises. Used both by the CSV report
+    (``nivel_label`` column) and by the sidebar per-level summary so a
+    clinician sees "Alta confiança" instead of the raw ``alta_confianca`` key.
     """
     if not level:
         return ""
@@ -208,7 +210,7 @@ def build_alerts_report(alerts: List[Alert]) -> Tuple[str, dict]:
                 alert.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
                 alert.category or "",
                 level,
-                _level_label(alert.level),
+                level_label(alert.level),
                 alert.description,
             ]
         )
