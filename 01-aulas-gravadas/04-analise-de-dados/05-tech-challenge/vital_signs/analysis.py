@@ -16,7 +16,7 @@ Spec: openspec/changes/monitoramento-multimodal-pacientes/specs/vital-signs-moni
 """
 import math
 import warnings
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import pandas as pd
 
@@ -78,6 +78,268 @@ def zscore_threshold_is_reachable(window: int, threshold: float) -> bool:
     if window < 2:
         return False
     return threshold < math.sqrt(window - 1)
+
+
+# ── Presentation vocabulary (friendly labels for the Sinais Vitais tab) ──
+#
+# Pure, testable presentation helpers, kept next to the layer that presents
+# them (same pattern as ``video/analysis.py``'s ``JOINT_LABELS`` /
+# ``joint_label`` / ``group_events_for_display``). ``app.py`` only renders
+# what these produce — no data logic lives in the tab. Detection is not
+# touched; this is presentation only (change ``repaginar-aba-sinais-vitais``).
+
+# Friendly Portuguese labels for the internal vital-sign column keys. Keys
+# are the canonical lowercased column names; ``vital_sign_label`` matches
+# case-insensitively and falls back to the raw column for anything unknown.
+VITAL_SIGN_LABELS: Dict[str, str] = {
+    "heart_rate": "Frequência cardíaca",
+    "spo2": "Saturação de O₂ (SpO₂)",
+    "resp_rate": "Frequência respiratória",
+    "respiratory_rate": "Frequência respiratória",
+    "systolic_bp": "Pressão sistólica",
+    "diastolic_bp": "Pressão diastólica",
+    "blood_pressure": "Pressão arterial",
+    "temperature": "Temperatura",
+}
+
+# Signal label used when a row was flagged only by the batch Isolation
+# Forest layer, which scores the whole reading (all signals together)
+# rather than a single column — there is no one "responsible" signal.
+GENERAL_PATTERN_LABEL = "padrão geral"
+
+# Friendly, self-explanatory decoding of each ``agreement`` level from the
+# combined report. Each entry is ``{label, icon, short, help}``:
+#   - ``label``: short name for the confidence column / legend.
+#   - ``icon``: a colored dot conveying severity at a glance.
+#   - ``short``: one-line phrase for the compact legend.
+#   - ``help``: longer explanation for a tooltip / expander.
+CONFIDENCE_LEVELS: Dict[str, Dict[str, str]] = {
+    "alta_confianca": {
+        "label": "Alta confiança",
+        "icon": "🔴",
+        "short": "As duas análises concordam — mais provável ser real",
+        "help": (
+            "Tanto a detecção em tempo real (pico súbito em relação às "
+            "leituras recentes) quanto a análise do histórico completo "
+            "(fora do padrão geral do paciente) marcaram esta leitura. "
+            "Como as duas camadas concordam, é a que tem maior chance de "
+            "ser uma anomalia real e merece atenção prioritária."
+        ),
+    },
+    "zscore_only": {
+        "label": "Só tempo real",
+        "icon": "🟠",
+        "short": "Pico isolado momentâneo",
+        "help": (
+            "Só a detecção em tempo real marcou esta leitura: houve um "
+            "pico brusco em relação às leituras imediatamente anteriores, "
+            "mas a análise do histórico completo não a considerou fora do "
+            "padrão. Costuma indicar uma variação isolada e momentânea."
+        ),
+    },
+    "isolation_forest_only": {
+        "label": "Só histórico",
+        "icon": "🟡",
+        "short": "Fora do padrão geral, sem pico súbito",
+        "help": (
+            "Só a análise do histórico completo marcou esta leitura: ela "
+            "está fora do padrão geral do paciente, mas sem um pico súbito "
+            "que a detecção em tempo real captasse. Pode indicar um desvio "
+            "sustentado e mais sutil ao longo do tempo."
+        ),
+    },
+}
+
+# Fallback level for ``normal`` or any unexpected agreement string, so
+# ``confidence_level`` never raises a KeyError in the UI.
+_DEFAULT_CONFIDENCE_LEVEL: Dict[str, str] = {
+    "label": "Normal",
+    "icon": "🟢",
+    "short": "Dentro do padrão esperado",
+    "help": "Nenhuma das duas camadas de análise marcou esta leitura como anômala.",
+}
+
+# Max number of readings listed in the summary's ``itens`` — the UI shows a
+# short, scannable list, not the whole table.
+_SUMMARY_MAX_ITEMS = 8
+
+# Priority order used to sort the summary items (most important first).
+_LEVEL_PRIORITY = {"alta_confianca": 0, "zscore_only": 1, "isolation_forest_only": 2}
+
+
+def vital_sign_label(column: str) -> str:
+    """Friendly Portuguese label for a vital-sign column name.
+
+    Matches on the lowercased/stripped column name (CSVs may vary in case),
+    e.g. ``"Heart_Rate"`` → ``"Frequência cardíaca"``. Falls back to the raw
+    column string for any unmapped/unknown column.
+
+    Args:
+        column: Raw column name from the uploaded CSV / combined report.
+
+    Returns:
+        A human-readable label, or ``column`` unchanged when unknown.
+    """
+    return VITAL_SIGN_LABELS.get(column.strip().lower(), column)
+
+
+def confidence_level(agreement: str) -> Dict[str, str]:
+    """Presentation dict for an ``agreement`` level from the combined report.
+
+    Args:
+        agreement: One of ``"alta_confianca"``, ``"zscore_only"``,
+            ``"isolation_forest_only"``, ``"normal"``, or any other string.
+
+    Returns:
+        A ``{"label", "icon", "short", "help"}`` dict. For ``"normal"`` or
+        any unexpected value, a sensible default is returned (never raises).
+    """
+    return CONFIDENCE_LEVELS.get(agreement, _DEFAULT_CONFIDENCE_LEVEL)
+
+
+def _responsible_signal(row: dict, signal_columns: list, column_stats: Dict[str, tuple]):
+    """Signal responsible for flagging one anomalous ``combined_report`` row.
+
+    ``analyze`` stores a single row-level ``zscore_anomaly`` boolean (True
+    when *any* signal's z-score fired that row), not a per-signal flag, so
+    the combined report does not record *which* column tripped the z-score.
+    We therefore derive the "responsible" signal from the data present:
+
+    - If the row was flagged by the real-time (z-score) layer, the
+      responsible signal is the one whose value is most extreme relative to
+      the column's own distribution (largest ``|value - mean| / std`` across
+      the whole series). This is the best available proxy for the column the
+      rolling z-score reacted to, using only the data in ``combined_report``.
+      Ties (or a zero-variance column) fall back to column order.
+    - If the row was flagged *only* by the Isolation Forest layer (no
+      z-score), the whole reading is out of pattern with no single
+      responsible column, so the caller reports the sentinel
+      ``GENERAL_PATTERN_LABEL`` ("padrão geral") instead of a specific signal.
+
+    Documented choice: this proxy may differ from the exact column the
+    z-score fired on when several signals spike together; it is presentation
+    only and never changes detection (``analyze`` is not modified to add
+    per-signal columns).
+
+    Args:
+        row: One combined-report row as a plain dict.
+        signal_columns: Recognized vital-sign columns present in the report.
+        column_stats: ``{column: (mean, std)}`` over the whole series.
+
+    Returns:
+        A ``(column, value)`` tuple for the z-score case, or ``None`` for the
+        Isolation-Forest-only case (no single responsible column).
+    """
+    if not bool(row.get("zscore_anomaly")):
+        return None
+
+    best_col = None
+    best_score = -1.0
+    best_value = None
+    for col in signal_columns:
+        value = row.get(col)
+        if value is None or (isinstance(value, float) and pd.isna(value)):
+            continue
+        mean, std = column_stats.get(col, (0.0, 0.0))
+        score = abs(value - mean) / std if std > 0 else 0.0
+        if score > best_score:
+            best_score = score
+            best_col = col
+            best_value = value
+    if best_col is None:
+        return None
+    return (best_col, best_value)
+
+
+def build_vitals_summary(
+    combined_report: pd.DataFrame, max_itens: Optional[int] = _SUMMARY_MAX_ITEMS
+) -> Dict[str, Any]:
+    """Build a friendly, deterministic summary of the anomalous readings.
+
+    Pure presentation helper over the ``combined_report`` returned by
+    ``analyze``. Does not touch detection; only reshapes the report into a
+    short, human-readable structure for the Sinais Vitais tab.
+
+    Args:
+        combined_report: DataFrame with ``timestamp``, ``zscore_anomaly``,
+            ``isolation_forest_anomaly``, one column per recognized vital
+            sign, and an ``agreement`` column.
+        max_itens: Cap on the ``itens`` list length (short list for the UI
+            top summary). ``None`` returns every anomalous reading — used to
+            drive the full translated table.
+
+    Returns:
+        ``{
+            "total_anomalias": int,           # rows whose agreement != normal
+            "por_nivel": {agreement: count},  # count per non-normal level
+            "itens": [                        # alta_confianca first, capped
+                {"nivel": str, "sinal_label": str, "valor": float|None,
+                 "timestamp": Any}, ...
+            ],
+        }``
+        The "responsible signal" per item is derived by
+        ``_responsible_signal`` (documented there): the most-extreme signal
+        for z-score rows, or ``"padrão geral"`` when only Isolation Forest
+        flagged the row. ``itens`` is capped at ``max_itens``.
+    """
+    empty = {"total_anomalias": 0, "por_nivel": {}, "itens": []}
+    if combined_report is None or combined_report.empty or "agreement" not in combined_report:
+        return empty
+
+    anomalies = combined_report[combined_report["agreement"] != "normal"]
+    if anomalies.empty:
+        return empty
+
+    signal_columns = [
+        col
+        for col in combined_report.columns
+        if col not in ("timestamp", "zscore_anomaly", "isolation_forest_anomaly", "agreement")
+        and col.strip().lower() in RECOGNIZED_VITAL_SIGN_COLUMNS
+    ]
+
+    # Per-column mean/std over the whole series, so "most extreme" is judged
+    # against each signal's own distribution (deterministic for the report).
+    column_stats: Dict[str, tuple] = {}
+    for col in signal_columns:
+        series = pd.to_numeric(combined_report[col], errors="coerce")
+        column_stats[col] = (float(series.mean()), float(series.std(ddof=0)))
+
+    por_nivel: Dict[str, int] = {}
+    for level in anomalies["agreement"]:
+        por_nivel[level] = por_nivel.get(level, 0) + 1
+
+    # Prioritize by confidence level (alta_confianca first), keeping the
+    # original row order within each level for determinism.
+    ordered = sorted(
+        anomalies.to_dict("records"),
+        key=lambda r: _LEVEL_PRIORITY.get(r["agreement"], 99),
+    )
+
+    selected = ordered if max_itens is None else ordered[:max_itens]
+    itens = []
+    for row_dict in selected:
+        responsible = _responsible_signal(row_dict, signal_columns, column_stats)
+        if responsible is not None:
+            col, value = responsible
+            sinal_label = vital_sign_label(col)
+            valor = float(value) if value is not None and not pd.isna(value) else None
+        else:
+            sinal_label = GENERAL_PATTERN_LABEL
+            valor = None
+        itens.append(
+            {
+                "nivel": row_dict["agreement"],
+                "sinal_label": sinal_label,
+                "valor": valor,
+                "timestamp": row_dict["timestamp"],
+            }
+        )
+
+    return {
+        "total_anomalias": int(len(anomalies)),
+        "por_nivel": por_nivel,
+        "itens": itens,
+    }
 
 
 class VitalSignsValidationError(ValueError):

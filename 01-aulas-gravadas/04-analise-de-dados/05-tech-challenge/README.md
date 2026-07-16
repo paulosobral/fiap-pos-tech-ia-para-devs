@@ -86,6 +86,17 @@ A aplicação abre em `http://localhost:8501` com 4 abas e uma sidebar de alerta
   janela que inclui o próprio ponto, então o `|z|` máximo alcançável é `sqrt(janela-1)`; a janela
   padrão 13 (`sqrt(12) ≈ 3.46 > 3.0`) mantém a camada efetiva, e a UI avisa quando uma combinação
   manual `threshold ≥ sqrt(janela-1)` tornaria a detecção inerte.
+  A **saída é apresentada em linguagem amigável** (não-técnica), sem mudar a detecção: as camadas
+  aparecem como "Detecção em tempo real" (o z-score) e "Análise do histórico completo" (o Isolation
+  Forest), com o termo técnico no tooltip; os controles são "Sensibilidade" (threshold) e "Tamanho da
+  janela de comparação" (janela), cada um com tooltip explicando o efeito com exemplo. Ao processar, há
+  um **resumo no topo** (quantas leituras fora do padrão + bullets com o sinal, valor e horário das
+  principais) e uma **tabela traduzida** (Horário, Sinal vital, Valor, Nível de confiança) com nomes de
+  sinais em português (heart_rate → "Frequência cardíaca" etc.). Os três **níveis de confiança** são
+  explicados com ícone + frase e tooltip: 🔴 Alta confiança (as duas concordam), 🟠 Só tempo real (pico
+  isolado) e 🟡 Só histórico (fora do padrão geral). Sem anomalias, mostra uma mensagem clara de "nada
+  fora do padrão". Os helpers de apresentação (`vital_sign_label`, `confidence_level`,
+  `build_vitals_summary`) são puros e testados em `vital_signs/analysis.py`, mantendo `app.py` fino.
   Para demonstrar o contraste "sem alertas" vs. "com alertas", há dois CSVs de demo em `data/`,
   derivados da amostra MIMIC-III real: `vital_signs_sample_normal.csv` (nenhuma leitura anômala em
   nenhuma das duas camadas — toda leitura sai `normal`) e `vital_signs_sample_anomalias.csv` (os

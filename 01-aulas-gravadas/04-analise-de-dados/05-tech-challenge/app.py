@@ -48,7 +48,10 @@ from vital_signs.analysis import (
     RECOGNIZED_VITAL_SIGN_COLUMNS,
     VitalSignsValidationError,
     analyze,
+    build_vitals_summary,
+    confidence_level,
     load_vital_signs_csv,
+    vital_sign_label,
     zscore_threshold_is_reachable,
 )
 from video.analysis import DEFAULT_WINDOW as VIDEO_DEFAULT_WINDOW
@@ -217,9 +220,13 @@ with tab_vitals:
     st.header("Sinais Vitais")
     st.caption(
         "Upload de série temporal de sinais vitais (frequência cardíaca, "
-        "oxigenação, pressão arterial etc.). Duas camadas de detecção de "
-        "anomalia são aplicadas: rolling z-score (linha a linha, tempo "
-        "real) e Isolation Forest (lote, validação complementar)."
+        "oxigenação, pressão arterial etc.). Duas análises complementares são "
+        "aplicadas: **Detecção em tempo real** (marca picos súbitos em relação "
+        "às leituras recentes, leitura a leitura — internamente um *rolling "
+        "z-score*) e **Análise do histórico completo** (marca leituras fora do "
+        "padrão geral do paciente, avaliando a série toda de uma vez — "
+        "internamente um *Isolation Forest*). Quando as duas concordam, a "
+        "leitura tem alta confiança."
     )
 
     uploaded_file = st.file_uploader(
@@ -246,46 +253,113 @@ with tab_vitals:
             st.line_chart(chart_df)
 
             window = st.number_input(
-                "Janela do rolling z-score", min_value=2, value=DEFAULT_WINDOW, step=1
+                "Tamanho da janela de comparação",
+                min_value=2,
+                value=DEFAULT_WINDOW,
+                step=1,
+                help=(
+                    "Quantas leituras recentes servem de referência para a "
+                    "detecção em tempo real decidir se a leitura atual é um "
+                    "pico. Exemplos: **13** (padrão) compara com as últimas 13 "
+                    "leituras · valores **maiores** suavizam (é preciso um "
+                    "desvio mais consistente para alertar) · valores "
+                    "**menores** reagem mais rápido a picos curtos, mas geram "
+                    "mais alertas por variação normal."
+                ),
             )
             threshold = st.number_input(
-                "Threshold do z-score (|z| >)", min_value=0.1, value=DEFAULT_THRESHOLD, step=0.1
+                "Sensibilidade",
+                min_value=0.1,
+                value=DEFAULT_THRESHOLD,
+                step=0.1,
+                help=(
+                    "O quanto uma leitura precisa se afastar do normal recente "
+                    "para virar alerta (internamente, o limite de z-score). "
+                    "Exemplos: **3.0** (padrão) · valores **menores** (ex.: "
+                    "2.0) deixam a detecção mais sensível — marca até desvios "
+                    "pequenos, gera mais alertas · valores **maiores** (ex.: "
+                    "4.0) deixam menos sensível — só marca picos bem "
+                    "acentuados."
+                ),
             )
 
             if not zscore_threshold_is_reachable(int(window), float(threshold)):
                 max_z = math.sqrt(int(window) - 1) if int(window) >= 2 else 0.0
                 st.warning(
-                    "Nenhuma anomalia de rolling z-score é detectável com esses valores: "
-                    f"o |z| máximo alcançável para uma janela de {int(window)} é "
-                    f"sqrt(janela-1) ≈ {max_z:.2f}, que não supera o threshold de "
-                    f"{float(threshold):.2f}. Aumente a janela ou reduza o threshold para "
-                    "que a camada z-score possa marcar anomalias."
+                    "Com esses valores, a detecção em tempo real nunca marcaria uma "
+                    "anomalia: o desvio máximo detectável para uma janela de "
+                    f"{int(window)} é sqrt(janela-1) ≈ {max_z:.2f}, que não supera a "
+                    f"sensibilidade de {float(threshold):.2f}. Aumente a janela de "
+                    "comparação ou reduza a sensibilidade para que a detecção em tempo "
+                    "real volte a funcionar."
                 )
 
             if st.button("Processar sinais vitais", key="vital_signs_process_button"):
                 result = analyze(vitals_df, window=int(window), threshold=float(threshold))
                 combined_report = result["combined_report"]
 
-                st.subheader("Relatório combinado de anomalias (z-score + Isolation Forest)")
+                st.subheader("Leituras que chamaram atenção")
                 anomalies_only = combined_report[combined_report["agreement"] != "normal"]
 
                 if anomalies_only.empty:
-                    st.info("Nenhuma anomalia detectada por nenhuma das duas camadas.")
-                else:
-                    agreement_labels = {
-                        "alta_confianca": "Alta confiança (ambas as camadas concordam)",
-                        "zscore_only": "Somente rolling z-score",
-                        "isolation_forest_only": "Somente Isolation Forest",
-                    }
-                    display_df = anomalies_only.copy()
-                    display_df["agreement"] = display_df["agreement"].map(agreement_labels)
-                    st.dataframe(display_df, use_container_width=True)
-
-                    high_confidence = (combined_report["agreement"] == "alta_confianca").sum()
-                    st.caption(
-                        f"{len(anomalies_only)} leitura(s) anômala(s) no total, das quais "
-                        f"{high_confidence} com alta confiança (ambas as camadas concordam)."
+                    st.success(
+                        "Nenhuma anomalia encontrada: todas as leituras ficaram "
+                        "dentro do padrão esperado nas duas análises."
                     )
+                else:
+                    summary = build_vitals_summary(combined_report)
+
+                    # Top summary: one clear sentence + short bullet list of the
+                    # main critical readings (built by the tested helper).
+                    criticas = summary["por_nivel"].get("alta_confianca", 0)
+                    if criticas:
+                        st.markdown(
+                            f"**{summary['total_anomalias']} leitura(s) fora do padrão**, "
+                            f"das quais **{criticas} de alta confiança** (as duas "
+                            "análises concordaram)."
+                        )
+                    else:
+                        st.markdown(
+                            f"**{summary['total_anomalias']} leitura(s) fora do padrão** "
+                            "(nenhuma de alta confiança — nenhuma leitura foi marcada "
+                            "pelas duas análises ao mesmo tempo)."
+                        )
+
+                    for item in summary["itens"]:
+                        nivel = confidence_level(item["nivel"])
+                        valor_txt = f" ({item['valor']:g})" if item["valor"] is not None else ""
+                        st.markdown(
+                            f"- {nivel['icon']} **{item['sinal_label']}**{valor_txt} "
+                            f"às {item['timestamp']} — {nivel['label']}"
+                        )
+
+                    # Friendly, translated table: one row per anomalous reading
+                    # (max_itens=None ⇒ the same tested helper returns them all,
+                    # with translated signal names and the responsible signal).
+                    table_items = build_vitals_summary(combined_report, max_itens=None)["itens"]
+                    display_rows = []
+                    for item in table_items:
+                        nivel = confidence_level(item["nivel"])
+                        display_rows.append(
+                            {
+                                "Horário": item["timestamp"],
+                                "Sinal vital": item["sinal_label"],
+                                "Valor": item["valor"],
+                                "Nível de confiança": f"{nivel['icon']} {nivel['label']}",
+                            }
+                        )
+                    st.dataframe(
+                        pd.DataFrame(display_rows), use_container_width=True, hide_index=True
+                    )
+
+                    # Compact legend so the user can decode the confidence column.
+                    st.markdown("**Como ler o nível de confiança:**")
+                    for agreement in ("alta_confianca", "zscore_only", "isolation_forest_only"):
+                        nivel = confidence_level(agreement)
+                        st.caption(
+                            f"{nivel['icon']} **{nivel['label']}** — {nivel['short']}",
+                            help=nivel["help"],
+                        )
 
                 if result["alerts"]:
                     st.subheader("Alertas gerados (feed compartilhado)")

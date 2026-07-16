@@ -149,6 +149,31 @@ Resultado real, com os thresholds padrão do código (`window=13`, `threshold=3.
 > `st.warning`) quando o usuário escolhe manualmente uma combinação inefetiva
 > (`threshold ≥ sqrt(janela-1)`), para não reintroduzir o problema silenciosamente.
 
+**Apresentação amigável (não-técnica).** A saída da aba é apresentada em linguagem interpretável por
+quem não é técnico, sem alterar a detecção (só apresentação — mesmo espírito da aba Vídeo). As duas
+camadas aparecem como **"Detecção em tempo real"** (o rolling z-score) e **"Análise do histórico
+completo"** (o Isolation Forest), com o termo técnico e o que faz no tooltip/caption. Os controles são
+**"Sensibilidade"** (o threshold) e **"Tamanho da janela de comparação"** (a janela), cada um com um
+`help=` explicando em linguagem simples e com exemplo o efeito de aumentar/diminuir. Após processar, um
+**resumo no topo** (helper puro e testado `build_vitals_summary` em `vital_signs/analysis.py`) informa
+quantas leituras ficaram fora do padrão e destaca, em bullets, as principais — sinal vital traduzido,
+valor e horário. A tabela substitui as colunas cruas (`zscore_anomaly`/`agreement`/`heart_rate`...) por
+cabeçalhos amigáveis (**Horário, Sinal vital, Valor, Nível de confiança**) com os nomes dos sinais
+traduzidos via `vital_sign_label` (heart_rate → "Frequência cardíaca", spo2 → "Saturação de O₂ (SpO₂)"
+etc.). Os três níveis de confiança são explicados com rótulo, ícone e tooltip via `confidence_level`:
+🔴 **Alta confiança** (as duas análises concordam — mais provável ser real), 🟠 **Só tempo real** (pico
+isolado momentâneo) e 🟡 **Só histórico** (fora do padrão geral, sem pico súbito), com uma legenda
+compacta abaixo da tabela. Quando nenhuma leitura é anômala, a aba mostra uma mensagem clara de que
+nada fora do padrão foi encontrado.
+
+> **Sinal responsável por uma leitura (escolha documentada).** `analyze` grava só um booleano
+> por linha (`zscore_anomaly` = *alguma* coluna disparou), não um flag por sinal. Sem modificar a
+> detecção, `build_vitals_summary` deriva o "sinal responsável" como a coluna cujo valor é o **mais
+> extremo** em relação à própria distribuição da série (`|valor - média| / desvio`). Quando a leitura
+> foi marcada **só** pelo Isolation Forest (sem z-score), não há coluna única responsável e o item é
+> rotulado **"padrão geral"**. É um proxy de apresentação; pode divergir da coluna exata quando vários
+> sinais disparam juntos, e nunca altera a detecção.
+
 ### 4.2 Prescrições — AWS Bedrock, achados reais sobre o dataset sintético
 
 Dataset sintético (`data/prescricoes_sinteticas.csv`, 3 pacientes, criado manualmente por falta de

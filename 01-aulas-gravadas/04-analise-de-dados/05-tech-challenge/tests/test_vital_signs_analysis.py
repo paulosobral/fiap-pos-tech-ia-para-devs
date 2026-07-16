@@ -25,7 +25,10 @@ from vital_signs.analysis import (
     RECOGNIZED_VITAL_SIGN_COLUMNS,
     VitalSignsValidationError,
     analyze,
+    build_vitals_summary,
+    confidence_level,
     load_vital_signs_csv,
+    vital_sign_label,
     zscore_threshold_is_reachable,
 )
 
@@ -272,3 +275,166 @@ def test_analyze_combined_report_marks_agreement_when_both_layers_flag_same_row(
     assert spike_row["zscore_anomaly"] in (True, 1)
     # Both layers should have flagged such an extreme, isolated spike.
     assert spike_row["agreement"] == "alta_confianca"
+
+
+# ── presentation helpers: vital_sign_label ──────────────────────────
+
+
+def test_vital_sign_label_translates_known_signals():
+    assert vital_sign_label("heart_rate") == "Frequência cardíaca"
+    assert vital_sign_label("spo2") == "Saturação de O₂ (SpO₂)"
+    assert vital_sign_label("resp_rate") == "Frequência respiratória"
+    assert vital_sign_label("respiratory_rate") == "Frequência respiratória"
+    assert vital_sign_label("systolic_bp") == "Pressão sistólica"
+    assert vital_sign_label("diastolic_bp") == "Pressão diastólica"
+    assert vital_sign_label("blood_pressure") == "Pressão arterial"
+    assert vital_sign_label("temperature") == "Temperatura"
+
+
+def test_vital_sign_label_is_case_insensitive_and_strips():
+    assert vital_sign_label("Heart_Rate") == "Frequência cardíaca"
+    assert vital_sign_label("  SPO2 ") == "Saturação de O₂ (SpO₂)"
+
+
+def test_vital_sign_label_falls_back_to_raw_column_when_unknown():
+    assert vital_sign_label("glucose") == "glucose"
+    assert vital_sign_label("Custom Column") == "Custom Column"
+
+
+# ── presentation helpers: confidence_level ──────────────────────────
+
+
+def test_confidence_level_returns_full_dict_for_known_levels():
+    for agreement, expected_icon in (
+        ("alta_confianca", "🔴"),
+        ("zscore_only", "🟠"),
+        ("isolation_forest_only", "🟡"),
+    ):
+        level = confidence_level(agreement)
+        assert set(level) >= {"label", "icon", "short", "help"}
+        assert level["icon"] == expected_icon
+        assert level["label"]
+        assert level["short"]
+        assert level["help"]
+
+
+def test_confidence_level_labels_match_design():
+    assert confidence_level("alta_confianca")["label"] == "Alta confiança"
+    assert confidence_level("zscore_only")["label"] == "Só tempo real"
+    assert confidence_level("isolation_forest_only")["label"] == "Só histórico"
+
+
+def test_confidence_level_returns_sensible_default_for_normal_or_unknown():
+    # Must not KeyError on 'normal' or an unexpected agreement string.
+    for agreement in ("normal", "something_new", ""):
+        level = confidence_level(agreement)
+        assert set(level) >= {"label", "icon", "short", "help"}
+        assert level["label"]
+
+
+# ── presentation helpers: build_vitals_summary ──────────────────────
+
+
+def _report_row(timestamp, zscore, iforest, agreement, **signals):
+    row = {
+        "timestamp": timestamp,
+        "zscore_anomaly": zscore,
+        "isolation_forest_anomaly": iforest,
+        "agreement": agreement,
+    }
+    row.update(signals)
+    return row
+
+
+def _build_combined_report(rows):
+    return pd.DataFrame(rows)
+
+
+def test_build_vitals_summary_empty_when_no_anomalies():
+    report = _build_combined_report(
+        [
+            _report_row("2024-01-01 00:00", False, False, "normal", heart_rate=80.0, spo2=98.0),
+            _report_row("2024-01-01 01:00", False, False, "normal", heart_rate=81.0, spo2=97.0),
+        ]
+    )
+
+    summary = build_vitals_summary(report)
+
+    assert summary["total_anomalias"] == 0
+    assert summary["por_nivel"] == {}
+    assert summary["itens"] == []
+
+
+def test_build_vitals_summary_counts_per_level():
+    report = _build_combined_report(
+        [
+            _report_row("t0", True, True, "alta_confianca", heart_rate=200.0, spo2=98.0),
+            _report_row("t1", True, False, "zscore_only", heart_rate=150.0, spo2=97.0),
+            _report_row("t2", False, True, "isolation_forest_only", heart_rate=82.0, spo2=80.0),
+            _report_row("t3", False, False, "normal", heart_rate=80.0, spo2=98.0),
+        ]
+    )
+
+    summary = build_vitals_summary(report)
+
+    assert summary["total_anomalias"] == 3
+    assert summary["por_nivel"] == {
+        "alta_confianca": 1,
+        "zscore_only": 1,
+        "isolation_forest_only": 1,
+    }
+
+
+def test_build_vitals_summary_prioritizes_alta_confianca_in_itens():
+    report = _build_combined_report(
+        [
+            _report_row("t0", True, False, "zscore_only", heart_rate=150.0, spo2=97.0),
+            _report_row("t1", True, True, "alta_confianca", heart_rate=200.0, spo2=98.0),
+        ]
+    )
+
+    summary = build_vitals_summary(report)
+
+    assert summary["itens"][0]["nivel"] == "alta_confianca"
+
+
+def test_build_vitals_summary_uses_padrao_geral_when_only_isolation_forest_flags():
+    report = _build_combined_report(
+        [
+            _report_row("t0", False, True, "isolation_forest_only", heart_rate=82.0, spo2=80.0),
+        ]
+    )
+
+    summary = build_vitals_summary(report)
+
+    assert len(summary["itens"]) == 1
+    assert summary["itens"][0]["sinal_label"] == "padrão geral"
+    assert summary["itens"][0]["nivel"] == "isolation_forest_only"
+
+
+def test_build_vitals_summary_item_has_translated_signal_and_value():
+    report = _build_combined_report(
+        [
+            _report_row("t0", True, True, "alta_confianca", heart_rate=200.0, spo2=98.0),
+        ]
+    )
+
+    summary = build_vitals_summary(report)
+    item = summary["itens"][0]
+
+    assert item["sinal_label"] in ("Frequência cardíaca", "Saturação de O₂ (SpO₂)")
+    assert item["valor"] is not None
+    assert item["timestamp"] == "t0"
+
+
+def test_build_vitals_summary_caps_itens_list():
+    rows = [
+        _report_row(f"t{i}", True, True, "alta_confianca", heart_rate=200.0 + i)
+        for i in range(20)
+    ]
+    report = _build_combined_report(rows)
+
+    summary = build_vitals_summary(report)
+
+    assert summary["total_anomalias"] == 20
+    assert len(summary["itens"]) <= 8
