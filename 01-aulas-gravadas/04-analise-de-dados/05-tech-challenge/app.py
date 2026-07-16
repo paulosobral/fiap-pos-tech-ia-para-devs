@@ -17,7 +17,7 @@ import cv2
 import pandas as pd
 import streamlit as st
 
-from alerts.feed import get_alerts
+from alerts.feed import get_alerts, level_indicator
 from audio.analysis import DEFAULT_THRESHOLD as AUDIO_DEFAULT_THRESHOLD
 from audio.analysis import DEFAULT_WINDOW as AUDIO_DEFAULT_WINDOW
 from audio.analysis import analyze as analyze_audio
@@ -89,9 +89,20 @@ def _render_alert_feed() -> None:
 
     st.sidebar.caption(f"{len(alerts)} alerta(s) na sessão, do mais recente para o mais antigo.")
     for alert in alerts:
-        st.sidebar.warning(
-            f"**[{alert.origin}]** {alert.timestamp:%Y-%m-%d %H:%M:%S}\n\n{alert.description}"
+        # When the alert carries a structured level, show a per-level visual
+        # indicator (clinical-alerting spec): an icon prefix, and a stronger
+        # widget (st.error) for high-severity levels. Alerts without a level
+        # fall back to a neutral icon + st.warning.
+        icon, severity = level_indicator(alert.level)
+        id_prefix = f"{alert.alert_id} " if alert.alert_id else ""
+        body = (
+            f"{icon} **[{alert.origin}]** {alert.timestamp:%Y-%m-%d %H:%M:%S}\n\n"
+            f"{id_prefix}{alert.description}"
         )
+        if severity == "high":
+            st.sidebar.error(body)
+        else:
+            st.sidebar.warning(body)
 
 
 @st.cache_resource(show_spinner=False)

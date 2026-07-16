@@ -91,3 +91,37 @@ def get_alerts() -> List[Alert]:
     """
     alerts = st.session_state.get(_SESSION_KEY, [])
     return sorted(alerts, key=lambda alert: alert.timestamp, reverse=True)
+
+
+# Visual severity indicator per structured ``level``, used by the unified
+# sidebar feed (clinical-alerting spec) to show a per-level indicator when
+# an alert carries a level. Different tabs use different level vocabularies
+# (Sinais Vitais: agreement between the two layers; Vídeo/Prescrições: the
+# event/finding kind), so this maps the known level strings across all tabs
+# to (icon, "high"|"normal") — "high" picks a stronger widget (st.error) in
+# the feed. Unknown/absent levels fall back to a neutral indicator so tabs
+# that set no level still render fine.
+_LEVEL_INDICATORS = {
+    # Sinais Vitais — confidence between the real-time and history layers.
+    "alta_confianca": ("🔴", "high"),
+    "zscore_only": ("🟠", "normal"),
+    "isolation_forest_only": ("🟡", "normal"),
+    # Vídeo — event kinds.
+    "postura": ("🟠", "normal"),
+    "velocidade": ("🟠", "normal"),
+    "zona_critica": ("🔴", "high"),
+}
+_DEFAULT_LEVEL_INDICATOR = ("🔔", "normal")
+
+
+def level_indicator(level: Optional[str]) -> tuple:
+    """Return ``(icon, severity)`` for an alert ``level`` for the feed.
+
+    ``severity`` is ``"high"`` or ``"normal"``; the feed uses it to choose a
+    stronger widget for high-severity alerts. Unknown or ``None`` levels
+    return a neutral default (never raises), so alerts without a structured
+    level still render.
+    """
+    if not level:
+        return _DEFAULT_LEVEL_INDICATOR
+    return _LEVEL_INDICATORS.get(level, _DEFAULT_LEVEL_INDICATOR)

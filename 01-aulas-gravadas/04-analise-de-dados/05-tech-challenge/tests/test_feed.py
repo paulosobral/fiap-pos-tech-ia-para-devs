@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 import pytest
 import streamlit as st
 
-from alerts.feed import Alert, add_alert, get_alerts
+from alerts.feed import Alert, add_alert, get_alerts, level_indicator
 
 
 @pytest.fixture(autouse=True)
@@ -150,3 +150,25 @@ def test_get_alerts_still_newest_first_with_structured_fields():
     alerts = get_alerts()
     assert [a.description for a in alerts] == ["mais recente", "mais antigo"]
     assert alerts[0].alert_id == "#S02"
+
+
+def test_level_indicator_high_severity_for_alta_confianca_and_zona_critica():
+    icon, severity = level_indicator("alta_confianca")
+    assert severity == "high"
+    assert icon  # non-empty
+    _, sev_zone = level_indicator("zona_critica")
+    assert sev_zone == "high"
+
+
+def test_level_indicator_normal_severity_for_known_non_high_levels():
+    for lvl in ("zscore_only", "isolation_forest_only", "postura", "velocidade"):
+        icon, severity = level_indicator(lvl)
+        assert severity == "normal"
+        assert icon
+
+
+def test_level_indicator_falls_back_for_none_or_unknown_level():
+    for lvl in (None, "", "nivel_inexistente"):
+        icon, severity = level_indicator(lvl)
+        assert severity == "normal"
+        assert icon  # neutral default icon, never empty / never raises
