@@ -97,6 +97,24 @@ def test_raise_critical_term_alerts_adds_nothing_when_no_term_matches():
     assert alerts == []
 
 
+def test_raise_critical_term_alerts_assigns_sequential_ids():
+    # Structured id (change alertas-estruturados-audio-prescricoes): each
+    # match gets a unique #A<NN> id, starting at 1 by default.
+    text = "Sinto muita dor no peito e também tontura."
+
+    alerts = raise_critical_term_alerts(text, terms=["dor", "tontura"])
+
+    assert [a.alert_id for a in alerts] == ["#A01", "#A02"]
+
+
+def test_raise_critical_term_alerts_honors_custom_start_index():
+    text = "Sinto muita dor no peito."
+
+    alerts = raise_critical_term_alerts(text, terms=["dor"], start_index=5)
+
+    assert alerts[0].alert_id == "#A05"
+
+
 def test_raise_critical_term_alerts_sets_structured_category():
     # Structured fields (change alertas-estruturados-e-vinculo-sinais-vitais):
     # critical-term alerts now carry a "Termo crítico" category, keeping the

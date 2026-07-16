@@ -26,9 +26,10 @@ O `Alert` carrega, além de origem/timestamp/descrição, três campos estrutura
 dados de primeira classe (não só texto embutido na descrição): a aba Sinais Vitais preenche
 `alert_id` (o ID de vínculo `#S01`), `category` (nome do sinal) e `level` (nível de confiança); a
 Vídeo, `alert_id=event_id` (`#V01`), `category` (região do corpo) e `level` (tipo do evento); a Áudio,
-`category` ("Termo crítico" / "Fadiga de fala" / "Disartria"); a Prescrições, `category`
-("Inconsistência de prescrição") e `level` (o tipo da inconsistência). Isso habilita um export
-unificado a ler colunas limpas em vez de parsear a descrição.
+`alert_id` (`#A01`, encadeado entre termo crítico → taxa de fala → pausa) e `category` ("Termo
+crítico" / "Fadiga de fala" / "Disartria"); a Prescrições, `alert_id` (`#P01`, por finding) e
+`category` ("Inconsistência de prescrição") e `level` (o tipo da inconsistência). Isso habilita um
+export unificado a ler colunas limpas em vez de parsear a descrição.
 
 Sobre esses campos estruturados, o feed unificado oferece um **export do relatório da sessão**:
 junto do feed, um resumo mostra o total de alertas e a contagem por aba e por nível, e um botão
@@ -213,7 +214,9 @@ uniforme — consistente com a tabela e a legenda.
 Dataset sintético (`data/prescricoes_sinteticas.csv`, 3 pacientes, criado manualmente por falta de
 fonte pública apropriada — ver seção "Limitações"): Paciente A (Losartana 50mg estável, caso
 normal), Paciente B (Metformina 500mg → 2000mg em 7 dias, mudança abrupta de dose), Paciente C
-(Warfarina + Aspirina co-prescritas, possível interação medicamentosa).
+(Warfarina + Aspirina co-prescritas, possível interação medicamentosa). Há também um par "sem
+anomalias" (`data/prescricoes_sinteticas_normal.csv`, mesmos 3 pacientes, dose constante e sem a
+combinação de risco), reproduzível por `scripts/gen_prescriptions_demo.py`.
 
 Chamada real ao Bedrock (perfil `bedrock`, região `us-east-2`, modelo
 `us.anthropic.claude-sonnet-5`) para o **Paciente B** retornou:

@@ -205,6 +205,20 @@ def test_generate_alerts_for_findings_sets_structured_category_and_level():
     assert "Dose dobrou" in alerts[0].description
 
 
+def test_generate_alerts_for_findings_assigns_sequential_ids():
+    # alert_id (change alertas-estruturados-audio-prescricoes): one unique
+    # #P<NN> id per finding, in the same order as the findings list, so the
+    # UI card and the feed alert can be matched.
+    findings = [
+        {"tipo": "mudanca_dose_abrupta", "explicacao": "Dose dobrou sem justificativa."},
+        {"tipo": "interacao_medicamentosa", "explicacao": "Risco de sangramento."},
+    ]
+
+    alerts = generate_alerts_for_findings(findings, "Paciente B")
+
+    assert [a.alert_id for a in alerts] == ["#P01", "#P02"]
+
+
 # ── review_patient_prescriptions (mocked Bedrock client) ────────────
 
 

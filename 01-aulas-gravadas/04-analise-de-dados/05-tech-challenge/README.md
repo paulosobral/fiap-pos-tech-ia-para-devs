@@ -143,18 +143,27 @@ A aplicação abre em `http://localhost:8501` com 4 abas e uma sidebar de alerta
   (texto + timestamps por palavra), analisa sentimento e entidades via AWS Comprehend, busca
   termos críticos configuráveis (ex.: "dor", "não consigo respirar") no texto transcrito, e
   deriva séries de taxa de fala e duração de pausa dos timestamps, passando-as pelo mesmo
-  detector de rolling z-score para sinalizar possível fadiga/disartria.
+  detector de rolling z-score para sinalizar possível fadiga/disartria. Cada alerta (termo
+  crítico, taxa de fala anômala, pausa anômala) recebe um **identificador de vínculo** curto
+  (`#A01`, `#A02`, ...), atribuído na mesma ordem em que os itens já aparecem na aba (termos
+  críticos primeiro, depois taxa de fala, depois pausas), e exibido junto de cada trecho/segmento
+  correspondente — paralelo do `#S01`/`#V01`.
 - **Prescrições** — upload de histórico de prescrições por paciente (CSV/Excel). Para o
   paciente selecionado, envia o histórico ao AWS Bedrock (Claude Sonnet), que aponta
   inconsistências via raciocínio de linguagem: mudança abrupta de dose, possível interação
   medicamentosa ou alteração sem justificativa clínica aparente — sem treino de modelo
-  customizado.
+  customizado. Cada inconsistência recebe um **identificador de vínculo** curto (`#P01`, `#P02`,
+  ...), na ordem retornada pelo Bedrock, exibido junto do card da inconsistência correspondente —
+  paralelo do `#A01`/`#S01`/`#V01`. Além do dataset sintético `data/prescricoes_sinteticas.csv`
+  ("com anomalias" — mudança abrupta de dose e interação Warfarina+Aspirina), há um par
+  "sem anomalias" em `data/prescricoes_sinteticas_normal.csv` (mesmos pacientes, dose constante,
+  sem combinação de risco), reproduzível por `scripts/gen_prescriptions_demo.py`.
 - **Feed de Alertas (sidebar)** — acumula, em `st.session_state`, todos os alertas gerados por
   qualquer uma das 4 abas durante a sessão, exibidos do mais recente para o mais antigo com
   origem, timestamp e descrição — simulando notificação em tempo real à equipe médica. É
   adicional à exibição inline de alertas que cada aba já mostra, não a substitui. Além de origem/
   descrição/timestamp, o `Alert` compartilhado (`alerts/feed.py`) carrega três campos estruturados
-  **opcionais** — `alert_id` (identificador de vínculo, ex.: `#S01`/`#V03`), `category` (ex.: nome
+  **opcionais** — `alert_id` (identificador de vínculo, ex.: `#S01`/`#V03`/`#A01`/`#P01`), `category` (ex.: nome
   do sinal vital, região do corpo, "Termo crítico", "Inconsistência de prescrição") e `level` (ex.:
   o nível de confiança em Sinais Vitais) — preenchidos por cada aba quando aplicável e retrocompatíveis
   (abas que não os fornecem seguem funcionando, com os campos em `None`). Servem de base para um export

@@ -256,17 +256,21 @@ def generate_alerts_for_findings(findings: List[Dict[str, Any]], patient_name: s
         feed). Empty list when ``findings`` is empty.
     """
     alerts = []
-    for finding in findings:
+    for index, finding in enumerate(findings, start=1):
         tipo = finding.get("tipo", "inconsistencia")
         explicacao = finding.get("explicacao", "sem detalhes fornecidos.")
         description = f"[{patient_name}] Inconsistência de prescrição ({tipo}): {explicacao}"
         # Structured fields (change alertas-estruturados-e-vinculo-sinais-
         # vitais): a fixed category plus the finding ``tipo`` as level, so a
         # later export reads clean columns. Description text unchanged.
+        # alert_id (change alertas-estruturados-audio-prescricoes, design.md
+        # D2) links this alert to the finding card shown in the same order
+        # by app.py.
         alerts.append(
             add_alert(
                 origin=ORIGIN,
                 description=description,
+                alert_id=f"#P{index:02d}",
                 category="Inconsistência de prescrição",
                 level=tipo,
             )

@@ -141,6 +141,7 @@ def analyze(
     window: int = DEFAULT_WINDOW,
     threshold: float = DEFAULT_THRESHOLD,
     segment_seconds: float = DEFAULT_SEGMENT_SECONDS,
+    start_index: int = 1,
 ) -> Dict[str, Any]:
     """Derive acoustic feature series from ``words`` and flag anomalies.
 
@@ -150,6 +151,10 @@ def analyze(
         window: Rolling window size for the z-score layer.
         threshold: Z-score magnitude above which a reading is anomalous.
         segment_seconds: Segment length used for the speech-rate series.
+        start_index: First number used for this call's ``#A<NN>`` ids
+            (change alertas-estruturados-audio-prescricoes, design.md D1),
+            assigned in order (speech rate first, then pause), so
+            ``app.py`` can chain this after ``raise_critical_term_alerts``.
 
     Returns:
         Dict with:
@@ -174,6 +179,7 @@ def analyze(
     pause_anomalies = detect_anomalies(pause_durations, window=window, threshold=threshold)
 
     alerts = []
+    next_id = start_index
 
     # Structured category per anomaly kind (change alertas-estruturados-e-
     # vinculo-sinais-vitais): a slow/irregular speech rate points to speech
@@ -183,7 +189,15 @@ def analyze(
         rate = speech_rate.iloc[idx]
         segment = segments[idx]
         description = _speech_rate_alert_description(rate, segment, threshold)
-        alerts.append(add_alert(origin=ORIGIN, description=description, category="Fadiga de fala"))
+        alerts.append(
+            add_alert(
+                origin=ORIGIN,
+                description=description,
+                alert_id=f"#A{next_id:02d}",
+                category="Fadiga de fala",
+            )
+        )
+        next_id += 1
 
     for idx in pause_anomalies[pause_anomalies].index:
         pause = pause_durations.iloc[idx]
@@ -191,7 +205,15 @@ def analyze(
         # timestamp of the pause's start (end of the earlier word).
         timestamp_s = words[idx]["end_time"]
         description = _pause_alert_description(pause, timestamp_s, threshold)
-        alerts.append(add_alert(origin=ORIGIN, description=description, category="Disartria"))
+        alerts.append(
+            add_alert(
+                origin=ORIGIN,
+                description=description,
+                alert_id=f"#A{next_id:02d}",
+                category="Disartria",
+            )
+        )
+        next_id += 1
 
     return {
         "speech_rate": speech_rate,

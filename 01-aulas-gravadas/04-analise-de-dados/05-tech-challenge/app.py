@@ -821,11 +821,18 @@ with tab_audio:
                             st.info("Nenhum termo crítico foi identificado na transcrição.")
                         else:
                             for alert in critical_alerts:
-                                st.warning(f"[{alert.timestamp}] {alert.description}")
+                                st.warning(f"{alert.alert_id} [{alert.timestamp}] {alert.description}")
 
                         if words:
+                            # Chain the alert_id sequence after the critical-term
+                            # alerts above (change alertas-estruturados-audio-
+                            # prescricoes, design.md D1) so #A01, #A02... follows
+                            # the same top-to-bottom order the user sees them in.
                             audio_result = analyze_audio(
-                                words, window=AUDIO_DEFAULT_WINDOW, threshold=AUDIO_DEFAULT_THRESHOLD
+                                words,
+                                window=AUDIO_DEFAULT_WINDOW,
+                                threshold=AUDIO_DEFAULT_THRESHOLD,
+                                start_index=len(critical_alerts) + 1,
                             )
 
                             st.subheader("Anomalias de fala (taxa de fala / duração de pausa)")
@@ -844,7 +851,7 @@ with tab_audio:
                                     f"{n_pause} pausa(s) anômala(s)."
                                 )
                                 for alert in audio_result["alerts"]:
-                                    st.warning(f"[{alert.timestamp}] {alert.description}")
+                                    st.warning(f"{alert.alert_id} [{alert.timestamp}] {alert.description}")
     else:
         st.info("Faça upload de um áudio para iniciar a análise.")
 
@@ -900,9 +907,11 @@ with tab_prescriptions:
                     if not findings:
                         st.info("Nenhuma inconsistência encontrada para este paciente.")
                     else:
-                        for finding in findings:
+                        # zip is safe here: generate_alerts_for_findings creates
+                        # exactly one alert per finding, in the same order.
+                        for finding, alert in zip(findings, review_result["alerts"]):
                             st.warning(
-                                f"**{finding.get('tipo', 'inconsistencia')}** — "
+                                f"{alert.alert_id} **{finding.get('tipo', 'inconsistencia')}** — "
                                 f"{finding.get('explicacao', 'sem detalhes fornecidos.')}"
                             )
                         st.caption(

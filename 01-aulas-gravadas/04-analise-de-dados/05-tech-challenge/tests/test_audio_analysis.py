@@ -185,3 +185,43 @@ def test_speech_rate_anomaly_alert_carries_structured_category():
     rate_alerts = [a for a in result["alerts"] if "Taxa de fala" in a.description]
     if rate_alerts:  # only assert when the rate layer actually flagged
         assert all(a.category == "Fadiga de fala" for a in rate_alerts)
+
+
+def test_analyze_assigns_sequential_alert_ids_by_default():
+    # Structured id (change alertas-estruturados-audio-prescricoes): every
+    # alert (speech-rate then pause, in that order) gets a unique #A<NN> id.
+    words = []
+    t = 0.0
+    for i in range(15):
+        words.append(_word(f"a{i}", t, t + 0.2))
+        t += 0.3
+    t += 20.0
+    words.append(_word("depois-da-pausa", t, t + 0.2))
+    t += 0.3
+    for i in range(5):
+        words.append(_word(f"b{i}", t, t + 0.2))
+        t += 0.3
+
+    result = analyze(words, window=5, threshold=2.0)
+
+    ids = [a.alert_id for a in result["alerts"]]
+    assert ids == [f"#A{i:02d}" for i in range(1, len(ids) + 1)]
+    assert len(set(ids)) == len(ids)
+
+
+def test_analyze_honors_custom_start_index():
+    words = []
+    t = 0.0
+    for i in range(15):
+        words.append(_word(f"a{i}", t, t + 0.2))
+        t += 0.3
+    t += 20.0
+    words.append(_word("depois-da-pausa", t, t + 0.2))
+    t += 0.3
+    for i in range(5):
+        words.append(_word(f"b{i}", t, t + 0.2))
+        t += 0.3
+
+    result = analyze(words, window=5, threshold=2.0, start_index=10)
+
+    assert result["alerts"][0].alert_id == "#A10"

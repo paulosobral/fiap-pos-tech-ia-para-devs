@@ -142,7 +142,10 @@ def find_critical_terms(
 
 
 def raise_critical_term_alerts(
-    text: str, terms: Sequence[str] = DEFAULT_CRITICAL_TERMS, context_chars: int = 40
+    text: str,
+    terms: Sequence[str] = DEFAULT_CRITICAL_TERMS,
+    context_chars: int = 40,
+    start_index: int = 1,
 ) -> List[Alert]:
     """Find critical terms in ``text`` and push one ``Alert`` per match.
 
@@ -150,6 +153,11 @@ def raise_critical_term_alerts(
         text: Transcribed text to search.
         terms: Critical terms to look for.
         context_chars: Context window size passed to ``find_critical_terms``.
+        start_index: First number used for this alert's ``#A<NN>`` id
+            (change alertas-estruturados-audio-prescricoes, design.md D1).
+            Lets ``app.py`` chain the Áudio tab's 3 alert sources (critical
+            terms, then speech rate/pause from ``analyze``) into one
+            visible sequence without a shared session-wide counter.
 
     Returns:
         List of ``Alert`` objects created (also pushed to the shared feed).
@@ -157,7 +165,7 @@ def raise_critical_term_alerts(
     matches = find_critical_terms(text, terms=terms, context_chars=context_chars)
 
     alerts = []
-    for match in matches:
+    for offset, match in enumerate(matches):
         description = (
             f"Termo crítico detectado na transcrição: \"{match['term']}\" "
             f"— contexto: \"{match['context']}\"."
@@ -165,7 +173,12 @@ def raise_critical_term_alerts(
         # Structured category (change alertas-estruturados-e-vinculo-sinais-
         # vitais) so a later export reads a clean column; text unchanged.
         alerts.append(
-            add_alert(origin=ORIGIN, description=description, category="Termo crítico")
+            add_alert(
+                origin=ORIGIN,
+                description=description,
+                alert_id=f"#A{start_index + offset:02d}",
+                category="Termo crítico",
+            )
         )
 
     return alerts
