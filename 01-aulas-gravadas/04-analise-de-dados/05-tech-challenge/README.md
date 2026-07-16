@@ -246,13 +246,6 @@ A suíte tem **199 testes** e passa integralmente. Os testes cobrem a lógica de
 
 ---
 
-## Pendências (passos manuais)
-
-- **Gravar vídeo de demonstração** (até 15 min) cobrindo análise de áudio e vídeo, detecção/resposta a anomalias, integração AWS e o fluxo final de alerta.
-- **Publicar** no YouTube/Vimeo e substituir o placeholder do link no topo deste README.
-
----
-
 ## Licença
 
 Projeto desenvolvido para fins acadêmicos no curso FIAP Pós Tech — IA para Devs, Fase 4.
