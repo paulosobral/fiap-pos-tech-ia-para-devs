@@ -260,7 +260,17 @@ def generate_alerts_for_findings(findings: List[Dict[str, Any]], patient_name: s
         tipo = finding.get("tipo", "inconsistencia")
         explicacao = finding.get("explicacao", "sem detalhes fornecidos.")
         description = f"[{patient_name}] Inconsistência de prescrição ({tipo}): {explicacao}"
-        alerts.append(add_alert(origin=ORIGIN, description=description))
+        # Structured fields (change alertas-estruturados-e-vinculo-sinais-
+        # vitais): a fixed category plus the finding ``tipo`` as level, so a
+        # later export reads clean columns. Description text unchanged.
+        alerts.append(
+            add_alert(
+                origin=ORIGIN,
+                description=description,
+                category="Inconsistência de prescrição",
+                level=tipo,
+            )
+        )
 
     return alerts
 

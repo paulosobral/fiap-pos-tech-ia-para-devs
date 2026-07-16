@@ -318,8 +318,8 @@ def build_vitals_summary(
             "total_anomalias": int,           # rows whose agreement != normal
             "por_nivel": {agreement: count},  # count per non-normal level
             "itens": [                        # alta_confianca first, capped
-                {"nivel": str, "sinal_label": str, "valor": float|None,
-                 "timestamp": Any}, ...
+                {"id": str, "nivel": str, "sinal_label": str,
+                 "valor": float|None, "timestamp": Any}, ...
             ],
         }``
         The "responsible signal" per item is derived by
@@ -373,6 +373,7 @@ def build_vitals_summary(
             valor = None
         itens.append(
             {
+                "id": row_dict.get("id", ""),
                 "nivel": row_dict["agreement"],
                 "sinal_label": sinal_label,
                 "valor": valor,
@@ -479,11 +480,17 @@ def analyze(
             - ``combined_report``: DataFrame indexed like ``df`` with
               ``timestamp``, one boolean column per signal's z-score flag
               collapsed into ``zscore_anomaly`` (True if any signal is
-              anomalous in that row), ``isolation_forest_anomaly`` and an
+              anomalous in that row), ``isolation_forest_anomaly``, an
               ``agreement`` column (one of ``"alta_confianca"``,
-              ``"zscore_only"``, ``"isolation_forest_only"``, ``"normal"``).
+              ``"zscore_only"``, ``"isolation_forest_only"``, ``"normal"``)
+              and an ``id`` column (``#S01``, ``#S02``, ... per anomalous
+              row, ``""`` for normal rows) that links a row to its
+              alert(s).
             - ``alerts``: list of ``Alert`` objects generated for every
-              z-score anomaly (also pushed to the shared feed).
+              z-score anomaly (also pushed to the shared feed). Each alert
+              carries ``alert_id`` (its row's ``#S`` id, shared by every
+              signal flagged on that row), ``category`` (the signal's
+              friendly label) and ``level`` (the row's ``agreement``).
 
     Raises:
         VitalSignsValidationError: If ``df`` has no recognized vital-sign
@@ -496,24 +503,12 @@ def analyze(
             f"Colunas esperadas (ao menos uma): {', '.join(RECOGNIZED_VITAL_SIGN_COLUMNS)}."
         )
 
+    # First pass: z-score flags per signal (no alerts yet). Alerts are
+    # generated below, AFTER the row-level agreement and the per-row linking
+    # id (#S01, ...) are known, so each alert can carry its row's id/level.
     zscore_anomalies = pd.DataFrame(index=df.index)
-    alerts = []
-
     for column in signal_columns:
-        flags = detect_anomalies(df[column], window=window, threshold=threshold)
-        zscore_anomalies[column] = flags
-
-        for row_index in flags[flags].index:
-            timestamp = df.loc[row_index, "timestamp"]
-            value = df.loc[row_index, column]
-            alert = add_alert(
-                origin=ORIGIN,
-                description=(
-                    f"Leitura anômala de {column} = {value} em {timestamp} "
-                    f"(|z-score| > {threshold})."
-                ),
-            )
-            alerts.append(alert)
+        zscore_anomalies[column] = detect_anomalies(df[column], window=window, threshold=threshold)
 
     isolation_forest_anomalies = fit_and_predict(df[signal_columns])
 
@@ -538,6 +533,41 @@ def analyze(
         return "normal"
 
     combined_report["agreement"] = combined_report.apply(_agreement, axis=1)
+
+    # Assign a short, unique, deterministic id (#S01, #S02, ...) to every
+    # anomalous READING (row where agreement != "normal"), in row order —
+    # the same id shown in the table and carried by that row's alert(s). The
+    # id identifies the LINE, so multiple signals flagged on one row share
+    # the row's id (design.md D2). Normal rows get "" (no id).
+    id_by_row: Dict[Any, str] = {}
+    counter = 0
+    for row_index, agreement in combined_report["agreement"].items():
+        if agreement != "normal":
+            counter += 1
+            id_by_row[row_index] = f"#S{counter:02d}"
+    combined_report["id"] = [id_by_row.get(idx, "") for idx in combined_report.index]
+
+    # Second pass: one alert per (row, signal) flagged by the z-score layer,
+    # carrying the row's linking id, the signal's friendly label as category
+    # and the row's agreement as level. Column-then-row order preserves the
+    # existing alert ordering and description text.
+    alerts = []
+    for column in signal_columns:
+        flags = zscore_anomalies[column]
+        for row_index in flags[flags].index:
+            timestamp = df.loc[row_index, "timestamp"]
+            value = df.loc[row_index, column]
+            alert = add_alert(
+                origin=ORIGIN,
+                description=(
+                    f"Leitura anômala de {column} = {value} em {timestamp} "
+                    f"(|z-score| > {threshold})."
+                ),
+                alert_id=id_by_row.get(row_index),
+                category=vital_sign_label(column),
+                level=combined_report.loc[row_index, "agreement"],
+            )
+            alerts.append(alert)
 
     return {
         "zscore_anomalies": zscore_anomalies,

@@ -1,4 +1,4 @@
-2026-07-15 22:30:20.601 Uvicorn server started on :::8501
+2026-07-15 22:44:28.095 Uvicorn server started on :::8501
 
   You can now view your Streamlit app in your browser.
 
@@ -7,5 +7,8 @@
   External URL: http://189.78.73.253:8501
 
   Detected WSL. Using poll-based file watching for better compatibility. To force watchdog, set server.fileWatcherType = "watchdog".
-  Stopping...
-  Stopping...
+2026-07-15 22:45:00.743 Please replace `use_container_width` with `width`.
+
+`use_container_width` will be removed after 2025-12-31.
+
+For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.

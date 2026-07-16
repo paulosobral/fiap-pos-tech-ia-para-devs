@@ -188,6 +188,23 @@ def test_generate_alerts_for_findings_returns_empty_list_when_no_findings():
     assert alerts == []
 
 
+def test_generate_alerts_for_findings_sets_structured_category_and_level():
+    # Structured fields (change alertas-estruturados-e-vinculo-sinais-vitais):
+    # each inconsistency alert carries a "Inconsistência de prescrição"
+    # category and the finding's ``tipo`` as level; the description text the
+    # user sees is unchanged.
+    findings = [
+        {"tipo": "mudanca_dose_abrupta", "explicacao": "Dose dobrou sem justificativa."},
+    ]
+
+    alerts = generate_alerts_for_findings(findings, "Paciente B")
+
+    assert len(alerts) == 1
+    assert alerts[0].category == "Inconsistência de prescrição"
+    assert alerts[0].level == "mudanca_dose_abrupta"
+    assert "Dose dobrou" in alerts[0].description
+
+
 # ── review_patient_prescriptions (mocked Bedrock client) ────────────
 
 

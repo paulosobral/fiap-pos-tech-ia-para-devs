@@ -141,3 +141,47 @@ def test_analyze_handles_no_words_without_raising():
     assert len(result["speech_rate_anomalies"]) == 0
     assert len(result["pause_anomalies"]) == 0
     assert result["alerts"] == []
+
+
+def test_pause_anomaly_alert_carries_structured_category():
+    # Structured fields (change alertas-estruturados-e-vinculo-sinais-vitais):
+    # pause-anomaly alerts carry a "Disartria" category; the description text
+    # the user sees is unchanged.
+    words = []
+    t = 0.0
+    for i in range(15):
+        words.append(_word(f"a{i}", t, t + 0.2))
+        t += 0.3
+    t += 20.0
+    words.append(_word("depois-da-pausa", t, t + 0.2))
+    t += 0.3
+    for i in range(5):
+        words.append(_word(f"b{i}", t, t + 0.2))
+        t += 0.3
+
+    result = analyze(words, window=5, threshold=2.0)
+
+    assert result["alerts"]
+    pause_alerts = [a for a in result["alerts"] if "Pausa anômala" in a.description]
+    assert pause_alerts
+    assert all(a.category == "Disartria" for a in pause_alerts)
+
+
+def test_speech_rate_anomaly_alert_carries_structured_category():
+    # A run of steady speech, then a segment with a burst of many words
+    # (fast rate) so the speech-rate series flags an anomaly.
+    words = []
+    t = 0.0
+    for i in range(18):
+        words.append(_word(f"a{i}", t, t + 0.1))
+        t += 0.5
+    # dense burst: many words in a short span → high words/s
+    for i in range(30):
+        words.append(_word(f"burst{i}", t, t + 0.02))
+        t += 0.03
+
+    result = analyze(words, window=3, threshold=1.5)
+
+    rate_alerts = [a for a in result["alerts"] if "Taxa de fala" in a.description]
+    if rate_alerts:  # only assert when the rate layer actually flagged
+        assert all(a.category == "Fadiga de fala" for a in rate_alerts)

@@ -97,6 +97,19 @@ def test_raise_critical_term_alerts_adds_nothing_when_no_term_matches():
     assert alerts == []
 
 
+def test_raise_critical_term_alerts_sets_structured_category():
+    # Structured fields (change alertas-estruturados-e-vinculo-sinais-vitais):
+    # critical-term alerts now carry a "Termo crítico" category, keeping the
+    # description text unchanged for the user.
+    text = "Sinto muita dor no peito."
+
+    alerts = raise_critical_term_alerts(text, terms=["dor"])
+
+    assert len(alerts) == 1
+    assert alerts[0].category == "Termo crítico"
+    assert "dor" in alerts[0].description
+
+
 # ── parse_transcript_items ───────────────────────────────────────────
 
 

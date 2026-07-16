@@ -680,7 +680,20 @@ def analyze(
     for i, event in enumerate(events, start=1):
         event["event_id"] = f"#V{i:02d}"
 
-    alerts = [add_alert(origin=ORIGIN, description=_event_description(event)) for event in events]
+    # One alert per event, now also carrying the event's structured fields
+    # (change alertas-estruturados-e-vinculo-sinais-vitais): the shared id
+    # (``event_id``), the body-region category and the event ``tipo`` as
+    # level. The description text is unchanged (still id + category inline).
+    alerts = [
+        add_alert(
+            origin=ORIGIN,
+            description=_event_description(event),
+            alert_id=event["event_id"],
+            category=event_category(event),
+            level=event["tipo"],
+        )
+        for event in events
+    ]
 
     return {
         "events": events,

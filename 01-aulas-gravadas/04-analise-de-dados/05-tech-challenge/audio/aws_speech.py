@@ -162,7 +162,11 @@ def raise_critical_term_alerts(
             f"Termo crítico detectado na transcrição: \"{match['term']}\" "
             f"— contexto: \"{match['context']}\"."
         )
-        alerts.append(add_alert(origin=ORIGIN, description=description))
+        # Structured category (change alertas-estruturados-e-vinculo-sinais-
+        # vitais) so a later export reads a clean column; text unchanged.
+        alerts.append(
+            add_alert(origin=ORIGIN, description=description, category="Termo crítico")
+        )
 
     return alerts
 

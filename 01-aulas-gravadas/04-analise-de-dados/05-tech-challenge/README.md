@@ -92,9 +92,16 @@ A aplicação abre em `http://localhost:8501` com 4 abas e uma sidebar de alerta
   janela de comparação" (janela), cada um com tooltip explicando o efeito com exemplo. Ao processar, há
   um **resumo no topo** (quantas leituras fora do padrão + bullets com o sinal, valor e horário das
   principais) e uma **tabela traduzida** (Horário, Sinal vital, Valor, Nível de confiança) com nomes de
-  sinais em português (heart_rate → "Frequência cardíaca" etc.). Os três **níveis de confiança** são
+  sinais em português (heart_rate → "Frequência cardíaca" etc.) e uma coluna **ID** (`#S01`, `#S02`,
+  ...) por leitura anômala. Os três **níveis de confiança** são
   explicados com ícone + frase e tooltip: 🔴 Alta confiança (as duas concordam), 🟠 Só tempo real (pico
-  isolado) e 🟡 Só histórico (fora do padrão geral). Sem anomalias, mostra uma mensagem clara de "nada
+  isolado) e 🟡 Só histórico (fora do padrão geral). Cada leitura anômala recebe um **identificador de
+  vínculo** curto (`#S01`, `#S02`, ...) que aparece tanto na linha da tabela quanto no alerta
+  correspondente — paralelo do `#V01` do vídeo — permitindo casar alerta↔linha mesmo quando as ordens
+  diferem; o ID identifica a **linha** (leitura), então múltiplos sinais que disparam na mesma linha
+  compartilham o ID dela. No bloco inline "Alertas gerados", cada alerta é renderizado com o **ícone/cor
+  do seu nível** (🔴 alta confiança via `st.error`, demais via `st.warning`) em vez de um `st.warning`
+  uniforme, consistente com a tabela e a legenda. Sem anomalias, mostra uma mensagem clara de "nada
   fora do padrão". Os helpers de apresentação (`vital_sign_label`, `confidence_level`,
   `build_vitals_summary`) são puros e testados em `vital_signs/analysis.py`, mantendo `app.py` fino.
   Para demonstrar o contraste "sem alertas" vs. "com alertas", há dois CSVs de demo em `data/`,
@@ -145,7 +152,13 @@ A aplicação abre em `http://localhost:8501` com 4 abas e uma sidebar de alerta
 - **Feed de Alertas (sidebar)** — acumula, em `st.session_state`, todos os alertas gerados por
   qualquer uma das 4 abas durante a sessão, exibidos do mais recente para o mais antigo com
   origem, timestamp e descrição — simulando notificação em tempo real à equipe médica. É
-  adicional à exibição inline de alertas que cada aba já mostra, não a substitui.
+  adicional à exibição inline de alertas que cada aba já mostra, não a substitui. Além de origem/
+  descrição/timestamp, o `Alert` compartilhado (`alerts/feed.py`) carrega três campos estruturados
+  **opcionais** — `alert_id` (identificador de vínculo, ex.: `#S01`/`#V03`), `category` (ex.: nome
+  do sinal vital, região do corpo, "Termo crítico", "Inconsistência de prescrição") e `level` (ex.:
+  o nível de confiança em Sinais Vitais) — preenchidos por cada aba quando aplicável e retrocompatíveis
+  (abas que não os fornecem seguem funcionando, com os campos em `None`). Servem de base para um export
+  unificado ler colunas limpas em vez de parsear o texto.
 
 Detalhes de arquitetura e decisões de design (incluindo por que AWS no lugar de Azure e
 YOLOv8-pose no lugar de OpenPose) estão em

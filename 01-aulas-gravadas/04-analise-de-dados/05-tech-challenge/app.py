@@ -356,6 +356,7 @@ with tab_vitals:
                         nivel = confidence_level(item["nivel"])
                         display_rows.append(
                             {
+                                "ID": item["id"],
                                 "Horário": item["timestamp"],
                                 "Sinal vital": item["sinal_label"],
                                 "Valor": item["valor"],
@@ -378,7 +379,14 @@ with tab_vitals:
                 if result["alerts"]:
                     st.subheader("Alertas gerados (feed compartilhado)")
                     for alert in result["alerts"]:
-                        st.warning(f"[{alert.timestamp}] {alert.description}")
+                        # Classify visually by confidence level (consistent
+                        # with the table/legend): high confidence → st.error,
+                        # otherwise st.warning; prefixed with the level icon
+                        # and the linking id so the alert casa com a linha.
+                        nivel = confidence_level(alert.level)
+                        prefix = f"{nivel['icon']} {alert.alert_id} " if alert.alert_id else f"{nivel['icon']} "
+                        render = st.error if alert.level == "alta_confianca" else st.warning
+                        render(f"{prefix}[{alert.timestamp}] {alert.description}")
     else:
         st.info("Faça upload de um CSV para iniciar a análise.")
 

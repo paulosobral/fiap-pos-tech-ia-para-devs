@@ -20,6 +20,16 @@ descrição) empurrado para um feed compartilhado em `st.session_state`
 para o mais antigo — simulando notificação em tempo real à equipe médica. Essa visão unificada é
 adicional à exibição de alertas que cada aba já mostra inline; não a substitui.
 
+O `Alert` carrega, além de origem/timestamp/descrição, três campos estruturados **opcionais** —
+`alert_id`, `category` e `level` — preenchidos por cada aba quando fizerem sentido e retrocompatíveis
+(campos ficam `None` para abas/alertas que não os informam; nenhum chamador existente quebra). São
+dados de primeira classe (não só texto embutido na descrição): a aba Sinais Vitais preenche
+`alert_id` (o ID de vínculo `#S01`), `category` (nome do sinal) e `level` (nível de confiança); a
+Vídeo, `alert_id=event_id` (`#V01`), `category` (região do corpo) e `level` (tipo do evento); a Áudio,
+`category` ("Termo crítico" / "Fadiga de fala" / "Disartria"); a Prescrições, `category`
+("Inconsistência de prescrição") e `level` (o tipo da inconsistência). Isso habilita um export
+unificado a ler colunas limpas em vez de parsear a descrição.
+
 Fluxo resumido por aba:
 
 ```
@@ -158,13 +168,24 @@ completo"** (o Isolation Forest), com o termo técnico e o que faz no tooltip/ca
 **resumo no topo** (helper puro e testado `build_vitals_summary` em `vital_signs/analysis.py`) informa
 quantas leituras ficaram fora do padrão e destaca, em bullets, as principais — sinal vital traduzido,
 valor e horário. A tabela substitui as colunas cruas (`zscore_anomaly`/`agreement`/`heart_rate`...) por
-cabeçalhos amigáveis (**Horário, Sinal vital, Valor, Nível de confiança**) com os nomes dos sinais
+cabeçalhos amigáveis (**ID, Horário, Sinal vital, Valor, Nível de confiança**) com os nomes dos sinais
 traduzidos via `vital_sign_label` (heart_rate → "Frequência cardíaca", spo2 → "Saturação de O₂ (SpO₂)"
 etc.). Os três níveis de confiança são explicados com rótulo, ícone e tooltip via `confidence_level`:
 🔴 **Alta confiança** (as duas análises concordam — mais provável ser real), 🟠 **Só tempo real** (pico
 isolado momentâneo) e 🟡 **Só histórico** (fora do padrão geral, sem pico súbito), com uma legenda
 compacta abaixo da tabela. Quando nenhuma leitura é anômala, a aba mostra uma mensagem clara de que
 nada fora do padrão foi encontrado.
+
+Cada leitura anômala recebe, no `analyze`, um **identificador de vínculo** curto e determinístico
+(`#S01`, `#S02`, ... em ordem de linha, gravado na coluna `id` do `combined_report`) — paralelo do
+`#V01` do vídeo. O mesmo ID aparece na coluna **ID** da tabela e no `alert_id` do alerta
+correspondente, permitindo casar alerta↔linha mesmo com ordens de exibição diferentes. Como o alerta
+de z-score é por (linha, sinal) mas a tabela é por linha, o ID identifica a **linha**: se vários
+sinais disparam na mesma leitura, seus alertas compartilham o ID daquela linha (cada um com sua
+`category` = nome do sinal). No bloco inline "Alertas gerados", cada alerta passou a ser renderizado
+com o **ícone/cor do seu nível** (`confidence_level(alert.level)` — 🔴 alta confiança via `st.error`,
+demais via `st.warning`), prefixado pelo ícone e pelo `alert_id`, em vez de um `st.warning` amarelo
+uniforme — consistente com a tabela e a legenda.
 
 > **Sinal responsável por uma leitura (escolha documentada).** `analyze` grava só um booleano
 > por linha (`zscore_anomaly` = *alguma* coluna disparou), não um flag por sinal. Sem modificar a

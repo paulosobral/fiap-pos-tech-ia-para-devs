@@ -501,3 +501,96 @@ def test_build_vitals_summary_caps_itens_list():
 
     assert summary["total_anomalias"] == 20
     assert len(summary["itens"]) <= 8
+
+
+# ── linking id (#S01) — alert ↔ table row (change
+#    alertas-estruturados-e-vinculo-sinais-vitais) ─────────────────────
+
+
+def test_analyze_assigns_sequential_ids_to_anomalous_rows():
+    timestamps = pd.date_range("2024-01-01", periods=14, freq="h")
+    heart_rate = [80] * 10 + [300] + [80] * 3  # single extreme spike
+    df = pd.DataFrame({"timestamp": timestamps, "heart_rate": heart_rate})
+
+    result = analyze(df, window=6, threshold=2.0)
+    report = result["combined_report"]
+
+    assert "id" in report.columns
+    anomalous = report[report["agreement"] != "normal"]
+    ids = list(anomalous["id"])
+    # #S01, #S02, ... in row order for every anomalous (z-score and/or IF) row.
+    assert ids == [f"#S{i:02d}" for i in range(1, len(anomalous) + 1)]
+    # Normal rows carry no id.
+    normal = report[report["agreement"] == "normal"]
+    assert all(v == "" for v in normal["id"])
+
+
+def test_analyze_ids_are_unique_and_deterministic_across_runs():
+    timestamps = pd.date_range("2024-01-01", periods=14, freq="h")
+    heart_rate = [80] * 10 + [300] + [80] * 3
+    df = pd.DataFrame({"timestamp": timestamps, "heart_rate": heart_rate})
+
+    first = list(analyze(df, window=6, threshold=2.0)["combined_report"]["id"])
+    st.session_state.clear()
+    second = list(analyze(df, window=6, threshold=2.0)["combined_report"]["id"])
+
+    assert first == second
+    non_empty = [v for v in first if v]
+    assert len(non_empty) == len(set(non_empty))
+
+
+def test_vital_signs_alert_carries_id_category_and_level_matching_its_row():
+    timestamps = pd.date_range("2024-01-01", periods=14, freq="h")
+    heart_rate = [80] * 10 + [300] + [80] * 3
+    df = pd.DataFrame({"timestamp": timestamps, "heart_rate": heart_rate})
+
+    result = analyze(df, window=6, threshold=2.0)
+    report = result["combined_report"]
+
+    assert result["alerts"], "expected at least one z-score alert"
+    alert = result["alerts"][0]
+    assert alert.origin == "Sinais Vitais"
+    assert alert.alert_id and alert.alert_id.startswith("#S")
+    assert alert.category == "Frequência cardíaca"
+    assert alert.level in {"alta_confianca", "zscore_only"}
+
+    # The id links back to the row it was raised for, and the level matches
+    # that row's agreement.
+    linked = report[report["id"] == alert.alert_id]
+    assert len(linked) == 1
+    assert linked.iloc[0]["agreement"] == alert.level
+
+
+def test_vital_signs_alerts_on_same_row_share_the_row_id():
+    # Two different signals spike on the SAME row: both raise alerts, and both
+    # reference the row's single id (documented D2 behaviour).
+    timestamps = pd.date_range("2024-01-01", periods=14, freq="h")
+    heart_rate = [80] * 10 + [300] + [80] * 3
+    spo2 = [98] * 10 + [40] + [98] * 3
+    df = pd.DataFrame({"timestamp": timestamps, "heart_rate": heart_rate, "spo2": spo2})
+
+    result = analyze(df, window=6, threshold=2.0)
+
+    row_ts = str(df.loc[10, "timestamp"])
+    row_alerts = [a for a in result["alerts"] if row_ts in a.description]
+    assert len(row_alerts) == 2  # heart_rate + spo2 both flagged
+    assert len({a.alert_id for a in row_alerts}) == 1  # shared row id
+    assert {a.category for a in row_alerts} == {
+        "Frequência cardíaca",
+        "Saturação de O₂ (SpO₂)",
+    }
+
+
+def test_build_vitals_summary_exposes_same_id_as_the_alert():
+    timestamps = pd.date_range("2024-01-01", periods=14, freq="h")
+    heart_rate = [80] * 10 + [300] + [80] * 3
+    df = pd.DataFrame({"timestamp": timestamps, "heart_rate": heart_rate})
+
+    result = analyze(df, window=6, threshold=2.0)
+    summary = build_vitals_summary(result["combined_report"], max_itens=None)
+
+    table_ids = {item["id"] for item in summary["itens"]}
+    alert_ids = {a.alert_id for a in result["alerts"]}
+    assert alert_ids
+    # Every alert's id is present in the table (same value on the linked row).
+    assert alert_ids <= table_ids

@@ -96,3 +96,57 @@ def test_get_alerts_does_not_mutate_underlying_session_state_order():
     get_alerts()
 
     assert len(st.session_state["alerts"]) == 2
+
+
+# ── structured fields: alert_id / category / level (change
+#    alertas-estruturados-e-vinculo-sinais-vitais) ─────────────────────
+
+
+def test_add_alert_without_structured_fields_leaves_them_none():
+    # Backward-compat: existing callers pass only origin+description and must
+    # keep working, with the new structured fields defaulting to None.
+    add_alert(origin="Vídeo", description="Movimento anômalo detectado")
+
+    alert = get_alerts()[0]
+    assert alert.alert_id is None
+    assert alert.category is None
+    assert alert.level is None
+
+
+def test_add_alert_populates_structured_fields_when_provided():
+    add_alert(
+        origin="Sinais Vitais",
+        description="Leitura anômala",
+        alert_id="#S01",
+        category="Frequência cardíaca",
+        level="alta_confianca",
+    )
+
+    alert = get_alerts()[0]
+    assert alert.alert_id == "#S01"
+    assert alert.category == "Frequência cardíaca"
+    assert alert.level == "alta_confianca"
+
+
+def test_get_alerts_still_newest_first_with_structured_fields():
+    now = datetime(2026, 1, 1, 12, 0, 0)
+    add_alert(
+        origin="Sinais Vitais",
+        description="mais antigo",
+        timestamp=now - timedelta(minutes=10),
+        alert_id="#S01",
+        category="Frequência cardíaca",
+        level="zscore_only",
+    )
+    add_alert(
+        origin="Sinais Vitais",
+        description="mais recente",
+        timestamp=now,
+        alert_id="#S02",
+        category="Temperatura",
+        level="alta_confianca",
+    )
+
+    alerts = get_alerts()
+    assert [a.description for a in alerts] == ["mais recente", "mais antigo"]
+    assert alerts[0].alert_id == "#S02"

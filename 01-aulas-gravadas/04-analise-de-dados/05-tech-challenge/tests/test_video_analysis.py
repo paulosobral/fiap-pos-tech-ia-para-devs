@@ -683,3 +683,19 @@ def test_alert_descriptions_contain_id_and_category_and_interval():
         assert event["event_id"] in alert.description
         assert f"[{event_category(event)}]" in alert.description
         assert "entre" in alert.description and "s e " in alert.description
+
+
+def test_alerts_carry_structured_fields_matching_the_event():
+    # Structured fields (change alertas-estruturados-e-vinculo-sinais-vitais):
+    # the alert now carries the event's id/category/level as first-class
+    # fields (not only embedded in the text), consistent with the text.
+    result = analyze(_multi_event_frames(), threshold=1.3, window=6)
+
+    assert result["alerts"], "expected several events"
+    for event, alert in zip(result["events"], result["alerts"]):
+        assert alert.alert_id == event["event_id"]
+        assert alert.category == event_category(event)
+        assert alert.level == event["tipo"]
+        # text still carries the same id/category (unchanged for the user)
+        assert alert.alert_id in alert.description
+        assert f"[{alert.category}]" in alert.description

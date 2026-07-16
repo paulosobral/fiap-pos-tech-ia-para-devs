@@ -175,11 +175,15 @@ def analyze(
 
     alerts = []
 
+    # Structured category per anomaly kind (change alertas-estruturados-e-
+    # vinculo-sinais-vitais): a slow/irregular speech rate points to speech
+    # fatigue, an unusually long pause to dysarthria — the two detectable
+    # signals named in this module's docstring. Description text unchanged.
     for idx in speech_rate_anomalies[speech_rate_anomalies].index:
         rate = speech_rate.iloc[idx]
         segment = segments[idx]
         description = _speech_rate_alert_description(rate, segment, threshold)
-        alerts.append(add_alert(origin=ORIGIN, description=description))
+        alerts.append(add_alert(origin=ORIGIN, description=description, category="Fadiga de fala"))
 
     for idx in pause_anomalies[pause_anomalies].index:
         pause = pause_durations.iloc[idx]
@@ -187,7 +191,7 @@ def analyze(
         # timestamp of the pause's start (end of the earlier word).
         timestamp_s = words[idx]["end_time"]
         description = _pause_alert_description(pause, timestamp_s, threshold)
-        alerts.append(add_alert(origin=ORIGIN, description=description))
+        alerts.append(add_alert(origin=ORIGIN, description=description, category="Disartria"))
 
     return {
         "speech_rate": speech_rate,
