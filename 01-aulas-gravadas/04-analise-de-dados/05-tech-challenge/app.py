@@ -138,15 +138,64 @@ def _load_pose_model():
     return YOLO("yolov8n-pose.pt")
 
 
+# Decode budget for uploaded video. A long, high-resolution video decoded
+# frame-for-frame at full resolution can exhaust RAM: each 1080p BGR frame
+# is ~6 MB, so thousands of them (a few minutes at 30 fps) reach tens of GB
+# held in one Python list — enough to freeze the machine (and, under WSL2,
+# the whole VM). We bound this two ways, applied identically on both the
+# pose-extraction path and the frame-drawing path so the keypoints (in
+# downscaled pixels) line up exactly with the frames they are drawn on:
+#   * downscale — cap the longest side to VIDEO_MAX_DIMENSION (aspect kept);
+#   * subsample — keep roughly VIDEO_TARGET_FPS frames per second.
+VIDEO_MAX_DIMENSION = 640
+VIDEO_TARGET_FPS = 10.0
+
+
+def _downscale_frame(frame):
+    """Shrink a BGR frame so its longest side is <= ``VIDEO_MAX_DIMENSION``.
+
+    Preserves aspect ratio; returns the frame unchanged when it is already
+    small enough. Pose keypoints are extracted from (and later drawn on)
+    these downscaled frames, so the coordinate scale is consistent
+    end-to-end.
+    """
+    height, width = frame.shape[:2]
+    longest = max(height, width)
+    if longest <= VIDEO_MAX_DIMENSION:
+        return frame
+    scale = VIDEO_MAX_DIMENSION / longest
+    new_size = (int(round(width * scale)), int(round(height * scale)))
+    return cv2.resize(frame, new_size, interpolation=cv2.INTER_AREA)
+
+
+def _frame_stride(source_fps: float) -> int:
+    """Keep roughly every Nth source frame to approximate ``VIDEO_TARGET_FPS``.
+
+    Always >= 1. A 30 fps source with a 10 fps target yields stride 3.
+    Deterministic in ``source_fps`` alone, so both the decode path and the
+    on-demand frame reader derive the same stride from the same video and
+    therefore agree on which subsampled index maps to which source frame.
+    """
+    if source_fps <= VIDEO_TARGET_FPS:
+        return 1
+    return max(1, int(round(source_fps / VIDEO_TARGET_FPS)))
+
+
 def _decode_video_frames(video_bytes: bytes, extension: str):
-    """Persist raw video bytes to a temp file and decode all frames.
+    """Persist raw video bytes to a temp file and decode subsampled frames.
 
     ``cv2.VideoCapture`` needs a path (or a backend that supports
     in-memory buffers, which is not reliably available across
     platforms), so the raw bytes are written to a temporary file first.
     Takes plain ``bytes``/``extension`` rather than the Streamlit
-    ``UploadedFile`` object so this (and the cached function that wraps
-    it below) can be called with a hashable, content-addressed argument.
+    ``UploadedFile`` object so the cached function that wraps it can be
+    called with a hashable, content-addressed argument.
+
+    Frames are downscaled (``_downscale_frame``) and subsampled by
+    ``_frame_stride`` as they are read, so only the reduced set is ever
+    held in memory. Returns ``(frames, effective_fps)`` where
+    ``effective_fps = source_fps / stride`` keeps per-frame timestamps
+    correct despite the subsampling.
     """
     suffix = "." + extension
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
@@ -155,18 +204,22 @@ def _decode_video_frames(video_bytes: bytes, extension: str):
 
     try:
         cap = cv2.VideoCapture(tmp_path)
-        fps = cap.get(cv2.CAP_PROP_FPS) or 10.0
+        source_fps = cap.get(cv2.CAP_PROP_FPS) or 10.0
+        stride = _frame_stride(source_fps)
         frames = []
+        source_index = 0
         while True:
             ret, frame = cap.read()
             if not ret:
                 break
-            frames.append(frame)
+            if source_index % stride == 0:
+                frames.append(_downscale_frame(frame))
+            source_index += 1
         cap.release()
     finally:
         os.unlink(tmp_path)
 
-    return frames, fps
+    return frames, source_fps / stride
 
 
 @st.cache_data(show_spinner=False)
@@ -223,22 +276,61 @@ def _extract_pose_frame_series(video_bytes, extension, _pose_model):
     return frame_series, frame_width, frame_height
 
 
-@st.cache_data(show_spinner=False)
-def _decode_video_frames_cached(video_bytes, extension):
-    """Decode the video's BGR frames, cached by the video's own bytes.
+def _read_sampled_frames(video_bytes, extension, wanted_indices):
+    """Read only ``wanted_indices`` of the subsampled frame stream.
 
-    The event report needs the original frame image at each event's
-    ``frame_index_pior`` (and the first frame for the zone preview) to draw
-    the pose skeleton / zone rectangle on it. Only ``_extract_pose_frame_series``
-    keeps the pose *series* (not the frames), so the frames are decoded here
-    separately. This deliberately reuses ``_decode_video_frames`` — plain
-    ``cv2`` decoding, which is cheap compared to the YOLOv8-pose inference —
-    and is cached on the same key (video bytes + extension) so it runs at
-    most once per uploaded video and never re-runs YOLO. Returns only the
-    frames list (the fps is not needed at render time).
+    The event report only needs the original frame image at a handful of
+    indices — each displayed event's ``frame_index_pior`` (and index 0 for
+    the zone preview) — not the whole video. Decoding and holding every
+    frame (the old behaviour) is what exhausted memory on long videos, so
+    this instead does one sequential ``cv2`` pass (cheap — no YOLO) and
+    keeps *only* the requested frames, downscaled and subsampled with the
+    exact same ``stride``/``_downscale_frame`` as ``_decode_video_frames``
+    so a subsampled index here refers to the same frame as in the pose
+    series (and its keypoints line up).
+
+    Args:
+        video_bytes: Raw uploaded video bytes.
+        extension: File extension (without dot), for the temp file suffix.
+        wanted_indices: Iterable of subsampled-stream indices to return.
+
+    Returns:
+        Dict ``{subsampled_index: frame_bgr}`` holding only the requested
+        (and successfully decoded) frames. Never a full-video list.
     """
-    frames, _fps = _decode_video_frames(video_bytes, extension)
-    return frames
+    wanted = set(int(i) for i in wanted_indices)
+    if not wanted:
+        return {}
+
+    suffix = "." + extension
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp.write(video_bytes)
+        tmp_path = tmp.name
+
+    frames_by_index: dict = {}
+    try:
+        cap = cv2.VideoCapture(tmp_path)
+        source_fps = cap.get(cv2.CAP_PROP_FPS) or 10.0
+        stride = _frame_stride(source_fps)
+        max_wanted = max(wanted)
+        source_index = 0
+        sampled_index = 0
+        while sampled_index <= max_wanted:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            if source_index % stride == 0:
+                if sampled_index in wanted:
+                    frames_by_index[sampled_index] = _downscale_frame(frame)
+                    if len(frames_by_index) == len(wanted):
+                        break
+                sampled_index += 1
+            source_index += 1
+        cap.release()
+    finally:
+        os.unlink(tmp_path)
+
+    return frames_by_index
 
 
 VIDEO_ALLOWED_EXTENSIONS = ("mp4", "avi", "mov", "mkv")
@@ -571,7 +663,7 @@ with tab_video:
                 # 3 review note) so a full-extent zone stays visible on-frame
                 # rather than being clipped off. Handled at the call site to
                 # keep video/draw.py (out of scope) untouched.
-                preview_frames = _decode_video_frames_cached(video_file.getvalue(), extension)
+                preview_frames = _read_sampled_frames(video_file.getvalue(), extension, [0])
                 if preview_frames:
                     first_frame = preview_frames[0]
                     ph, pw = first_frame.shape[:2]
@@ -631,11 +723,6 @@ with tab_video:
                                 "detectado(s)."
                             )
 
-                        # Decode the frames once (cached, cheap — no YOLO) to
-                        # draw each event's worst frame. frame_index_pior
-                        # indexes both frame_series and this frames list.
-                        report_frames = _decode_video_frames_cached(video_file.getvalue(), extension)
-
                         # Group events by joint/type into collapsible sections
                         # with a top-N gallery each (change
                         # galeria-eventos-video-por-articulacao). The grouping/
@@ -644,8 +731,25 @@ with tab_video:
                         # most-affected first; each expander is closed by
                         # default so the page opens light even with hundreds of
                         # events.
+                        secoes = group_events_for_display(events, top_n=10)
+
+                        # Read only the worst frame of each *displayed* event
+                        # (cheap — no YOLO), never the whole video: a long clip
+                        # can hold tens of GB of raw frames and freeze the host.
+                        # frame_index_pior indexes both frame_series and the
+                        # subsampled decode, so the same index picks the frame
+                        # and its keypoints.
+                        wanted_indices = [
+                            event["frame_index_pior"]
+                            for secao in secoes
+                            for event in secao["eventos"]
+                        ]
+                        report_frames = _read_sampled_frames(
+                            video_file.getvalue(), extension, wanted_indices
+                        )
+
                         columns_per_row = 3
-                        for secao in group_events_for_display(events, top_n=10):
+                        for secao in secoes:
                             eventos = secao["eventos"]
                             with st.expander(
                                 f"{secao['label']} — {secao['total']} evento(s)", expanded=False
@@ -667,7 +771,7 @@ with tab_video:
                                             f"{event['t_inicio']:.1f}s a {event['t_fim']:.1f}s"
                                         )
 
-                                        if 0 <= idx < len(report_frames):
+                                        if idx in report_frames:
                                             frame = report_frames[idx]
                                             keypoints = frame_series[idx].get("keypoints_xy")
 
