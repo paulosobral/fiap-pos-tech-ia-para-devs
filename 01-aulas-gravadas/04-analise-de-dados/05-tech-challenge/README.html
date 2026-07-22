@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>README.md</title>
+<meta http-equiv="Content-type" content="text/html;charset=UTF-8">
+
+<style>
+/* https://github.com/microsoft/vscode/blob/master/extensions/markdown-language-features/media/markdown.css */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+body {
+	font-family: var(--vscode-markdown-font-family, -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif);
+	font-size: var(--vscode-markdown-font-size, 14px);
+	padding: 0 26px;
+	line-height: var(--vscode-markdown-line-height, 22px);
+	word-wrap: break-word;
+}
+
+#code-csp-warning {
+	position: fixed;
+	top: 0;
+	right: 0;
+	color: white;
+	margin: 16px;
+	text-align: center;
+	font-size: 12px;
+	font-family: sans-serif;
+	background-color:#444444;
+	cursor: pointer;
+	padding: 6px;
+	box-shadow: 1px 1px 1px rgba(0,0,0,.25);
+}
+
+#code-csp-warning:hover {
+	text-decoration: none;
+	background-color:#007acc;
+	box-shadow: 2px 2px 2px rgba(0,0,0,.25);
+}
+
+body.scrollBeyondLastLine {
+	margin-bottom: calc(100vh - 22px);
+}
+
+body.showEditorSelection .code-line {
+	position: relative;
+}
+
+body.showEditorSelection .code-active-line:before,
+body.showEditorSelection .code-line:hover:before {
+	content: "";
+	display: block;
+	position: absolute;
+	top: 0;
+	left: -12px;
+	height: 100%;
+}
+
+body.showEditorSelection li.code-active-line:before,
+body.showEditorSelection li.code-line:hover:before {
+	left: -30px;
+}
+
+.vscode-light.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.15);
+}
+
+.vscode-light.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.40);
+}
+
+.vscode-light.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-dark.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.4);
+}
+
+.vscode-dark.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.60);
+}
+
+.vscode-dark.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-high-contrast.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 160, 0, 0.7);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 160, 0, 1);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+img {
+	max-width: 100%;
+	max-height: 100%;
+}
+
+a {
+	text-decoration: none;
+}
+
+a:hover {
+	text-decoration: underline;
+}
+
+a:focus,
+input:focus,
+select:focus,
+textarea:focus {
+	outline: 1px solid -webkit-focus-ring-color;
+	outline-offset: -1px;
+}
+
+hr {
+	border: 0;
+	height: 2px;
+	border-bottom: 2px solid;
+}
+
+h1 {
+	padding-bottom: 0.3em;
+	line-height: 1.2;
+	border-bottom-width: 1px;
+	border-bottom-style: solid;
+}
+
+h1, h2, h3 {
+	font-weight: normal;
+}
+
+table {
+	border-collapse: collapse;
+}
+
+table > thead > tr > th {
+	text-align: left;
+	border-bottom: 1px solid;
+}
+
+table > thead > tr > th,
+table > thead > tr > td,
+table > tbody > tr > th,
+table > tbody > tr > td {
+	padding: 5px 10px;
+}
+
+table > tbody > tr + tr > td {
+	border-top: 1px solid;
+}
+
+blockquote {
+	margin: 0 7px 0 5px;
+	padding: 0 16px 0 10px;
+	border-left-width: 5px;
+	border-left-style: solid;
+}
+
+code {
+	font-family: Menlo, Monaco, Consolas, "Droid Sans Mono", "Courier New", monospace, "Droid Sans Fallback";
+	font-size: 1em;
+	line-height: 1.357em;
+}
+
+body.wordWrap pre {
+	white-space: pre-wrap;
+}
+
+pre:not(.hljs),
+pre.hljs code > div {
+	padding: 16px;
+	border-radius: 3px;
+	overflow: auto;
+}
+
+pre code {
+	color: var(--vscode-editor-foreground);
+	tab-size: 4;
+}
+
+/** Theming */
+
+.vscode-light pre {
+	background-color: rgba(220, 220, 220, 0.4);
+}
+
+.vscode-dark pre {
+	background-color: rgba(10, 10, 10, 0.4);
+}
+
+.vscode-high-contrast pre {
+	background-color: rgb(0, 0, 0);
+}
+
+.vscode-high-contrast h1 {
+	border-color: rgb(0, 0, 0);
+}
+
+.vscode-light table > thead > tr > th {
+	border-color: rgba(0, 0, 0, 0.69);
+}
+
+.vscode-dark table > thead > tr > th {
+	border-color: rgba(255, 255, 255, 0.69);
+}
+
+.vscode-light h1,
+.vscode-light hr,
+.vscode-light table > tbody > tr + tr > td {
+	border-color: rgba(0, 0, 0, 0.18);
+}
+
+.vscode-dark h1,
+.vscode-dark hr,
+.vscode-dark table > tbody > tr + tr > td {
+	border-color: rgba(255, 255, 255, 0.18);
+}
+
+</style>
+
+<style>
+/* Tomorrow Theme */
+/* http://jmblog.github.com/color-themes-for-google-code-highlightjs */
+/* Original theme - https://github.com/chriskempson/tomorrow-theme */
+
+/* Tomorrow Comment */
+.hljs-comment,
+.hljs-quote {
+	color: #8e908c;
+}
+
+/* Tomorrow Red */
+.hljs-variable,
+.hljs-template-variable,
+.hljs-tag,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class,
+.hljs-regexp,
+.hljs-deletion {
+	color: #c82829;
+}
+
+/* Tomorrow Orange */
+.hljs-number,
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-literal,
+.hljs-type,
+.hljs-params,
+.hljs-meta,
+.hljs-link {
+	color: #f5871f;
+}
+
+/* Tomorrow Yellow */
+.hljs-attribute {
+	color: #eab700;
+}
+
+/* Tomorrow Green */
+.hljs-string,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition {
+	color: #718c00;
+}
+
+/* Tomorrow Blue */
+.hljs-title,
+.hljs-section {
+	color: #4271ae;
+}
+
+/* Tomorrow Purple */
+.hljs-keyword,
+.hljs-selector-tag {
+	color: #8959a8;
+}
+
+.hljs {
+	display: block;
+	overflow-x: auto;
+	color: #4d4d4c;
+	padding: 0.5em;
+}
+
+.hljs-emphasis {
+	font-style: italic;
+}
+
+.hljs-strong {
+	font-weight: bold;
+}
+</style>
+
+<style>
+/*
+ * Markdown PDF CSS
+ */
+
+ body {
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif, "Meiryo";
+	padding: 0 12px;
+}
+
+pre {
+	background-color: #f8f8f8;
+	border: 1px solid #cccccc;
+	border-radius: 3px;
+	overflow-x: auto;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+}
+
+pre:not(.hljs) {
+	padding: 23px;
+	line-height: 19px;
+}
+
+blockquote {
+	background: rgba(127, 127, 127, 0.1);
+	border-color: rgba(0, 122, 204, 0.5);
+}
+
+.emoji {
+	height: 1.4em;
+}
+
+code {
+	font-size: 14px;
+	line-height: 19px;
+}
+
+/* for inline code */
+:not(pre):not(.hljs) > code {
+	color: #C9AE75; /* Change the old color so it seems less like an error */
+	font-size: inherit;
+}
+
+/* Page Break : use <div class="page"/> or <div class="page"></div> to insert page break
+-------------------------------------------------------- */
+.page {
+	page-break-after: always;
+}
+
+</style>
+
+<script src="https://unpkg.com/mermaid/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast')
+          ? 'dark'
+          : 'default'
+    });
+  </script>
+<h1 id="tech-challenge---fase-4-monitoramento-multimodal-de-pacientes">Tech Challenge - Fase 4: Monitoramento Multimodal de Pacientes</h1>
+<ul>
+<li>Curso: Pós Tech IA para Devs</li>
+<li>Turma: 8IADT</li>
+<li>Funcional: RM369853</li>
+</ul>
+<h4 id="fase-4">Fase 4</h4>
+<ul>
+<li>
+<p><a href="https://youtu.be/pRnMbfUW-E4">Fase 4 — Vídeo de apresentação do projeto: https://youtu.be/pRnMbfUW-E4</a></p>
+</li>
+<li>
+<p><a href="https://github.com/paulosobral/fiap-pos-tech-ia-para-devs/tree/main/01-aulas-gravadas/04-analise-de-dados/05-tech-challenge" title="Código Python">Fase 4 — Código Python: https://github.com/paulosobral/fiap-pos-tech-ia-para-devs/tree/main/01-aulas-gravadas/04-analise-de-dados/05-tech-challenge</a>;</p>
+</li>
+</ul>
+<h4 id="geral">Geral</h4>
+<ul>
+<li><a href="https://github.com/paulosobral/fiap-pos-tech-ia-para-devs" title="Repositório do GitHub">Repositório do GitHub: https://github.com/paulosobral/fiap-pos-tech-ia-para-devs</a>;</li>
+</ul>
+<h2 id="visão-geral-do-projeto">Visão Geral do Projeto</h2>
+<p>Aplicação Streamlit única para monitoramento contínuo de pacientes a partir de dados <strong>multimodais</strong> — vídeo, áudio, sinais vitais e prescrições — com detecção de anomalias em tempo real, integração a serviços gerenciados na nuvem (AWS) e um feed unificado de alertas simulando notificação à equipe médica.</p>
+<p>Projeto individual, entrega via upload de arquivo em 4 abas (sem captura real-time de câmera/microfone — ver &quot;Limitações conhecidas&quot; no <code>RELATORIO_TECNICO.md</code>). Três das quatro modalidades (Vídeo, Áudio, Sinais Vitais) compartilham a mesma detecção estatística de anomalia por <strong>rolling z-score</strong>; a quarta (Prescrições) usa raciocínio de LLM via <strong>AWS Bedrock</strong>.</p>
+<hr>
+<h2 id="quick-start">Quick Start</h2>
+<pre class="hljs"><code><div><span class="hljs-comment"># 1. Criar o venv e instalar dependências</span>
+python -m venv venv
+<span class="hljs-built_in">source</span> venv/bin/activate            <span class="hljs-comment"># no Windows: venv\Scripts\activate</span>
+pip install -r requirements.txt
+
+<span class="hljs-comment"># 2. (Opcional) antecipar o download do modelo YOLOv8-pose</span>
+venv/bin/python -c <span class="hljs-string">&quot;from ultralytics import YOLO; YOLO(&#x27;yolov8n-pose.pt&#x27;)&quot;</span>
+
+<span class="hljs-comment"># 3. Subir tudo (provisiona o bucket S3 via Terraform + Streamlit)</span>
+./start.sh
+
+<span class="hljs-comment"># 4. Encerrar (mata o Streamlit + destrói o bucket S3)</span>
+./stop.sh
+</div></code></pre>
+<blockquote>
+<p><code>start.sh</code>/<code>stop.sh</code> cuidam da infraestrutura AWS (bucket S3 do Transcribe) e do processo Streamlit de ponta a ponta. Para rodar manualmente sem Terraform, ver a seção <strong>Como executar</strong>.</p>
+</blockquote>
+<hr>
+<h2 id="pré-requisitos">Pré-requisitos</h2>
+<table>
+<thead>
+<tr>
+<th>Componente</th>
+<th>Versão / requisito</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Python</td>
+<td>3.11+</td>
+</tr>
+<tr>
+<td>Conta AWS</td>
+<td>Acesso a <strong>Transcribe</strong>, <strong>Comprehend</strong> e <strong>Bedrock</strong> (Claude Sonnet habilitado)</td>
+</tr>
+<tr>
+<td>Terraform</td>
+<td>≥ 1.5.0 (usado por <code>start.sh</code>/<code>stop.sh</code> para o bucket S3)</td>
+</tr>
+<tr>
+<td>Internet</td>
+<td>Necessária no 1º uso da aba Vídeo (download do <code>yolov8n-pose.pt</code>)</td>
+</tr>
+<tr>
+<td>Disco</td>
+<td><code>ultralytics</code> traz torch/torchvision — instalação grande na 1ª vez</td>
+</tr>
+</tbody>
+</table>
+<h3 id="credenciais-aws">Credenciais AWS</h3>
+<p>Configuradas em <code>~/.aws/credentials</code> / <code>~/.aws/config</code>. O projeto usa dois perfis:</p>
+<table>
+<thead>
+<tr>
+<th>Perfil</th>
+<th>Uso</th>
+<th>Região</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>default</code></td>
+<td>Fallback geral; Sinais Vitais e Vídeo <strong>não</strong> fazem chamada AWS</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>bedrock</code></td>
+<td>Aba Prescrições (<code>prescriptions/bedrock_review.py</code>)</td>
+<td><code>us-east-2</code></td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>A aba <strong>Áudio</strong> (<code>audio/aws_speech.py</code>) usa <code>region_name=&quot;us-east-1&quot;</code> fixo para Transcribe e Comprehend.</li>
+<li><strong>Bedrock</strong>: nesta implementação só funcionou com o perfil <code>bedrock</code> em <strong><code>us-east-2</code></strong>, inference profile <code>us.anthropic.claude-sonnet-5</code>. <code>us-east-1</code> retornou <code>ResourceNotFoundException</code> (&quot;Model use case details have not been submitted for this account&quot;) para a conta usada. Contas diferentes podem exigir ajuste de <code>AWS_REGION</code>/<code>BEDROCK_MODEL_ID</code> em <code>prescriptions/bedrock_review.py</code>.</li>
+</ul>
+<blockquote>
+<p>O app funciona parcialmente sem AWS: as abas <strong>Sinais Vitais</strong> e <strong>Vídeo</strong> rodam 100% offline. Só <strong>Áudio</strong> e <strong>Prescrições</strong> dependem da nuvem.</p>
+</blockquote>
+<hr>
+<h2 id="estrutura-do-projeto">Estrutura do Projeto</h2>
+<pre class="hljs"><code><div>05-tech-challenge/
+├── app.py                    # Interface Streamlit — 4 abas + sidebar de alertas
+├── start.sh                  # terraform apply (bucket S3) + streamlit run (nohup)
+├── stop.sh                   # mata o Streamlit + terraform destroy
+├── requirements.txt          # deps (pyarrow&lt;25 fixado — ver nota de segfault)
+├── anomaly/
+│   └── zscore.py             # detecção compartilhada: rolling z-score (Vídeo/Áudio/Sinais Vitais)
+├── video/
+│   ├── pose.py               # extração de keypoints (YOLOv8-pose)
+│   ├── analysis.py           # ângulos por articulação + velocidade → z-score → eventos + zona
+│   └── draw.py               # esqueleto COCO anotado na galeria
+├── audio/
+│   ├── aws_speech.py         # AWS Transcribe (fala→texto) + Comprehend (sentimento/entidades)
+│   └── analysis.py           # taxa de fala / duração de pausa → z-score
+├── vital_signs/
+│   ├── analysis.py           # orquestra z-score + Isolation Forest, rótulos amigáveis
+│   └── isolation_forest.py   # IsolationForest (sklearn, fit em lote)
+├── prescriptions/
+│   └── bedrock_review.py     # revisão via AWS Bedrock (Claude Sonnet), sem fine-tuning
+├── alerts/
+│   └── feed.py               # Alert (dataclass) + feed em session_state + export CSV
+├── scripts/
+│   ├── gen_vital_signs_demo.py    # gera CSVs de demo (normal + anomalias) do MIMIC-III
+│   └── gen_prescriptions_demo.py  # gera CSV de prescrições sem anomalias
+├── infra/                    # Terraform — bucket S3 do Transcribe (s3.tf, variables.tf, outputs.tf)
+├── data/                     # datasets/mídia de demonstração
+├── tests/                    # suíte pytest (199 testes)
+└── openspec/                 # specs/design/tarefas (fluxo spec-driven do projeto)
+</div></code></pre>
+<hr>
+<h2 id="arquitetura">Arquitetura</h2>
+<h3 id="fluxo-multimodal">Fluxo multimodal</h3>
+<pre><code class="language-mermaid"><div class="mermaid">graph TD
+    subgraph Abas
+      V[Sinais Vitais\nCSV série temporal]
+      VI[Vídeo\nmp4/avi/mov/mkv]
+      A[Áudio\nmp3/wav]
+      P[Prescrições\nCSV/Excel]
+    end
+
+    V --> ZS[anomaly/zscore.py\nrolling z-score]
+    V --> IF[Isolation Forest\nsklearn, lote]
+    VI --> YOLO[YOLOv8-pose\nkeypoints + bbox] --> ZS
+    A --> AWS1[AWS Transcribe\n+ Comprehend] --> ZS
+    P --> BED[AWS Bedrock\nClaude Sonnet]
+
+    ZS --> AL[alerts/feed.py\nAlert]
+    IF --> AL
+    BED --> AL
+    AL --> FEED([Feed unificado na sidebar\n+ export CSV])
+</div></code></pre>
+<p>Cada aba recebe upload de um arquivo e delega o processamento a um módulo próprio (organização por <em>capability</em>). Toda anomalia/inconsistência vira um <code>Alert</code> (origem, timestamp, descrição + campos estruturados <code>alert_id</code>/<code>category</code>/<code>level</code>) empurrado para um feed compartilhado em <code>st.session_state</code>, renderizado na sidebar do mais recente para o mais antigo.</p>
+<h3 id="como-cada-modalidade-funciona">Como cada modalidade funciona</h3>
+<table>
+<thead>
+<tr>
+<th>Modalidade</th>
+<th>Técnica</th>
+<th>Modelo/serviço</th>
+<th>Treino?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Sinais Vitais</strong></td>
+<td>Rolling z-score (linha a linha) + Isolation Forest (lote)</td>
+<td><code>sklearn.ensemble.IsolationForest</code></td>
+<td><strong>Fit em lote</strong> sobre o CSV carregado (não é fine-tuning)</td>
+</tr>
+<tr>
+<td><strong>Vídeo</strong></td>
+<td>Estimativa de pose → ângulos por articulação + velocidade → z-score → eventos + zona</td>
+<td><code>yolov8n-pose.pt</code> (ultralytics), COCO-keypoints</td>
+<td><strong>Pré-treinado</strong> — sem treino local</td>
+</tr>
+<tr>
+<td><strong>Áudio</strong></td>
+<td>Fala→texto + sentimento/entidades → taxa de fala/pausa → z-score</td>
+<td>AWS Transcribe + AWS Comprehend</td>
+<td><strong>Serviços gerenciados</strong> — sem treino</td>
+</tr>
+<tr>
+<td><strong>Prescrições</strong></td>
+<td>Raciocínio semântico sobre histórico via prompt estruturado (JSON)</td>
+<td>AWS Bedrock — <code>us.anthropic.claude-sonnet-5</code></td>
+<td><strong>LLM instruído por prompt</strong> — sem fine-tuning</td>
+</tr>
+</tbody>
+</table>
+<h4 id="sinais-vitais--z-score--isolation-forest">Sinais Vitais — z-score + Isolation Forest</h4>
+<p>Duas camadas complementares sobre o CSV de série temporal (FC, SpO2, pressão, frequência respiratória):</p>
+<ol>
+<li><strong>Rolling z-score</strong> (<code>anomaly/zscore.py</code>, camada &quot;tempo real&quot;/explicável): média e desvio-padrão populacional (ddof=0) móveis sobre uma janela que inclui o próprio ponto; <code>|z| &gt; threshold</code> marca anomalia. Como a janela inclui o ponto, <code>|z|</code> máximo é <code>sqrt(janela-1)</code> — por isso a <strong>janela padrão é 13</strong> (<code>sqrt(12) ≈ 3.46 &gt; threshold 3.0</code>); a UI avisa quando uma combinação manual <code>threshold ≥ sqrt(janela-1)</code> tornaria a detecção inerte.</li>
+<li><strong>Isolation Forest</strong> (<code>vital_signs/isolation_forest.py</code>, <code>contamination=0.05</code>, <code>random_state=42</code>): ajustado (<code>fit</code>) em lote sobre o dataset completo carregado, como validação cruzada estatística multivariada.</li>
+</ol>
+<p>O relatório combinado classifica cada leitura anômala em <strong>níveis de confiança</strong>: 🔴 alta confiança (as duas camadas concordam), 🟠 só tempo real (z-score), 🟡 só histórico (Isolation Forest). Saída em linguagem não-técnica com tabela traduzida, tooltips e IDs de vínculo (<code>#S01</code>).</p>
+<h4 id="vídeo--yolov8-pose">Vídeo — YOLOv8-pose</h4>
+<p>Um único forward pass do <code>yolov8n-pose.pt</code> fornece <strong>keypoints humanos</strong> (ângulos de cotovelos, joelhos, quadris/tronco, pescoço/cabeça — ambos os lados — + velocidade do centro de massa) <strong>e</strong> bounding boxes de pessoa (regra de zona crítica opcional). Cada série de ângulo/velocidade passa pelo mesmo rolling z-score; frames irregulares consecutivos são agrupados em <strong>eventos</strong> (1 alerta por evento, id <code>#V01</code>, categoria da região do corpo). Saída: relatório visual com seções colapsáveis por articulação e galeria de esqueletos anotados (top-N por gravidade). Escolha de YOLOv8-pose no lugar de OpenPose documentada em <code>RELATORIO_TECNICO.md</code> §2.2.</p>
+<h4 id="áudio--aws-transcribe--comprehend">Áudio — AWS Transcribe + Comprehend</h4>
+<p>AWS Transcribe converte o áudio em texto com timestamps por palavra (job assíncrono via bucket S3); AWS Comprehend classifica sentimento e extrai entidades. Termos críticos configuráveis (&quot;dor&quot;, &quot;não consigo respirar&quot;) são buscados no texto. Taxa de fala e duração de pausa, derivadas dos timestamps, passam pelo rolling z-score para sinalizar fadiga/disartria. IDs de vínculo <code>#A01</code>. Escolha de AWS no lugar de Azure documentada em <code>RELATORIO_TECNICO.md</code> §2.1.</p>
+<h4 id="prescrições--aws-bedrock-claude-sonnet">Prescrições — AWS Bedrock (Claude Sonnet)</h4>
+<p>O histórico por paciente é enviado num prompt estruturado (PT-BR) ao Bedrock, que responde em JSON apontando inconsistências: mudança abrupta de dose, interação medicamentosa ou dose sem justificativa clínica. Sem modelo estatístico nem fine-tuning — a tarefa é interpretação semântica sobre poucos dados, melhor servida por um LLM instruído. IDs de vínculo <code>#P01</code>.</p>
+<h3 id="feed-de-alertas--export">Feed de alertas + export</h3>
+<p><code>alerts/feed.py</code> mantém o <code>Alert</code> (dataclass com <code>origin</code>, <code>description</code>, <code>timestamp</code> + <code>alert_id</code>/<code>category</code>/<code>level</code> opcionais) acumulado em <code>st.session_state</code>. A sidebar mostra o feed cronológico, um resumo por aba e por nível, e um botão <strong>&quot;Baixar relatório (CSV)&quot;</strong> que exporta todos os alertas da sessão (colunas <code>id, origem, timestamp, categoria, nivel, nivel_label, descricao</code>, UTF-8-SIG para o Excel).</p>
+<hr>
+<h2 id="dados">Dados</h2>
+<p>Todos os dados são <strong>públicos, reais de-identificados ou sintéticos</strong> — nenhum dado real de paciente identificável.</p>
+<table>
+<thead>
+<tr>
+<th>Dataset</th>
+<th>Origem</th>
+<th>Conteúdo</th>
+<th>Uso</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>vital_signs_sample.csv</code></td>
+<td><strong>MIMIC-III Demo v1.4</strong> (PhysioNet)</td>
+<td>480 leituras horárias de UTI real de-identificada (<code>icustay_id=250305</code>)</td>
+<td>Sinais Vitais</td>
+</tr>
+<tr>
+<td><code>vital_signs_sample_normal.csv</code></td>
+<td>Derivado do MIMIC-III</td>
+<td>Trecho sem nenhuma anomalia nas 2 camadas</td>
+<td>Demo &quot;sem alertas&quot;</td>
+</tr>
+<tr>
+<td><code>vital_signs_sample_anomalias.csv</code></td>
+<td>Derivado do MIMIC-III</td>
+<td>Mesmo trecho + 3 picos clínicos injetados (taquicardia, hipoxemia, pico hipertensivo)</td>
+<td>Demo &quot;com alertas&quot;</td>
+</tr>
+<tr>
+<td><code>demo_pose_walk.mp4</code></td>
+<td>Recorte de <code>vtest.avi</code> (OpenCV, uso livre)</td>
+<td>6s, 480×360, pedestres caminhando</td>
+<td>Vídeo</td>
+</tr>
+<tr>
+<td><code>demo_consulta_audio.mp3</code></td>
+<td>TTS <code>gTTS</code> (sintético)</td>
+<td>~10s pt-BR com termos críticos</td>
+<td>Áudio</td>
+</tr>
+<tr>
+<td><code>prescricoes_sinteticas.csv</code></td>
+<td>Sintético (manual)</td>
+<td>3 pacientes com anomalias (mudança de dose, interação)</td>
+<td>Prescrições (com anomalias)</td>
+</tr>
+<tr>
+<td><code>prescricoes_sinteticas_normal.csv</code></td>
+<td>Sintético (<code>gen_prescriptions_demo.py</code>)</td>
+<td>3 pacientes, dose estável, sem interação</td>
+<td>Prescrições (sem anomalias)</td>
+</tr>
+</tbody>
+</table>
+<p>Os pares &quot;normal&quot; de sinais vitais são reproduzíveis por <code>scripts/gen_vital_signs_demo.py</code> (que roda <code>analyze</code> ao final e falha se o normal tiver anomalia ou o anômalo não tiver alta confiança) e <code>scripts/gen_prescriptions_demo.py</code>.</p>
+<hr>
+<h2 id="treino-e-métricas">Treino e métricas</h2>
+<p>Este projeto <strong>não faz fine-tuning de modelo</strong>. As duas abordagens de IA demonstradas são:</p>
+<ol>
+<li><strong>Estatística / ML clássico</strong> (sem treino pesado):
+<ul>
+<li><strong>Rolling z-score</strong> — sem treino, interpretável, threshold explícito. Reaproveitado nas 3 modalidades numéricas.</li>
+<li><strong>Isolation Forest</strong> — <code>fit</code> em lote sobre o CSV de sinais vitais carregado (não é fine-tuning de rede neural; é o ajuste do estimador <code>sklearn</code> ao dataset em runtime).</li>
+</ul>
+</li>
+<li><strong>Raciocínio via LLM</strong> — AWS Bedrock (Claude Sonnet) instruído por prompt, sem treino customizado.</li>
+</ol>
+<h3 id="resultados-reais-obtidos-validação-durante-a-implementação">Resultados reais obtidos (validação durante a implementação)</h3>
+<table>
+<thead>
+<tr>
+<th>Modalidade</th>
+<th>Resultado real medido</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Sinais Vitais</strong> (MIMIC-III, <code>window=13</code>, <code>threshold=3.0</code>)</td>
+<td>19 leituras marcadas pelo z-score; <strong>5 de alta confiança</strong> (z-score ∩ Isolation Forest, <code>contamination=0.05</code>); 14 só pelo Isolation Forest — evidenciando a divergência entre as camadas</td>
+</tr>
+<tr>
+<td><strong>Vídeo</strong> (<code>demo_pose_walk.mp4</code>, 60 frames, YOLOv8-pose real)</td>
+<td>pose em 47/60 frames; <strong>10 eventos irregulares</strong>; articulação mais afetada: Joelho direito; 6 seções no relatório; ~12% do vídeo estimado como irregular</td>
+</tr>
+<tr>
+<td><strong>Áudio</strong> (<code>demo_consulta_audio.mp3</code>, chamadas reais)</td>
+<td>transcrição exata (18 palavras c/ timestamp); sentimento <code>NEGATIVE</code> (99,75%); 3 entidades; 4 termos críticos localizados</td>
+</tr>
+<tr>
+<td><strong>Prescrições</strong> (Bedrock real, Paciente B)</td>
+<td>2 achados reais: <code>mudanca_dose_abrupta</code> + <code>dose_sem_justificativa</code>; Paciente A retornou <code>[]</code> (sem inconsistência)</td>
+</tr>
+</tbody>
+</table>
+<p>Detalhamento completo e limitações honestas (ex.: validação de anomalia de fala feita majoritariamente por testes unitários) em <code>RELATORIO_TECNICO.md</code> §4.</p>
+<hr>
+<h2 id="interface-streamlit">Interface Streamlit</h2>
+<p>Acesse em <code>http://localhost:8501</code> após <code>./start.sh</code> (ou <code>streamlit run app.py</code>).</p>
+<table>
+<thead>
+<tr>
+<th>Aba</th>
+<th>Função</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Sinais Vitais</strong></td>
+<td>Upload de CSV; z-score + Isolation Forest; tabela amigável com níveis de confiança e IDs <code>#S01</code></td>
+</tr>
+<tr>
+<td><strong>Vídeo</strong></td>
+<td>Upload de vídeo; YOLOv8-pose; relatório visual por articulação + galeria de esqueletos; IDs <code>#V01</code></td>
+</tr>
+<tr>
+<td><strong>Áudio</strong></td>
+<td>Upload de áudio; Transcribe + Comprehend; termos críticos + anomalia de fala; IDs <code>#A01</code></td>
+</tr>
+<tr>
+<td><strong>Prescrições</strong></td>
+<td>Upload de histórico; revisão via Bedrock; cards de inconsistência; IDs <code>#P01</code></td>
+</tr>
+<tr>
+<td><strong>Sidebar — Feed de Alertas</strong></td>
+<td>Feed unificado cronológico de todas as abas + resumo por aba/nível + export CSV</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="como-executar-manual-sem-terraform">Como executar (manual, sem Terraform)</h2>
+<pre class="hljs"><code><div><span class="hljs-built_in">source</span> venv/bin/activate
+<span class="hljs-built_in">export</span> AUDIO_TRANSCRIBE_BUCKET=meu-bucket-transcribe   <span class="hljs-comment"># necessário só para a aba Áudio</span>
+streamlit run app.py
+</div></code></pre>
+<p>Sem <code>AUDIO_TRANSCRIBE_BUCKET</code>, a aba Áudio exibe um erro e bloqueia o processamento (não tenta a chamada AWS). Crie o bucket manualmente com <code>aws s3 mb s3://meu-bucket-transcribe --region us-east-1</code>, ou deixe o <code>start.sh</code> provisioná-lo via Terraform.</p>
+<blockquote>
+<p><strong>Nota <code>pyarrow&lt;25</code></strong>: <code>requirements.txt</code> fixa <code>pyarrow&lt;25</code>. A série 25.x segfaulta (<code>libarrow.so</code>) ao renderizar <code>st.dataframe</code>/<code>st.table</code> quando <code>scikit-learn</code> está importado no processo (o que o app sempre faz) e a renderização ocorre num rerun posterior ao primeiro. Ver <code>openspec/changes/fix-pyarrow-segfault/design.md</code>.</p>
+</blockquote>
+<hr>
+<h2 id="rodando-os-testes">Rodando os testes</h2>
+<pre class="hljs"><code><div>venv/bin/python -m pytest tests/ -q
+</div></code></pre>
+<p>A suíte tem <strong>199 testes</strong> e passa integralmente. Os testes cobrem a lógica de cada módulo isoladamente (com mocks para as chamadas AWS); não exercitam a UI do Streamlit ponta a ponta. Não é necessário <code>PYTHONPATH=.</code> — o pytest resolve os imports a partir da raiz do projeto.</p>
+<hr>
+<h2 id="licença">Licença</h2>
+<p>Projeto desenvolvido para fins acadêmicos no curso FIAP Pós Tech — IA para Devs, Fase 4.
+Dados: MIMIC-III Clinical Database Demo (PhysioNet Open Data License), amostra <code>vtest.avi</code> (OpenCV, uso livre), demais dados sintéticos. Modelos: YOLOv8-pose (AGPL-3.0, ultralytics), AWS Transcribe/Comprehend/Bedrock (serviços gerenciados AWS).</p>
+
+</body>
+</html>

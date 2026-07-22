@@ -6,13 +6,13 @@
 
 #### Fase 4
 
-* [Fase 4 — Vídeo de apresentação do projeto](https://youtu.be/pRnMbfUW-E4)
+* [Fase 4 — Vídeo de apresentação do projeto: https://youtu.be/pRnMbfUW-E4](https://youtu.be/pRnMbfUW-E4)
 
-* [Fase 4 — Código Python](https://github.com/paulosobral/fiap-pos-tech-ia-para-devs/tree/main/01-aulas-gravadas/04-analise-de-dados/05-tech-challenge "Código Python");
+* [Fase 4 — Código Python: https://github.com/paulosobral/fiap-pos-tech-ia-para-devs/tree/main/01-aulas-gravadas/04-analise-de-dados/05-tech-challenge](https://github.com/paulosobral/fiap-pos-tech-ia-para-devs/tree/main/01-aulas-gravadas/04-analise-de-dados/05-tech-challenge "Código Python");
 
 #### Geral
 
-* [Repositório do GitHub](https://github.com/paulosobral/fiap-pos-tech-ia-para-devs "Repositório do GitHub");
+* [Repositório do GitHub: https://github.com/paulosobral/fiap-pos-tech-ia-para-devs](https://github.com/paulosobral/fiap-pos-tech-ia-para-devs "Repositório do GitHub");
 
 ## Visão Geral do Projeto
 
