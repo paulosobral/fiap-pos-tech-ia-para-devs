@@ -12,6 +12,8 @@ Este repositório contém materiais, notebooks e exemplos utilizados ao longo do
 
 * [Fase 3 — Tech Challenge - Assistente Médico IA](https://github.com/paulosobral/fiap-pos-tech-ia-para-devs/tree/main/01-aulas-gravadas/03-openia/07-tech-challenge);
 
+* [Fase 4 — Tech Challenge - Monitoramento multimodal de pacientes](https://github.com/paulosobral/fiap-pos-tech-ia-para-devs/tree/main/01-aulas-gravadas/04-analise-de-dados/05-tech-challenge);
+
 ## O que há neste repositório ✅
 - Notebooks com exemplos de Machine Learning e Deep Learning
 - Scripts auxiliares e arquivos de dados usados nas aulas
