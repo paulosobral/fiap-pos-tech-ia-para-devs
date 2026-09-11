@@ -8,7 +8,7 @@
 | **Cliente** | [W Levitt Negócios Imobiliários](https://www.wlevitt.com.br/) — segmento corporativo/comercial B2B |
 | **Referências de mercado (benchmark)** | [Lais.ai](https://lais.ai/), [Plaza Maya](https://useplaza.com.br/), [Squad](https://squad.com/) |
 | **Prazo de entrega** | 12 de outubro |
-| **Versão** | 1.3 — CRM via MCP + áudio/STT no Telegram (voice-adapter, crm-adapter) |
+| **Versão** | 1.4 — arquitetura sem Lambda→Lambda síncrono (módulos em 1 Lambda + SQS/SES/Step Functions assíncronos) |
 | **Processo** | Metodologia **AI-DLC Workflows** (AWS Labs) para desenvolvimento assistido |
 
 ---
@@ -147,56 +147,85 @@ Entregar uma **POC funcional** que demonstre todas as habilidades exigidas: aten
 
 ## 7. Arquitetura da Solução
 
-### 7.1 Visão macro (100% serverless)
+### 7.1 Visão macro — infraestrutura (100% serverless)
+
+Cada caixa nomeia o **serviço AWS** (ou serviço externo), a **aplicação** e o que faz.
 
 ```mermaid
 flowchart TD
-    subgraph CANAL["Canal (gratuito)"]
-        TG["Telegram — bot + webhook"]
+    subgraph EXT["Serviços externos (fora da AWS)"]
+        TG["Telegram Bot API<br/>canal do lead — webhook texto/voice"]
+        OR["OpenRouter API<br/>Claude 3.5 Haiku — LLM da POC (via LiteLLM)"]
+        CRM["CRM via MCP<br/>HubSpot · Kenlo · Facilita — esteira do lead"]
+        CORR["Corretores<br/>Telegram comercial + e-mail (handoff)"]
     end
 
-    subgraph AWS["AWS (us-east-1) — 100% serverless"]
-        GW["API Gateway + Lambda<br/>conversation-router"]
-        SEC["security-layer<br/>PII masking · consentimento · guardrails"]
-        FLOW["sales-flow (LangGraph)<br/>multiagentes"]
-        SDR["sdr-agent<br/>Claude 3.5 Haiku via OpenRouter (LiteLLM)"]
-        MEM[(DynamoDB<br/>memória + leads · TTL 90d)]
-        RAG["properties-rag<br/>FAISS + embeddings PT-BR (S3)"]
-        ANOM["anomaly-detector<br/>Isolation Forest + PCA + Autoencoder"]
-        FU["followup<br/>EventBridge + Step Functions"]
-        SCH["scheduler<br/>agendamento + convite ICS"]
-        ROT["roleta de distribuição<br/>regras por corretor"]
-        DASH["Dashboard<br/>HTML/JS (S3) + CloudWatch"]
-        VOICE["voice-adapter<br/>STT faster-whisper (PT-BR)"]
-        CRM["CRM via MCP<br/>HubSpot · Kenlo · Facilita"]
+    subgraph CORE["AWS — Núcleo síncrono: UMA Lambda (sem Lambda→Lambda)"]
+        GW["Amazon API Gateway<br/>POST /webhook · GET /api/kpis"]
+        ROUTER["AWS Lambda — conversation-router<br/>sessão + security-layer (PII/guardrails)<br/>+ sales-flow LangGraph + properties-rag (FAISS em memória)<br/>+ lead-router + scheduler — módulos internos"]
     end
 
-    subgraph TIME["Corretores / Time"]
-        CORR["Telegram comercial + e-mail<br/>(resumo do handoff)"]
+    subgraph ASYNC["AWS — Assíncrono: SQS desacopla, SES ingere, EventBridge agenda"]
+        SQSV["Amazon SQS — fila de áudio<br/>desacopla a transcrição (lenta)"]
+        VOICE["AWS Lambda — voice-adapter<br/>ffmpeg + faster-whisper (layer) — STT PT-BR"]
+        SQSC["Amazon SQS — fila CRM (com DLQ)<br/>lead qualificado → CRM"]
+        CRMAD["AWS Lambda — crm-adapter<br/>escreve/consulta lead via MCP"]
+        EB["Amazon EventBridge Scheduler<br/>cadências + job diário"]
+        SFN["AWS Step Functions<br/>wait states do follow-up (dia 2/5/9)"]
+        FU["AWS Lambda — followup<br/>reengaja lead parado"]
+        ANOM["AWS Lambda — anomaly-detector<br/>Isolation Forest + PCA + Autoencoder"]
+        SES["Amazon SES<br/>recebe e-mails dos portais"]
+        CING["AWS Lambda — contact-ingest<br/>abre sessão mandando 1ª msg como o lead"]
+    end
+
+    subgraph DATA["AWS — Dados"]
+        MEM[("Amazon DynamoDB<br/>sessões + leads — TTL 90d · KMS")]
+        RAGS[("Amazon S3<br/>catálogos imóveis/clientes + índice FAISS")]
+        SM["AWS Secrets Manager<br/>token do bot · chaves de API"]
+    end
+
+    subgraph OBS["AWS — Entrega e observabilidade"]
+        DASHB["Amazon S3 — site estático<br/>dashboard HTML/JS (KPIs)"]
+        COG["Amazon Cognito<br/>login do time — protege dashboard e API"]
+        KPI["AWS Lambda — dash-api<br/>agrega KPIs (DynamoDB + CloudWatch)"]
+        CW["Amazon CloudWatch<br/>logs · métricas · alertas"]
     end
 
     TG --> GW
-    GW --> SEC
-    SEC --> FLOW
-    FLOW --> SDR
-    SDR <--> MEM
-    FLOW --> RAG
-    FLOW --> ANOM
-    FLOW --> FU
-    FLOW --> SCH
-    ANOM --> DASH
-    FU --> TG
-    FLOW --> ROT
-    ROT --> CORR
-    SCH --> CORR
-    DASH -.->|"GET /api/kpis"| GW
-    TG --> VOICE
-    VOICE --> FLOW
-    FLOW --> CRM
-    CRM --> CORR
+    GW --> ROUTER
+    ROUTER -->|"msg de áudio"| SQSV
+    SQSV --> VOICE
+    VOICE -->|"texto transcrito"| ROUTER
+    ROUTER <--> MEM
+    ROUTER -.->|"índice carregado em memória"| RAGS
+    ROUTER --> OR
+    ROUTER -.->|"busca segredos"| SM
+    ROUTER -->|"handoff + convite ICS"| CORR
+    ROUTER -->|"lead qualificado"| SQSC
+    SQSC --> CRMAD
+    CRMAD --> CRM
+    SES --> CING
+    CING -->|"abre sessão (1ª msg)"| TG
+    EB --> SFN
+    SFN --> FU
+    FU <--> MEM
+    FU -->|"retoma conversa"| TG
+    EB -->|"job diário"| ANOM
+    ANOM <--> MEM
+    ANOM --> DASHB
+    GW -->|"GET /api/kpis"| KPI
+    KPI --> MEM
+    DASHB -->|"login"| COG
+    COG -.->|"authorizer"| GW
+    DASHB -.->|"Bearer JWT"| GW
+    CORE -.-> CW
 ```
 
+> Nota sobre o antipadrão resolvido: **nenhuma Lambda chama outra Lambda em modo síncrono**. A cadeia de resposta ao lead (security → fluxo → RAG → roleta) roda como **módulos internos de uma única Lambda** — chat exige latência mínima (just-in-time da mentoria) e chaining síncrono dobraria custo/latência e criaria timeout em cascata. O que é lento ou não bloqueia o lead vai **assíncrono**: transcrição de áudio e sincronização com CRM via **SQS** (com DLQ), cadência de follow-up via **Step Functions** (wait states), e-mail dos portais via **SES**. `telegram-adapter` e `sdr-agent` continuam sendo o contrato do webhook e a chamada LLM (LiteLLM → OpenRouter), não serviços próprios.
+
 ### 7.2 Componentes e responsabilidade (decomposição)
+
+> Componentes são **módulos lógicos**, não necessariamente Lambdas separadas. Os síncronos (2–7, 10, 12–13) rodam como módulos/bibliotecas dentro da Lambda `conversation-router` — **sem chamada Lambda→Lambda síncrona** (antipattern: custo dobrado, timeout em cascata, acoplamento). Os assíncronos (8, 9, 14–16) são Lambdas próprias, acionadas por SQS/SES/EventBridge — nunca em cadeia direta.
 
 1. **Canal (Telegram) — `telegram-adapter`**: webhook autenticado (secret), normaliza texto/áudio/envios de botão -> payload interno.
 2. **Router / sessões — `conversation-router` (API Gateway + Lambda)**: valida, recupera estado da sessão (DynamoDB), chama a engine de fluxo.
@@ -239,6 +268,7 @@ flowchart TD
 - **Cliente**: **LiteLLM** — abstrai o provedor por configuração (`LLM_PROVIDER=openrouter|bedrock`); a demo roda no OpenRouter e a produção pode migrar para Bedrock sem trocar código.
 - **Orquestração**: **LangGraph** (reaproveita o padrão de multiagentes da Fase 3 — Assistente Médico).
 - **Prompt system**: persona de SDR corporativo BR, tom consultivo, permissões, sempre oferecer ações (menu inline do Telegram), nunca inventar imóveis que não estão na base (constraint via RAG).
+- **Interface natural-first — nunca URA**: a mentoria deixou explícito ("não é digite 1/digite 2, é uma conversa muito fluida" — Leonardo, 1952s; "conversa humanizada", 1801s). Entrada livre sempre aceita; os **botões inline são só atalhos** (escolher entre 2–3 imóveis, confirmar data de visita, "falar com um corretor") — o fluxo funciona igualmente com texto livre. Consentimento LGPD contextualizado na primeira mensagem, sem checkbox. Primeira abordagem: **coletar dados + propor reunião**, não apresentar imóvel (decisão do cliente).
 - **Guardrails aplicados em código (LiteLLM)**: masking de PII no pré-envio, validação de saída (regex de contato), denied topics e detecção de prompt injection — ver §8.8.
 
 ### 8.2 RAG — duas bases (imóveis + clientes)
@@ -416,11 +446,15 @@ Por serem leads **reais**, não existe anonimização total da operação; o obj
 
 ## 10. Dashboard (mínimo obrigatório)
 
+> O enunciado exige "dashboard mínimo de acompanhamento" (item obrigatório). A escolha do **S3 site estático** é deliberada: ~R$ 0/mês, coerente com a stack 100% serverless e demo clara pra banca. Alternativa ainda mais simples (se necessário): CloudWatch Dashboard nativo ou relatório diário no Telegram.
+
 Página estática (S3 + CloudFront opcional) consumindo um endpoint `GET /api/kpis` (Lambda+CloudWatch ou DynamoDB aggregate):
 - Leads hoje/semana; tempo de 1ª resposta (p90); taxa de qualificação;
 - Volume de intenções (locação/compra/investimento); agendamentos;
 - Resumo de anomalias (nº alertas, metadados);
 - Custo mensal estimado das chamadas ao provedor LLM (OpenRouter).
+
+**Acesso autenticado — Amazon Cognito:** o dashboard e o `GET /api/kpis` ficam atrás de login (**Hosted UI** do Cognito; API Gateway valida o JWT via **Cognito authorizer**). Escopo: ~5–10 usuários do time (corretores/gestor). Custo **R$ 0** — o free tier do Cognito (50.000 MAUs no tier Lite) cobre de sobra; a API de leads continua protegida pelo secret do webhook (não passa por Cognito).
 
 ---
 
@@ -441,6 +475,8 @@ Página estática (S3 + CloudFront opcional) consumindo um endpoint `GET /api/kp
 | EventBridge Scheduler | < R$ 1 |
 | CloudWatch/Logs | < R$ 5 |
 | S3 + índices FAISS | < R$ 1 |
+| SQS + SES (filas e ingestão de e-mail) | < R$ 1 |
+| Amazon Cognito (login do dashboard) | R$ 0 (free tier, ~5–10 usuários) |
 | **Total POC** | **~R$ 15–25/mês (~0,03x de um SDR humano)** |
 
 > Controles de custo: modelos menores com free tier para testes; **AWS Budgets Alerts** (R$ 20) caso o Bedrock entre em produção; limite de tokens no código (máx. histórico e saída por turno); `sam delete` ao fim — **sem capacidade provisionada**.
@@ -542,6 +578,7 @@ O desenvolvimento será conduzido com a metodologia **AI-DLC (AWS)** — 5 fases
 - **MCP (Model Context Protocol)** — protocolo aberto que dá ao agente acesso padronizado a ferramentas/dados externos (CRM, bancos); um servidor MCP expõe "tools" que a IA chama.
 - **STT (Speech-to-Text)** — transcrição de áudio para texto (faster-whisper); habilita o lead falar no Telegram.
 - **Voice message** — mensagem de áudio do Telegram; tratada pelo `voice-adapter` como texto transcrito.
+- **Amazon Cognito** — serviço AWS de identidade (login/JWT); protege o dashboard e a API de KPIs (free tier).
 
 ### Imobiliário corporativo
 - **Laje corporativa** — pavimento inteiro de edifício comercial, dedicado a escritórios (open space ou salas) — típico alvo de empresas B2B.
@@ -589,4 +626,4 @@ O desenvolvimento será conduzido com a metodologia **AI-DLC (AWS)** — 5 fases
 
 *Documento gerado a partir de brainstorming/validação e servirá de guia para a pipeline AI-DLC (profile: POC) — revisão de aprovação do cliente/aluno antes da implementação.*
 
-*Atualizado em 09/set/2026 — v1.3: CRM via MCP (HubSpot/Kenlo/Facilita) + fluxo de áudio no Telegram (faster-whisper).*
+*Atualizado em 09/set/2026 — v1.4: arquitetura assíncrona correta (núcleo em 1 Lambda, SQS/DLQ para áudio e CRM, SES para ingestão, Step Functions para cadências).*
