@@ -8,7 +8,7 @@
 | **Cliente** | [W Levitt Negócios Imobiliários](https://www.wlevitt.com.br/) — segmento corporativo/comercial B2B |
 | **Referências de mercado (benchmark)** | [Lais.ai](https://lais.ai/), [Plaza Maya](https://useplaza.com.br/), [Squad](https://squad.com/) |
 | **Prazo de entrega** | 12 de outubro |
-| **Versão** | 1.4 — arquitetura sem Lambda→Lambda síncrono (módulos em 1 Lambda + SQS/SES/Step Functions assíncronos) |
+| **Versão** | 1.10 — instalação AI-DLC (`aidlc` CLI + harness opencode) + ADRs de decisões no §16 |
 | **Processo** | Metodologia **AI-DLC Workflows** (AWS Labs) para desenvolvimento assistido |
 
 ---
@@ -121,7 +121,7 @@ Entregar uma **POC funcional** que demonstre todas as habilidades exigidas: aten
 | FR-04 | Qualificação de leads | Questionário adaptativo + classificação (compra/aluguel/investimento) + score |
 | FR-05 | Agendamento de reuniões | Integração com calendário simulado, geração de convite ICS |
 | FR-06 | Resumo inteligente | Handoff em Markdown (gap, score, intenção, urgência, próximos passos) |
-| FR-07 | Dashboard mínimo | Dashboard Streamlit/HTML no S3 + CloudWatch — KPIs operacionais |
+| FR-07 | Dashboard mínimo | Streamlit (1 página) no Community Cloud consumindo `GET /api/kpis` — KPIs, anomalias e custo |
 | FR-08 | Identificar intenção (compra/aluguel/investimento) | Classificador de intenção (LLM + heurísticas) no início do fluxo |
 | FR-09 | Coletar informações relevantes | Esquema de coleta (tipo de uso, metragem, região, orçamento, prazo, nº de pessoas, decisor) |
 | FR-10 | Follow-up automático | Scheduler (EventBridge) com janela de silêncio e cadências configuráveis |
@@ -142,6 +142,7 @@ Entregar uma **POC funcional** que demonstre todas as habilidades exigidas: aten
 | NF-06 | Custo | ~R$ 15/mês (OpenRouter · Claude 3.5 Haiku); acessível para demonstração |
 | NF-07 | Segurança de modelo | Guardrails/denied topics; detecção de prompt injection; evasão de PII |
 | NF-08 | Escalabilidade | Escala horizontal automática (Lambda/API GW/EventBridge) |
+| NF-09 | Infra como código (IaC) | **Toda a infra da §7.1 em Terraform** (`infra/`, um `.tf` por serviço) — deploy e teardown em 1 comando cada (`start.sh` build → zip → `terraform apply`; `stop.sh` → `terraform destroy`); ambiente recriável de ponta a ponta (critério: `stop.sh` + `start.sh` recria tudo) |
 
 ---
 
@@ -158,6 +159,7 @@ flowchart TD
         OR["OpenRouter API<br/>Claude 3.5 Haiku — LLM da POC (via LiteLLM)"]
         CRM["CRM via MCP<br/>HubSpot · Kenlo · Facilita — esteira do lead"]
         CORR["Corretores<br/>Telegram comercial + e-mail (handoff)"]
+        DASHB["Streamlit Community Cloud<br/>dashboard SDR — 1 página (grátis)"]
     end
 
     subgraph CORE["AWS — Núcleo síncrono: UMA Lambda (sem Lambda→Lambda)"]
@@ -184,8 +186,7 @@ flowchart TD
         SM["AWS Secrets Manager<br/>token do bot · chaves de API"]
     end
 
-    subgraph OBS["AWS — Entrega e observabilidade"]
-        DASHB["Amazon S3 — site estático<br/>dashboard HTML/JS (KPIs)"]
+    subgraph OBS["AWS — API, identidade e observabilidade"]
         COG["Amazon Cognito<br/>login do time — protege dashboard e API"]
         KPI["AWS Lambda — dash-api<br/>agrega KPIs (DynamoDB + CloudWatch)"]
         CW["Amazon CloudWatch<br/>logs · métricas · alertas"]
@@ -237,7 +238,7 @@ flowchart TD
 8. **Follow-up — `followup`**: regras de cadência via EventBridge + Step Functions (espera silêncio de X dias, retoma com contexto).
 9. **Detecção de anomalias — `anomaly-detector`** (módulo da fase): job diário (EventBridge, chama Batch Lambda) que extrai features por conversa (volume, comprimento, sentimento, promessa de pagamento, horários atípicos, robô/texto fora do padrão, exigência fora das regras) e aplica **Isolation Forest + PCA** (e autoencoder para variação de comportamento). Emissão de alerta no dashboard e bloqueio de propostas suspeitas.
 10. **Handoff — `handoff`**: resumo Markdown (+ mensagem interna) para corretor no canal do time.
-11. **Dashboard — `dash`**: página estática em S3 + CloudWatch (métricas de negócio: novo lead, resposta < 10s, taxa qualificação, agendamentos, anomalias, custo mensal).
+11. **Dashboard — `dash`**: app Streamlit (1 página) no Community Cloud consumindo `GET /api/kpis` (métricas de negócio: novo lead, resposta < 10s, taxa qualificação, agendamentos, anomalias, custo mensal); login via Cognito. Sketch no §10.
 12. **Segurança/Priv — `security-layer`**: máscara de PII antes do LLM (nomes, telefone, e-mail, CNPJ), registro de consentimento, guardrails de tópicos, validação de entrada (prompt-injection check).
 13. **Roleta de distribuição — `lead-router`** (insight da mentoria): distribui o lead qualificado para o corretor certo por **regras configuráveis** (ex.: até 500 m² → rodízio dos consultores; acima → diretor/especialista); registra a rota no DynamoDB.
 14. **Ingestão de contato — `contact-ingest`** (cenário 2 da mentoria): captura dados que chegam por e-mail/portais (nome, e-mail, telefone) e abre sessão no chatbot sem digitação manual.
@@ -258,6 +259,88 @@ flowchart TD
 10. `contact-ingest` (cenário e-mail/portal) importa nome/e-mail/telefone e abre sessão no bot automaticamente.
 11. **Áudio**: `telegram-adapter` recebe voice → `voice-adapter` baixa/transcreve (faster-whisper) → texto entra no `sales-flow` (mesmo fluxo do texto digitado).
 12. **CRM**: `crm-adapter` (MCP) sincroniza o lead qualificado com o CRM (HubSpot/Kenlo/Facilita) e devolve o status da esteira Kanban.
+
+### 7.4 Repositório e deploy (IaC — Terraform + `start.sh`)
+
+**Requisito (NF-09): toda a infra descrita na §7.1 existe em Terraform — nada provisionado à mão.**
+
+```text
+agente-sdr-imobiliario/                ← raiz do repo
+├── start.sh                           ← 1 comando: build das apps → zips → terraform apply
+├── stop.sh                            ← teardown completo: terraform destroy (controle de custo)
+├── apps/                              ← 1 pasta por Lambda — padrão único de código
+│   ├── conversation-router/           ← núcleo síncrono (sessão + fluxo + RAG + roleta + scheduler)
+│   │   ├── handler.py                 ← entrypoint (adapter) — só roteia, sem regra de negócio
+│   │   ├── service/                   ← casos de uso: sales-flow (LangGraph), security-layer, properties-rag, lead-router, scheduler
+│   │   ├── infra/                     ← adapters: DynamoDB, S3/FAISS, OpenRouter (LiteLLM), SQS
+│   │   ├── tests/
+│   │   └── requirements.txt
+│   ├── voice-adapter/ · crm-adapter/ · contact-ingest/ · anomaly-detector/ · followup/ · dash-api/
+│   └── streamlit-dashboard/           ← app do §10 (deploy no Community Cloud, fora do Terraform)
+├── infra/                             ← Terraform — 1 arquivo por tipo de serviço
+│   ├── providers.tf · variables.tf · kms.tf
+│   ├── s3.tf · dynamodb.tf · sqs.tf · ses.tf
+│   ├── lambda.tf · apigw.tf · apigw-openapi.yaml (contrato §7.5)
+│   ├── eventbridge.tf · stepfunction.tf (ASL) · cognito.tf · cloudwatch.tf
+│   ├── outputs.tf
+│   └── envs/dev.tfvars · envs/prod.tfvars
+└── docs/                              ← PRD, ADRs, enunciado, transcrições (atual)
+```
+
+**Fluxo do `start.sh`:**
+
+```shell
+#!/usr/bin/env bash
+set -euo pipefail
+
+# 1) Build: dependências + zip de cada Lambda
+for app in apps/*/; do
+  name=$(basename "$app")
+  ( cd "apps/$name" \
+    && pip install -r requirements.txt -t package/ \
+    && cd package && zip -r "../../$name.zip" . )
+done
+
+# 2) Deploy IaC (lambda.tf referencia os zips de apps/*.zip)
+terraform -chdir=infra init
+terraform -chdir=infra apply -var-file=envs/dev.tfvars
+```
+
+**Teardown (`stop.sh`) — custo zero quando a POC está em uso:**
+
+```shell
+#!/usr/bin/env bash
+set -euo pipefail
+terraform -chdir=infra destroy -var-file=envs/dev.tfvars
+```
+
+> Os blocos usam `shell` (e não `bash`) para o preview de diagramas do VS Code não tentar interpretá-los como Mermaid — o resto do markdown fica intacto.
+
+> O destroy apaga tudo (DynamoDB, S3, filas, funções) — seguro na POC porque os dados são sintéticos e regeneráveis pelo script de seed. Para recriar o ambiente inteiro: `./stop.sh && ./start.sh`. O `terraform.tfstate` fica no bucket do Terraform (versionado), nunca no repo.
+
+**Ordem de criação e `depends_on`:** o Terraform resolve a maior parte do grafo sozinho por referência de atributos (ARNs em env vars, IAM roles, etc.). `depends_on` explícito onde não há referência direta: `kms` → `s3`/`dynamo` → `sqs`/`ses` → `lambda` (roles + permissões de fontes) → `apigw` → `eventbridge`/`stepfunction` → `outputs`. Notificações de fila/bucket exigem a permissão da Lambda pronta antes do trigger (`aws_lambda_permission` → `depends_on` do event source).
+
+**Padrão de código das apps (todas iguais):** `handler.py` (adaptador de entrada, sem regra de negócio) → `service/` (casos de uso, testável sem AWS) → `infra/` (adapters de DynamoDB/S3/LLM/SQS). Mesmo padrão nas 7 Lambdas — banca audita um, entende todas.
+
+### 7.5 Contrato de API — OpenAPI 3.0 (API Gateway)
+
+O API Gateway REST **importa OpenAPI 3.0 nativamente** (extensões `x-amazon-apigateway-*`). O contrato completo vive em **[`apigw-openapi.yaml`](./apigw-openapi.yaml)** (mesma pasta deste PRD; no esqueleto do repo move para `infra/`) e o `apigw.tf` faz o deploy direto:
+
+```hcl
+resource "aws_api_gateway_rest_api" "sdr" {
+  body = file("${path.module}/apigw-openapi.yaml")  # placeholder ${...} interpolado pelo Terraform
+  name = "sdr-api"
+}
+```
+
+**Resumo dos endpoints (detalhes e schemas no arquivo):**
+
+| Endpoint | Método | Autenticação | Integração | Resposta |
+|---|---|---|---|---|
+| `/webhook` | POST | Header `X-Telegram-Bot-Api-Secret-Token` (apiKey) | `aws_proxy` → Lambda `conversation-router` | 200 imediato (trabalho lento → SQS) |
+| `/api/kpis` | GET | JWT do Amazon Cognito (`cognito_user_pools` authorizer) | `aws_proxy` → Lambda `dash-api` | JSON de KPIs (exemplo no arquivo) |
+
+> Notas: (1) CORS não é necessário — o Streamlit chama a API server-side (Python), não pelo navegador. (2) Os placeholders `${ROUTER_INVOKE_ARN}`, `${DASHAPI_INVOKE_ARN}` e `${COGNITO_POOL_ARN}` são interpolados pelo Terraform no `apigw.tf`. (3) Respostas assíncronas (áudio/CRM) não passam daqui — o webhook só confirma recebimento. (4) Para visualizar/validar o arquivo no VS Code: extensões **OpenAPI (Swagger) Editor** (42Crunch — syntax + validação) e **Swagger Viewer** (preview Swagger UI).
 
 ---
 
@@ -446,15 +529,76 @@ Por serem leads **reais**, não existe anonimização total da operação; o obj
 
 ## 10. Dashboard (mínimo obrigatório)
 
-> O enunciado exige "dashboard mínimo de acompanhamento" (item obrigatório). A escolha do **S3 site estático** é deliberada: ~R$ 0/mês, coerente com a stack 100% serverless e demo clara pra banca. Alternativa ainda mais simples (se necessário): CloudWatch Dashboard nativo ou relatório diário no Telegram.
+> O enunciado pede "dashboard mínimo de acompanhamento" (item obrigatório) — **uma única página atende**. Stack: **Streamlit** (1 página, código Python) hospedado no **Streamlit Community Cloud (grátis)** — única peça fora da AWS; alternativa 100% AWS (S3 estático + HTML/JS) exige muito mais front-end para o mesmo resultado. O dashboard não guarda dados locais: consome `GET /api/kpis` (Lambda `dash-api` + DynamoDB/CloudWatch).
 
-Página estática (S3 + CloudFront opcional) consumindo um endpoint `GET /api/kpis` (Lambda+CloudWatch ou DynamoDB aggregate):
-- Leads hoje/semana; tempo de 1ª resposta (p90); taxa de qualificação;
-- Volume de intenções (locação/compra/investimento); agendamentos;
-- Resumo de anomalias (nº alertas, metadados);
-- Custo mensal estimado das chamadas ao provedor LLM (OpenRouter).
+### 10.1 Recursos previstos (1 página)
 
-**Acesso autenticado — Amazon Cognito:** o dashboard e o `GET /api/kpis` ficam atrás de login (**Hosted UI** do Cognito; API Gateway valida o JWT via **Cognito authorizer**). Escopo: ~5–10 usuários do time (corretores/gestor). Custo **R$ 0** — o free tier do Cognito (50.000 MAUs no tier Lite) cobre de sobra; a API de leads continua protegida pelo secret do webhook (não passa por Cognito).
+- **Linha de métricas** (st.metric): leads hoje/semana · tempo de 1ª resposta (p90) · taxa de qualificação · agendamentos;
+- **Gráficos** (st.bar_chart): volume de intenções (locação/compra/investimento) · leads distribuídos pela roleta (por corretor);
+- **Tabela de anomalias** (st.dataframe): nº alertas 24h, tipo (urgência artificial, bot, off-platform), severidade, sessão;
+- **Custo LLM do mês** (st.progress contra meta de R$ 25) — chamadas OpenRouter.
+
+**Acesso autenticado — Amazon Cognito:** login do time (~5–10 usuários) via **Hosted UI/OIDC (`st.login`)**; a API `GET /api/kpis` valida o JWT com **Cognito authorizer** no API Gateway. Custo **R$ 0** (free tier 50.000 MAUs). A API de leads continua protegida pelo secret do webhook (não passa por Cognito).
+
+### 10.2 Sketch do layout (Mermaid `block-beta`)
+
+```mermaid
+block-beta
+    columns 5
+    hd["🏢 W Levitt — Dashboard SDR · gestor@wlevitt.com · sair"]:5
+    m1["Leads hoje — 12"] m2["1ª resposta p90 — 8s"] m3["Taxa qualificação — 34%"] m4["Agendamentos — 5"] m5["Custo LLM — R$ 6,20"]
+    space:5
+    g1["Intenções (st.bar_chart)<br/>locação 7 · investimento 6 · compra 4"]:3
+    g2["Roleta — leads por corretor<br/>Ana 3 · Bruno 4 · Caio 2"]:2
+    an["⚠️ Anomalias (24h) — st.dataframe: 1 alerta · sessão · tipo · severidade"]:5
+    cu["💰 Custo LLM no mês (st.progress): ████████░░ R$ 6,20 / meta R$ 25,00"]:5
+    style hd fill:#1f4e5f,color:#ffffff
+    style an fill:#fff3cd
+    style cu fill:#e8f5e9
+```
+
+> Renderiza em GitHub/VS Code com Mermaid ≥ 11. Layout espelha os widgets do §10.1 (`st.metric`, `st.bar_chart`, `st.dataframe`, `st.progress`).
+
+### 10.3 Esboço do código (Streamlit, ~30 linhas)
+
+```python
+import streamlit as st
+import requests
+
+# Login do time: OIDC via Amazon Cognito (st.login) — Streamlit >= 1.40
+if not st.user.is_logged_in:
+    st.login()          # Hosted UI do Cognito
+    st.stop()
+
+k = requests.get(
+    "https://api.wlevitt.app/api/kpis",
+    headers={"Authorization": f"Bearer {st.user.id_token}"},  # JWT → Cognito authorizer
+).json()
+
+st.title("W Levitt — Dashboard SDR")
+st.caption(f"{st.user.email} · dados em tempo quase real (DynamoDB/CloudWatch)")
+
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Leads hoje", k["leads_hoje"])
+c2.metric("1ª resposta p90", f'{k["p90_first_reply"]:.0f}s')
+c3.metric("Taxa qualificação", f'{k["taxa_qualificacao"]:.0%}')
+c4.metric("Agendamentos", k["agendamentos"])
+
+l, r = st.columns(2)
+l.bar_chart(k["intencoes"], x="tipo", y="total", color="#2e7d32")
+r.bar_chart(k["roleta"], x="corretor", y="leads")
+
+st.subheader(f"⚠️ Anomalias (24h) — {len(k['anomalias'])} alerta(s)")
+st.dataframe(k["anomalias"], use_container_width=True)
+
+st.subheader("💰 Custo LLM no mês")
+st.progress(k["custo"]["pct_meta"], text=f'R$ {k["custo"]["mes"]:.2f} / meta R$ 25,00')
+
+if st.button("Sair"):
+    st.logout()
+```
+
+> Custos: Streamlit Community Cloud **R$ 0**; `dash-api` e CloudWatch já contabilizados na tabela do §11.
 
 ---
 
@@ -479,7 +623,7 @@ Página estática (S3 + CloudFront opcional) consumindo um endpoint `GET /api/kp
 | Amazon Cognito (login do dashboard) | R$ 0 (free tier, ~5–10 usuários) |
 | **Total POC** | **~R$ 15–25/mês (~0,03x de um SDR humano)** |
 
-> Controles de custo: modelos menores com free tier para testes; **AWS Budgets Alerts** (R$ 20) caso o Bedrock entre em produção; limite de tokens no código (máx. histórico e saída por turno); `sam delete` ao fim — **sem capacidade provisionada**.
+> Controles de custo: modelos menores com free tier para testes; **AWS Budgets Alerts** (R$ 20) caso o Bedrock entre em produção; limite de tokens no código (máx. histórico e saída por turno); `terraform destroy` ao fim (toda a infra é IaC — §7.4) — **sem capacidade provisionada**.
 
 > Estratégia de redução: embeddings locais (sentence-transformers), Haiku/Nova Lite (free tier no OpenRouter), cache de respostas de FAQ, RAG top-k pequeno e cold start reduzido.
 
@@ -492,7 +636,7 @@ O desenvolvimento será conduzido com a metodologia **AI-DLC (AWS)** — 5 fases
 | Fase AI-DLC | Etapas-chave | Entrega desta POC |
 |---|---|---|
 | **1. Foundation** | Requisitos (este PRD), decisões, conhecimento | PRD aprovado |
-| **2. Design** | Arquitetura, perfis de fluxo (Profile: `Proof of Concept` / `Express`) | Diagrama de arquitetura + ADR |
+| **2. Design** | Arquitetura, perfis de fluxo (Profile: `Proof of Concept` / `Express`), **ADR de decisões (AI-DLC)** | Diagrama de arquitetura + ADR |
 | **3. Build** | Módulos (adapter, fluxo, RAG, scoring, anomalia, scheduler, dash) | Código no repo |
 | **4. Test/Verify** | Evidências (testes de diálogo, LGPD, análise de custo) | Relatório de verificação |
 | **5. Run/Operate** | Observabilidade, auditoria, trilha de decisões | Demonstração funcional |
@@ -501,7 +645,7 @@ O desenvolvimento será conduzido com a metodologia **AI-DLC (AWS)** — 5 fases
 
 | Semana | Marco |
 |---|---|
-| S1 (09/set) | PRD + validação; repo; bot Telegram; **dados sintéticos calibrados (FipeZAP/Secovi) + Mockaroo**; duas bases RAG |
+| S1 (09/set) | PRD + validação; repo com **esqueleto AI-DLC (`aidlc` CLI nativo, harness opencode)** + IaC Terraform + `start.sh`/`stop.sh`; bot Telegram; dados sintéticos calibrados; duas bases RAG |
 | S2 | Engine de fluxo (LangGraph) + primeira conversa de ponta-a-ponta |
 | S3 | RAG + qualificador + agendamento + handoff |
 | S4 | Follow-up + dashboard + anomalia + segurança LGPD |
@@ -528,7 +672,7 @@ O desenvolvimento será conduzido com a metodologia **AI-DLC (AWS)** — 5 fases
 |---|---|
 | LangGraph/frameworks evoluem | Feature flags; abstração fina da camada de canal |
 | Parada do OpenRouter | Fallback para Bedrock via LiteLLM (troca por config) |
-| Preocupação com custos elevados em serviços AWS (ex.: Bedrock) | POC roda no **OpenRouter** (execução barata/grátis); produção (se migrar): Budgets Alerts + token caps + serverless sob demanda + teardown `sam delete` |
+| Preocupação com custos elevados em serviços AWS (ex.: Bedrock) | POC roda no **OpenRouter** (execução barata/grátis); produção (se migrar): Budgets Alerts + token caps + serverless sob demanda + teardown `terraform destroy` |
 | Custo acima do budget | Limite de tokens no código, monitor semanal de custo, alarme de limites no OpenRouter |
 | Qualidade do PT-BR (OpenRouter) | Modelos com bom PT-BR; prompt tuning iterativo; testes de diálogo |
 | Calibração da detecção de anomalias | Features mistas (semântica + temporal), threshold calibrado na demo |
@@ -537,7 +681,7 @@ O desenvolvimento será conduzido com a metodologia **AI-DLC (AWS)** — 5 fases
 
 ## 15. Entregáveis do Hackathon
 
-1. **Repositório** (GitHub) com código, `.env.example`, documentação e IaC (SAM/CloudFormation).
+1. **Repositório** (GitHub) com código, `.env.example`, documentação e **IaC completa em Terraform** (`infra/*.tf` + `start.sh` — ver §7.4).
 2. **README** — execução, instalação, arquitetura (mermaid) e custos.
 3. **Arquitetura** — ADR de decisões (Telegram × WhatsApp, FAISS × KB, OpenRouter × Bedrock, serverless completo).
 4. **Demonstração funcional** — vídeo (2–5 min) mostrando: atendimento humanizado, RAG, agendamento, follow-up, resumo, anomalia e dashboard.
@@ -579,6 +723,9 @@ O desenvolvimento será conduzido com a metodologia **AI-DLC (AWS)** — 5 fases
 - **STT (Speech-to-Text)** — transcrição de áudio para texto (faster-whisper); habilita o lead falar no Telegram.
 - **Voice message** — mensagem de áudio do Telegram; tratada pelo `voice-adapter` como texto transcrito.
 - **Amazon Cognito** — serviço AWS de identidade (login/JWT); protege o dashboard e a API de KPIs (free tier).
+- **Streamlit** — framework Python para apps web de dados; hospeda o dashboard no Community Cloud (grátis).
+- **Terraform / IaC** — infraestrutura como código: a infra inteira é declarada em arquivos `.tf` (§7.4) e criada via `terraform apply`; destruição/recriação com um comando.
+- **OpenAPI (Swagger)** — padrão de descrição de APIs REST (YAML/JSON); usado como contrato dos endpoints e importado pelo API Gateway (§7.5).
 
 ### Imobiliário corporativo
 - **Laje corporativa** — pavimento inteiro de edifício comercial, dedicado a escritórios (open space ou salas) — típico alvo de empresas B2B.
@@ -626,4 +773,4 @@ O desenvolvimento será conduzido com a metodologia **AI-DLC (AWS)** — 5 fases
 
 *Documento gerado a partir de brainstorming/validação e servirá de guia para a pipeline AI-DLC (profile: POC) — revisão de aprovação do cliente/aluno antes da implementação.*
 
-*Atualizado em 09/set/2026 — v1.4: arquitetura assíncrona correta (núcleo em 1 Lambda, SQS/DLQ para áudio e CRM, SES para ingestão, Step Functions para cadências).*
+*Atualizado em 09/set/2026 — v1.9: contrato OpenAPI movido para arquivo próprio `apigw-openapi.yaml` (visualizável no VS Code com OpenAPI Editor/Swagger Viewer), linkado no §7.5.*

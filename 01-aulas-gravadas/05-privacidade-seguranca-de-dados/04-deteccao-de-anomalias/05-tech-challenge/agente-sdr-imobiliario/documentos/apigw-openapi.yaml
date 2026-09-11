@@ -1,0 +1,113 @@
+openapi: 3.0.3
+info:
+  title: W Levitt — SDR API
+  version: 1.0.0
+  description: >
+    Única superfície HTTP da POC. POST /webhook recebe o update do Telegram e
+    responde 200 imediato (trabalho lento vai para SQS — ver §7.1 do PRD).
+    GET /api/kpis alimenta o dashboard Streamlit (§10).
+    Deployado pelo apigw.tf via aws_api_gateway_rest_api.body.
+servers:
+  - url: https://api.wlevitt.app
+paths:
+  /webhook:
+    post:
+      summary: Webhook do Telegram
+      description: >
+        Roteia o update para a Lambda conversation-router (proxy).
+        Autentica pelo secret token do bot (header enviado pelo Telegram).
+      security:
+        - TelegramSecret: []
+      parameters:
+        - in: header
+          name: X-Telegram-Bot-Api-Secret-Token
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TelegramUpdate'
+      responses:
+        '200':
+          description: Update aceito (processado síncrono ou enfileirado)
+        '401':
+          description: Secret inválido
+        '400':
+          description: Payload inválido
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: ${ROUTER_INVOKE_ARN}
+        passthroughBehavior: when_no_match
+  /api/kpis:
+    get:
+      summary: KPIs do dashboard
+      security:
+        - CognitoAuthorizer: []
+      responses:
+        '200':
+          description: KPIs agregados (DynamoDB + CloudWatch)
+          content:
+            application/json:
+              example:
+                leads_hoje: 12
+                p90_first_reply: 8.2
+                taxa_qualificacao: 0.34
+                agendamentos: 5
+                intencoes:
+                  - tipo: locacao
+                    total: 7
+                  - tipo: investimento
+                    total: 6
+                roleta:
+                  - corretor: Ana
+                    leads: 3
+                  - corretor: Bruno
+                    leads: 4
+                anomalias:
+                  - sessao: abc123
+                    tipo: bot
+                    severidade: alta
+                custo:
+                  mes: 6.2
+                  pct_meta: 0.25
+        '401':
+          description: JWT ausente/expirado
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: ${DASHAPI_INVOKE_ARN}
+        passthroughBehavior: when_no_match
+components:
+  securitySchemes:
+    TelegramSecret:
+      type: apiKey
+      in: header
+      name: X-Telegram-Bot-Api-Secret-Token
+    CognitoAuthorizer:
+      type: oauth2
+      x-amazon-apigateway-authorizer:
+        type: cognito_user_pools
+        identitySource: method.request.header.Authorization
+        providerARNs:
+          - ${COGNITO_POOL_ARN}
+  schemas:
+    TelegramUpdate:
+      type: object
+      description: Update do Telegram (contrato oficial, resumido)
+      properties:
+        update_id:
+          type: integer
+        message:
+          type: object
+          properties:
+            text:
+              type: string
+            voice:
+              type: object
+              description: presente em mensagens de áudio (file_id)
+            callback_query:
+              type: object
