@@ -22,7 +22,7 @@ Qual problema de negócio o Agente SDR resolve para a W Levitt?
 - E. Duas ou mais das opções acima combinam o problema central da POC
 - X. Other (please specify)
 
-[Answer]:
+[Answer]: A (como é um chatbot não se limita apenas ao horário comercial), B, C, D
 
 ## Q2. Quem é o cliente?
 
@@ -35,7 +35,7 @@ Qual(is) é(são) o(s) público(s)-alvo atendido(s) pelo agente (persona do clie
 - E. Embaixo e C, com cliente externo sendo empresa (B2B) e interno a equipe de vendas
 - X. Other (please specify)
 
-[Answer]:
+[Answer]: A, B (parcela menor... Maior público corporativo), C, D
 
 ## Q3. Como medimos sucesso?
 
@@ -48,7 +48,7 @@ Quais métricas devem medir o sucesso da POC (aceitar/prontidão vs métricas do
 - E. Não definido ainda — definir nesta etapa
 - X. Other (especificar)
 
-[Answer]:
+[Answer]: A
 
 ## Q4. Trigger da iniciativa
 
@@ -60,7 +60,7 @@ Qual(is) é(são) o(s) gatilho(s) para este trabalho agora?
 - D. Diferencial reputacional: W Levitt se posiciona com atendimento 24×7 com IA + humano no mesmo número
 - X. Other (especificar)
 
-[Answer]:
+[Answer]: C
 
 ## Q5. Quem são os stakeholders?
 
@@ -73,7 +73,7 @@ Quais stakeholders o agente atende, direta ou indiretamente? (selecione os que s
 - E. Times de operações/plataforma — necessidade de esteira Kanban e auditoria da roleta
 - X. Other (especificar)
 
-[Answer]:
+[Answer]: D
 
 ## Q6. Decisores vs influenciadores
 
@@ -84,7 +84,7 @@ Quais stakeholders o agente atende, direta ou indiretamente? (selecione os que s
 - E. Não aplicável — sem mando descontra
 - X. Other (especificar)
 
-[Answer]:
+[Answer]: A
 
 ## 7. Comunicação e cadência de reporte
 
@@ -97,7 +97,7 @@ Um relatório/ritual para os stakeholders da W Levitt (dashboard, Kanban, alerta
 - E. Nenhum — o agente reporta para humanos e serviços automatizados apenas quando necessário
 - X. Other (especificar)
 
-[Answer]:
+[Answer]: A
 
 ## Assumptions & Open Questions
 
