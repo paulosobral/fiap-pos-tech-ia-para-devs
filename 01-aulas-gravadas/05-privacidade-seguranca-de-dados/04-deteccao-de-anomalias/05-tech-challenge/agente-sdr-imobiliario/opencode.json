@@ -2,6 +2,15 @@
   "$schema": "https://opencode.ai/config.json",
   "skills": { "paths": [".aidlc/skills"] },
   "instructions": ["aidlc/spaces/default/memory/**/*.md"],
+  "agent": {
+    "aidlc-product-lead-agent": { "model": "headroom/openrouter/auto" },
+    "aidlc-product-agent": { "model": "headroom/openrouter/auto" },
+    "aidlc-architect-agent": { "model": "headroom/openrouter/auto" },
+    "aidlc-delivery-agent": { "model": "headroom/openrouter/auto" },
+    "aidlc-design-agent": { "model": "headroom/openrouter/auto" },
+    "aidlc-developer-agent": { "model": "headroom/openrouter/auto" },
+    "aidlc-quality-agent": { "model": "headroom/openrouter/auto" }
+  },
   "permission": {
     "edit": {
       "*": "allow",

@@ -32,7 +32,7 @@
 - **In Progress**: intent-capture
 
 ## Runtime State
-- **Revision Count**: 0
+- **Revision Count**: 1
 
 ## Phase Progress
 <!-- Status values: Pending, Active, Verified, Skipped -->
@@ -52,7 +52,7 @@
 - [x] state-init — EXECUTE
 
 ### IDEATION PHASE
-- [-] intent-capture — EXECUTE
+- [R] intent-capture — EXECUTE
 - [ ] market-research — EXECUTE
 - [ ] feasibility — EXECUTE
 - [ ] scope-definition — EXECUTE
@@ -95,7 +95,7 @@ Per unit: [TBD]
 - **Current Stage**: intent-capture
 - **Next Stage**: market-research
 - **Status**: Running
-- **Last Updated**: 2026-09-11T01:30:39Z
+- **Last Updated**: 2026-09-12T20:38:27Z
 
 ## Session Resume Point
 - **Last Completed Stage**: state-init

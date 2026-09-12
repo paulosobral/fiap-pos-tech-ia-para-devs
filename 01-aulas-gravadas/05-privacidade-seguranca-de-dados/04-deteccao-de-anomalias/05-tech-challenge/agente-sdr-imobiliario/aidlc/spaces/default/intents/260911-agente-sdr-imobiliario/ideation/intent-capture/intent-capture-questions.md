@@ -99,6 +99,19 @@ Um relatório/ritual para os stakeholders da W Levitt (dashboard, Kanban, alerta
 
 [Answer]: A
 
+## Q8. Escopo do stakeholder map (follow-up da Q2/Q5)
+
+Na Q2 você indicou quatro públicos atendidos (empresa B2B, investidor, corretor interno, gestor), mas na Q5 marcou somente Gestor/Proprietário da W Levitt como stakeholder direto. Qual cobertura devo usar no mapa de stakeholders?
+
+- A. Mapa abrangente: Lead B2B, Investidor PF, Corretor Especialista, SDR humano e Gestor da W Levitt (todos os que você marcou na Q2)
+- B. Somente Gestor/Proprietário da W Levitt (o que está decidindo escopo e metas nesta fase)
+- C. Gestor/Proprietário + Corretores/SDR internos (comercial), sem clientes externos
+- D. Não definir agora — decidir no mapa de stakeholders
+- E. Não aplicável
+- X. Other (especificar)
+
+[Answer]: A. Abrangente — cliente final (empresa B2B/Lead), equipe de vendas (corretores/SDR) e, indiretamente, o Gestor/proprietário W Levitt, que se beneficia com operação mais automatizada e assertiva.
+
 ## Assumptions & Open Questions
 
 None.
@@ -106,3 +119,26 @@ None.
 ## Review
 
 Este arquivo é o registro de perguntas da etapa Intent Capture. As respostas assinaladas guiarão a geração do intent-statement e da stakeholder-map.
+
+## Consolidated Summary Confirmation
+
+- Looks correct
+- Request changes
+
+[Answer]: Looks correct
+
+## Assumption Confirmation
+
+Nota: canal de atendimento externo = **Telegram** apenas (WhatsApp fora do escopo). Canal interno do time = **dashboard** (ambos confirmados pelo usuário). **A1 removida**: agendamentos ≥3 e reativação ≥20% não são KPIs de demonstração (§13/PRD Fase 5 — linhas 663-664); não constam do intent.
+
+Nota: **A2 confirmada** — detecção de anomalias é objetivo da POC (obrigatória), como **plus/diferencial** — o enunciado do TC não a exige (só "segurança" genérica), ela vem do PRD preliminar (§8.5, cenário C5, KPI l.665). Escopo: IF + PCA + GLR + Autoencoder (técnicas das aulas), job diário (Lambda), alerta no dashboard, restrição de agendamento para leads suspeitos, KPI ≥1 falso-positivo documentado. Confirmado pelo usuário em 2026-09-12 — não é [assumption].
+
+Nota: **A4 removida** — reporte formal periódico (semanal/mensal) fora da POC; o dashboard (tempo real) cobre o agregado. Fica como roadmap pós-POC. Confirmado em 2026-09-12.
+Nota: **A5 confirmada (nível 2)** — trilha de auditoria da roleta/esteira como consulta simples no dashboard: timeline do lead (entrada, qualificação, rota da roleta com regra aplicada, mudanças de status, anomalias) via query por lead_id no DynamoDB (já gravado pelo lead-router). Sem auditoria formal imutável. Confirmado em 2026-09-12 — não é [assumption].
+Nota: **A6 confirmada** — integração com HubSpot via **MCP real, numa demonstração única ao vivo para o vídeo de apresentação** (usando MCP auth app + MCP Inspector, que cuida do OAuth/PKCE; redirect localhost). O `crm-adapter` de fundo (SQS) continua com **simulado (default) + HubSpot real via Private App token (REST)** — sem OAuth em Lambda assíncrona. MCP-HubSpot em produção (agente embutido / adapter MCP) fica no roadmap. Confirmado em 2026-09-12 — não é [assumption].
+
+Options:
+- A. Accept assumptions
+- B. Convert to follow-up questions
+
+[Answer]: A. Accept assumptions
