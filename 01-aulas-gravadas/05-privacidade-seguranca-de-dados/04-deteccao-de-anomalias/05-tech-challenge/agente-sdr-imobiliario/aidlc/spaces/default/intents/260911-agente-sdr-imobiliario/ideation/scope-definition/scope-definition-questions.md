@@ -93,4 +93,4 @@ Este arquivo é o registro de perguntas da etapa Scope Definition & Prioritizati
 - Looks correct
 - Request changes
 
-[Answer]:
+[Answer]: Looks correct
