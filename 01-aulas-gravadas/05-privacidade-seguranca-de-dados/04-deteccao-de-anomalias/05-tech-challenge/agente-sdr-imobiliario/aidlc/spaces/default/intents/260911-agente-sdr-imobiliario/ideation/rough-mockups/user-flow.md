@@ -7,26 +7,31 @@
 ## F1. Cliente final (happy path) — Telegram
 
 ```
-[Cliente] --msg--> [Telegram bot] --> [conversation-router]
-                                          |
-                                          v
+[Cliente] --msg (texto ou voz)--> [Telegram bot] --> [conversation-router]
+                                                       |
+                              (se voz)                v
+                              [faster-whisper] --> [transcrição] -->+
+                                                       |            |
+                                                       v            |
                                    [security-layer]  (masking PII, anti-injection)
-                                          |
-                                          v
+                                                       |
+                                                       v
                                    [RAG: imóveis]  (base simulada)
-                                          |
-                                          v
+                                                       |
+                                                       v
                                    [qualificação]  (score, intenção)
-                                          |
-                                          v
+                                                       |
+                                                       v
                                    [roleta]  (rota → corretor)
-                                          |
-                                          v
+                                                       |
+                                                       v
                                    [handoff ao corretor]  (resumo qualificado)
-                                          |
-                                          v
+                                                       |
+                                                       v
                               [dashboard: timeline do lead]
 ```
+
+> Voice é um caminho conversacional no Telegram (não URA rígida): o cliente pode responder por voz a qualquer momento, e o bot segue a conversa normalmente após a transcrição.
 
 ## F2. Corretor/SDR — dashboard
 
@@ -36,6 +41,11 @@
                           +--> [filtra leads] --> [vê timeline] --> [age: agenda / atualiza status]
                           |
                           +--> [importa lead via MCP HubSpot]  (demo única)
+                          |
+                          +--> [anomalia detectada] --> [corretor/SDR analisa]
+                                                          |
+                                                          +--> [reclassifica como lead]  (se falso positivo)
+                                                          +--> [mantém como suspeito]  (sem agendamento)
 ```
 
 ## F3. Gestor — dashboard

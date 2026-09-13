@@ -2091,3 +2091,449 @@
 **Review Record Digest**: sha256:ff745ba6da432d31ae6e77fac0234a3380ebb5af7c9d91e2c9fd0b2e35b83ba8
 
 ---
+
+## Human Turn
+**Timestamp**: 2026-09-13T19:36:40Z
+**Event**: HUMAN_TURN
+**Session**: ses_f71ea0453ffeRdF925shJ9RSAY
+
+---
+
+## Review Freeze Blocked
+**Timestamp**: 2026-09-13T19:36:51Z
+**Event**: REVIEW_FREEZE_BLOCKED
+**Tool**: Edit
+**Target**: <project-dir>/aidlc/spaces/default/intents/260911-agente-sdr-imobiliario/ideation/rough-mockups/user-flow.md
+**Stage**: rough-mockups
+
+---
+
+## Gate Rejected
+**Timestamp**: 2026-09-13T19:36:56Z
+**Event**: GATE_REJECTED
+**Stage**: rough-mockups
+**Feedback**: 3. Voice é via canal telegram caso o cliente queira responder por voz, adicione no ponto de instagram (minha ideia não é ser uma ura rigida e sim conversional). Entendo que no dashboard vai ter uma opção de detecção de anomalia, fica a respeito do corretor/sde analisar e reclassificar como lead caso seja o caso.
+
+---
+
+## Stage Revising
+**Timestamp**: 2026-09-13T19:36:56Z
+**Event**: STAGE_REVISING
+**Stage**: rough-mockups
+**Revision count**: 4
+**Feedback**: 3. Voice é via canal telegram caso o cliente queira responder por voz, adicione no ponto de instagram (minha ideia não é ser uma ura rigida e sim conversional). Entendo que no dashboard vai ter uma opção de detecção de anomalia, fica a respeito do corretor/sde analisar e reclassificar como lead caso seja o caso.
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-09-13T19:37:01Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/260911-agente-sdr-imobiliario/ideation/rough-mockups/user-flow.md
+**Context**: ideation > rough-mockups > user-flow.md
+**Summary Authorization Id**: 97aa5ad801f371a66c9224d8de5896689957d0f75c9d3adbb8f1888133fc2f52
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-09-13T19:37:05Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/260911-agente-sdr-imobiliario/ideation/rough-mockups/user-flow.md
+**Context**: ideation > rough-mockups > user-flow.md
+**Summary Authorization Id**: 97aa5ad801f371a66c9224d8de5896689957d0f75c9d3adbb8f1888133fc2f52
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-09-13T19:37:11Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/260911-agente-sdr-imobiliario/ideation/rough-mockups/wireframes.md
+**Context**: ideation > rough-mockups > wireframes.md
+**Summary Authorization Id**: 97aa5ad801f371a66c9224d8de5896689957d0f75c9d3adbb8f1888133fc2f52
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-09-13T19:37:15Z
+**Event**: SENSOR_FIRED
+**Fire id**: 5f316348
+**Sensor ID**: required-sections
+**Stage slug**: rough-mockups
+**Output path**: aidlc/spaces/default/intents/260911-agente-sdr-imobiliario/ideation/rough-mockups
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-09-13T19:37:15Z
+**Event**: SENSOR_PASSED
+**Fire id**: 5f316348
+**Sensor ID**: required-sections
+**Stage slug**: rough-mockups
+**Output path**: aidlc/spaces/default/intents/260911-agente-sdr-imobiliario/ideation/rough-mockups
+**Duration ms**: 64
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-09-13T19:37:15Z
+**Event**: SENSOR_FIRED
+**Fire id**: ef55ef30
+**Sensor ID**: upstream-coverage
+**Stage slug**: rough-mockups
+**Output path**: aidlc/spaces/default/intents/260911-agente-sdr-imobiliario/ideation/rough-mockups
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-09-13T19:37:15Z
+**Event**: SENSOR_PASSED
+**Fire id**: ef55ef30
+**Sensor ID**: upstream-coverage
+**Stage slug**: rough-mockups
+**Output path**: aidlc/spaces/default/intents/260911-agente-sdr-imobiliario/ideation/rough-mockups
+**Duration ms**: 63
+**Note**: script-error: exit-1
+
+---
+
+## Error Logged
+**Timestamp**: 2026-09-13T19:37:19Z
+**Event**: ERROR_LOGGED
+**Tool**: aidlc-log
+**Command**: aidlc-log engine log review --stage rough-mockups --reviewer aidlc-product-lead-agent --iteration 2
+**Error**: Cannot request review pass 2 for "rough-mockups" because this stage allows 1 review pass. Do not ask the reviewer again; include the findings in the approval summary for the human.\n{"kind":"ask","ask_type":"guard-recovery","response_route":"execute-remedy","question":"The next action for \"rough-mockups\" would be refused. Choose one authority-preserving recovery action.","stage":"rough-mockups","reason_codes":["REVIEW_BUDGET_EXHAUSTED"],"remedies":[{"op":"redo-jump","action":"This stage is mid-revision; the way to restart it cleanly is a redo jump: /aidlc --stage rough-mockups (your recorded answers survive; you will re-confirm the summary once).","command":"bun .aidlc/tools/aidlc-orchestrate.ts next --stage rough-mockups","requiresHuman":true,"executableNow":true}]}
+
+---
+
+## Error Logged
+**Timestamp**: 2026-09-13T19:37:22Z
+**Event**: ERROR_LOGGED
+**Tool**: aidlc-log
+**Command**: aidlc-log engine log review --stage rough-mockups --reviewer aidlc-product-lead-agent --iteration 2
+**Error**: Cannot request review pass 2 for "rough-mockups" because this stage allows 1 review pass. Do not ask the reviewer again; include the findings in the approval summary for the human.\n{"kind":"ask","ask_type":"guard-recovery","response_route":"execute-remedy","question":"The same guard state for \"rough-mockups\" has refused review-request 2 times. Choose one authority-preserving recovery action.","stage":"rough-mockups","reason_codes":["REVIEW_BUDGET_EXHAUSTED"],"remedies":[{"op":"redo-jump","action":"This stage is mid-revision; the way to restart it cleanly is a redo jump: /aidlc --stage rough-mockups (your recorded answers survive; you will re-confirm the summary once).","command":"bun .aidlc/tools/aidlc-orchestrate.ts next --stage rough-mockups","requiresHuman":true,"executableNow":true}]}
+
+---
+
+## Stage Jump
+**Timestamp**: 2026-09-13T19:37:29Z
+**Event**: STAGE_JUMPED
+**Direction**: REDO
+**Source**: rough-mockups
+**Target**: rough-mockups
+**Scope**: feature
+**Details**: REDO jump from rough-mockups to rough-mockups (1.6). Scope: feature.
+**Source Baseline**: sha256:e9a139e636701995bd51c6b06d660126c791a297adc36a21bbce1c9a5553877e
+
+---
+
+## Stage Start
+**Timestamp**: 2026-09-13T19:37:29Z
+**Event**: STAGE_STARTED
+**Stage**: rough-mockups
+**Agent**: aidlc-design-agent
+**Source Baseline**: sha256:e9a139e636701995bd51c6b06d660126c791a297adc36a21bbce1c9a5553877e
+
+---
+
+## Error Logged
+**Timestamp**: 2026-09-13T19:37:47Z
+**Event**: ERROR_LOGGED
+**Tool**: aidlc-log
+**Command**: aidlc-log engine log decision --stage rough-mockups --checkpoint summary-confirmation --questions-file aidlc/spaces/default/intents/260911-agente-sdr-imobiliario/ideation/rough-mockups/rough-mockups-questions.md --decision Does this all look correct before I generate the artifact? --options Looks correct,Request changes
+**Error**: Summary confirmation section in aidlc/spaces/default/intents/260911-agente-sdr-imobiliario/ideation/rough-mockups/rough-mockups-questions.md must contain exactly one `[Answer]:` line with a blank value before this command runs.
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-09-13T19:37:56Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/260911-agente-sdr-imobiliario/ideation/rough-mockups/rough-mockups-questions.md
+**Context**: ideation > rough-mockups > rough-mockups-questions.md
+**Summary Authorization Id**: 97aa5ad801f371a66c9224d8de5896689957d0f75c9d3adbb8f1888133fc2f52
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-09-13T19:37:59Z
+**Event**: DECISION_RECORDED
+**Stage**: rough-mockups
+**Decision**: Does this all look correct before I generate the artifact?
+**Options**: Looks correct,Request changes
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/260911-agente-sdr-imobiliario/ideation/rough-mockups/rough-mockups-questions.md
+
+---
+
+## Human Turn
+**Timestamp**: 2026-09-13T19:38:35Z
+**Event**: HUMAN_TURN
+**Session**: ses_f71ea0453ffeRdF925shJ9RSAY
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-09-13T19:38:41Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/260911-agente-sdr-imobiliario/ideation/rough-mockups/rough-mockups-questions.md
+**Context**: ideation > rough-mockups > rough-mockups-questions.md
+**Summary Authorization Id**: 97aa5ad801f371a66c9224d8de5896689957d0f75c9d3adbb8f1888133fc2f52
+
+---
+
+## Summary Confirmation Recorded
+**Timestamp**: 2026-09-13T19:38:44Z
+**Event**: SUMMARY_CONFIRMATION_RECORDED
+**Stage**: rough-mockups
+**Details**: Looks correct
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/260911-agente-sdr-imobiliario/ideation/rough-mockups/rough-mockups-questions.md
+**Questions SHA-256**: dcebe86390b3ee2cfa7787fa83dd0f3a68b52b191f36d6b33983c814b2013eae
+**Hash Scope**: confirmed-content-v1
+**Summary Authorization Id**: caf49221dc7f321628a28104c8a2e285f2ba9e4a2946adc6f0bb03719cbfddb7
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-09-13T19:38:48Z
+**Event**: SENSOR_FIRED
+**Fire id**: 5c2751e6
+**Sensor ID**: required-sections
+**Stage slug**: rough-mockups
+**Output path**: aidlc/spaces/default/intents/260911-agente-sdr-imobiliario/ideation/rough-mockups
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-09-13T19:38:48Z
+**Event**: SENSOR_PASSED
+**Fire id**: 5c2751e6
+**Sensor ID**: required-sections
+**Stage slug**: rough-mockups
+**Output path**: aidlc/spaces/default/intents/260911-agente-sdr-imobiliario/ideation/rough-mockups
+**Duration ms**: 63
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-09-13T19:38:48Z
+**Event**: SENSOR_FIRED
+**Fire id**: fb5e59ba
+**Sensor ID**: upstream-coverage
+**Stage slug**: rough-mockups
+**Output path**: aidlc/spaces/default/intents/260911-agente-sdr-imobiliario/ideation/rough-mockups
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-09-13T19:38:48Z
+**Event**: SENSOR_PASSED
+**Fire id**: fb5e59ba
+**Sensor ID**: upstream-coverage
+**Stage slug**: rough-mockups
+**Output path**: aidlc/spaces/default/intents/260911-agente-sdr-imobiliario/ideation/rough-mockups
+**Duration ms**: 63
+**Note**: script-error: exit-1
+
+---
+
+## Change Accepted
+**Timestamp**: 2026-09-13T19:38:52Z
+**Event**: CHANGE_ACCEPTED
+**Stage**: rough-mockups
+**Checkpoint**: summary-confirmation
+**Changed**: aidlc/spaces/default/intents/260911-agente-sdr-imobiliario/ideation/rough-mockups/wireframes.md
+**Recorded**: caf49221dc7f321628a28104c8a2e285f2ba9e4a2946adc6f0bb03719cbfddb7
+**Current**: 97aa5ad801f371a66c9224d8de5896689957d0f75c9d3adbb8f1888133fc2f52
+**Details**: aidlc/spaces/default/intents/260911-agente-sdr-imobiliario/ideation/rough-mockups/wireframes.md was saved without the current summary confirmation. Continuing (Change Control: relaxed).
+
+---
+
+## Change Accepted
+**Timestamp**: 2026-09-13T19:38:52Z
+**Event**: CHANGE_ACCEPTED
+**Stage**: rough-mockups
+**Checkpoint**: summary-confirmation
+**Changed**: aidlc/spaces/default/intents/260911-agente-sdr-imobiliario/ideation/rough-mockups/user-flow.md
+**Recorded**: caf49221dc7f321628a28104c8a2e285f2ba9e4a2946adc6f0bb03719cbfddb7
+**Current**: 97aa5ad801f371a66c9224d8de5896689957d0f75c9d3adbb8f1888133fc2f52
+**Details**: aidlc/spaces/default/intents/260911-agente-sdr-imobiliario/ideation/rough-mockups/user-flow.md was saved without the current summary confirmation. Continuing (Change Control: relaxed).
+
+---
+
+## Review Requested
+**Timestamp**: 2026-09-13T19:38:52Z
+**Event**: REVIEW_REQUESTED
+**Stage**: rough-mockups
+**Reviewer**: aidlc-product-lead-agent
+**Iteration**: 1
+**Artifact Fingerprint**: sha256:823487e8b58322e9272ff660f06b19e91eb0c0ff5971fbedf9f797a21c3306ce
+**Request Id**: review:ca9e4020ccddb641110283c6267738ad
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-09-13T19:39:31Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: general
+**Agent ID**: call_0e4228ca904b4b17ac4cf8d2
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-09-13T19:39:45Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/260911-agente-sdr-imobiliario/.aidlc-reviews/rough-mockups/stage/b9b657e55409384b/1.review.md
+**Context**: .aidlc-reviews > rough-mockups > stage > b9b657e55409384b > 1.review.md
+**Summary Authorization Id**: caf49221dc7f321628a28104c8a2e285f2ba9e4a2946adc6f0bb03719cbfddb7
+
+---
+
+## Review Completed
+**Timestamp**: 2026-09-13T19:39:49Z
+**Event**: REVIEW_COMPLETED
+**Stage**: rough-mockups
+**Reviewer**: aidlc-product-lead-agent
+**Iteration**: 1
+**Verdict**: READY
+**Request Fingerprint**: sha256:823487e8b58322e9272ff660f06b19e91eb0c0ff5971fbedf9f797a21c3306ce
+**Artifact Fingerprint**: sha256:823487e8b58322e9272ff660f06b19e91eb0c0ff5971fbedf9f797a21c3306ce
+**Request Id**: review:ca9e4020ccddb641110283c6267738ad
+**Review Record**: .aidlc-reviews/rough-mockups/stage/b9b657e55409384b/1.json
+**Review Record Digest**: sha256:4e4a10a20ee17c1a1dfdac8ac4b2b79efd2db1dc3cbe04548efafcba1a5b92a0
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-09-13T19:39:54Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/260911-agente-sdr-imobiliario/ideation/rough-mockups/memory.md
+**Context**: ideation > rough-mockups > memory.md
+**Summary Authorization Id**: caf49221dc7f321628a28104c8a2e285f2ba9e4a2946adc6f0bb03719cbfddb7
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-09-13T19:39:58Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/260911-agente-sdr-imobiliario/ideation/rough-mockups/memory.md
+**Context**: ideation > rough-mockups > memory.md
+**Summary Authorization Id**: caf49221dc7f321628a28104c8a2e285f2ba9e4a2946adc6f0bb03719cbfddb7
+
+---
+
+## Human Turn
+**Timestamp**: 2026-09-13T19:40:33Z
+**Event**: HUMAN_TURN
+**Session**: ses_f71ea0453ffeRdF925shJ9RSAY
+
+---
+
+## Stage Awaiting Approval
+**Timestamp**: 2026-09-13T19:40:37Z
+**Event**: STAGE_AWAITING_APPROVAL
+**Stage**: rough-mockups
+**Recovered**: true
+
+---
+
+## Gate Rejected
+**Timestamp**: 2026-09-13T19:40:37Z
+**Event**: GATE_REJECTED
+**Stage**: rough-mockups
+**Recovered**: true
+**Details**: Backfilled by the revision backstop: the artifact was revised at an open gate with no reject recorded
+
+---
+
+## Stage Revising
+**Timestamp**: 2026-09-13T19:40:37Z
+**Event**: STAGE_REVISING
+**Stage**: rough-mockups
+**Revision count**: 5
+**Recovered**: true
+
+---
+
+## Error Logged
+**Timestamp**: 2026-09-13T19:40:37Z
+**Event**: ERROR_LOGGED
+**Tool**: aidlc-state
+**Command**: aidlc-state engine state approve rough-mockups --user-input Approve --project-dir <project-dir>
+**Error**: Cannot present "rough-mockups" for approval because aidlc-product-lead-agent has not reviewed the current output. Apply any fixes first, then request the review with `aidlc-log.ts review --stage rough-mockups --reviewer aidlc-product-lead-agent --iteration <next ordinal>` and record its verdict with the same command plus `--verdict <READY|NOT-READY>`. After recording the verdict, do not edit this stage's output documents; include suggestions from a READY review in the approval summary instead.\n{"kind":"ask","ask_type":"guard-recovery","response_route":"execute-remedy","question":"The next action for \"rough-mockups\" would be refused. Choose one authority-preserving recovery action.","stage":"rough-mockups","reason_codes":["REVIEW_EVIDENCE_MISSING"],"remedies":[{"op":"redo-jump","action":"This stage is mid-revision; the way to restart it cleanly is a redo jump: /aidlc --stage rough-mockups (your recorded answers survive; you will re-confirm the summary once).","command":"bun .aidlc/tools/aidlc-orchestrate.ts next --stage rough-mockups","requiresHuman":true,"executableNow":true}]}
+
+---
+
+## Error Logged
+**Timestamp**: 2026-09-13T19:41:41Z
+**Event**: ERROR_LOGGED
+**Tool**: aidlc-log
+**Command**: aidlc-log engine log review --stage rough-mockups --reviewer aidlc-product-lead-agent --iteration 2
+**Error**: Cannot request review pass 2 for "rough-mockups" because this stage allows 1 review pass. Do not ask the reviewer again; include the findings in the approval summary for the human.\n{"kind":"ask","ask_type":"guard-recovery","response_route":"execute-remedy","question":"The next action for \"rough-mockups\" would be refused. Choose one authority-preserving recovery action.","stage":"rough-mockups","reason_codes":["REVIEW_BUDGET_EXHAUSTED"],"remedies":[{"op":"redo-jump","action":"This stage is mid-revision; the way to restart it cleanly is a redo jump: /aidlc --stage rough-mockups (your recorded answers survive; you will re-confirm the summary once).","command":"bun .aidlc/tools/aidlc-orchestrate.ts next --stage rough-mockups","requiresHuman":true,"executableNow":true}]}
+
+---
+
+## Stage Jump
+**Timestamp**: 2026-09-13T19:42:42Z
+**Event**: STAGE_JUMPED
+**Direction**: REDO
+**Source**: rough-mockups
+**Target**: rough-mockups
+**Scope**: feature
+**Details**: REDO jump from rough-mockups to rough-mockups (1.6). Scope: feature.
+**Source Baseline**: sha256:e9a139e636701995bd51c6b06d660126c791a297adc36a21bbce1c9a5553877e
+
+---
+
+## Stage Start
+**Timestamp**: 2026-09-13T19:42:42Z
+**Event**: STAGE_STARTED
+**Stage**: rough-mockups
+**Agent**: aidlc-design-agent
+**Source Baseline**: sha256:e9a139e636701995bd51c6b06d660126c791a297adc36a21bbce1c9a5553877e
+
+---
+
+## Session Compacted
+**Timestamp**: 2026-09-13T19:43:37Z
+**Event**: SESSION_COMPACTED
+**Current Stage**: rough-mockups
+**State Validity**: valid
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-09-13T19:48:15Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/260911-agente-sdr-imobiliario/ideation/rough-mockups/rough-mockups-questions.md
+**Context**: ideation > rough-mockups > rough-mockups-questions.md
+**Summary Authorization Id**: caf49221dc7f321628a28104c8a2e285f2ba9e4a2946adc6f0bb03719cbfddb7
+
+---
+
+## Error Logged
+**Timestamp**: 2026-09-13T19:48:19Z
+**Event**: ERROR_LOGGED
+**Tool**: aidlc-log
+**Command**: aidlc-log engine log decision --stage rough-mockups --checkpoint summary-confirmation
+**Error**: Missing --decision <text>
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-09-13T19:49:16Z
+**Event**: DECISION_RECORDED
+**Stage**: rough-mockups
+**Decision**: Does this all look correct before I generate the artifact?
+**Options**: Looks correct,Request changes
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/260911-agente-sdr-imobiliario/ideation/rough-mockups/rough-mockups-questions.md
+
+---

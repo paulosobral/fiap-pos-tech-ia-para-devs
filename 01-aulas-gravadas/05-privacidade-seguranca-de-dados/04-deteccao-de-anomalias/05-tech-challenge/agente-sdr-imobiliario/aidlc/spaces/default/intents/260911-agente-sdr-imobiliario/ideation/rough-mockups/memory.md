@@ -5,6 +5,7 @@
 ## What was done
 
 - Carregado run-stage de rough-mockups via `orchestrate continue`.
+- **Revisão (redo jump)**: após review READY inicial, usuário pediu mudanças (Option 3): voice como caminho conversacional no Telegram + reclassificação de anomalia pelo corretor/SDR. Submetido Request Changes (reason = texto exato do usuário) → redo jump (`jump execute --target rough-mockups --direction redo`) → estágio resetado, respostas preservadas, summary re-confirmado (auth `caf49221dc7f321628a28104c8a2e285f2ba9e4a2946adc6f0bb03719cbfddb7`). Artefatos atualizados (F1 voice; W2/F2 reclassificação). Novo review (iteração 1): READY.
 - Modo de interação escolhido pelo usuário: "I'll edit the file" (2).
 - `rough-mockups-questions.md` (Q1–Q6) respondidas pelo usuário:
   - Q1: A, B, C (dashboard Streamlit; conversa Telegram; MCP Inspector demo)
@@ -24,6 +25,8 @@
 - Dashboard hierarquia: KPIs topo → esteira Kanban + timeline → alertas de anomalia → filtros.
 - Padrão Streamlit default (sem identidade W Levitt na POC).
 - Acessibilidade: boas práticas básicas (headings, landmarks, contraste, foco visível), sem WCAG AA obrigatório.
+- **Voice = caminho conversacional no Telegram** (não URA rígida): cliente responde por voz a qualquer momento; faster-whisper transcreve e a conversa segue. Refletido em F1 (user-flow).
+- **Anomalia = decisão do corretor/SDR no dashboard**: reclassificar como lead (falso positivo) ou manter como suspeito (sem agendamento); decisão registrada na timeline. Refletido em W2 (wireframes) e F2 (user-flow).
 
 ## Blockers
 

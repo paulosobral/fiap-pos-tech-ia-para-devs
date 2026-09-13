@@ -42,12 +42,16 @@
 |  • 14:03 qualificação (score 82)                                 |
 |  • 14:04 rota roleta → corretor A (regra: score≥70)              |
 |  • 14:05 handoff enviado ao corretor                             |
+|  • 14:06 ⚠ anomalia detectada (job diário)                       |
 +------------------------------------------------------------------+
 |  [Importar via MCP HubSpot]  [Agendar]  [Atualizar status]       |
+|  [Reclassificar como lead]  [Manter como suspeito]               |
 +------------------------------------------------------------------+
 ```
 
 **Acessibilidade (W2):** h2 nos blocos; landmarks main; foco visível nos botões de ação.
+
+> **Anomalia:** quando o job diário sinaliza um lead suspeito, o corretor/SDR decide no dashboard: **reclassificar como lead** (falso positivo — segue o fluxo normal) ou **manter como suspeito** (sem agendamento). A decisão fica registrada na timeline.
 
 ---
 
