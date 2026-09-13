@@ -22,7 +22,7 @@ Quais as principais superfícies de UI da POC? (Selecione as que se aplicarem)
 - D. Apenas dashboard — o resto é backend/API
 - X. Other (especificar)
 
-[Answer]:
+[Answer]: A, B e C
 
 ## Q2. Fluxo principal (happy path)
 
@@ -34,7 +34,7 @@ Qual o fluxo central a desenhar? (Selecione um)
 - D. Ambos (fluxo do cliente + fluxo do corretor no dashboard)
 - X. Other (especificar)
 
-[Answer]:
+[Answer]: A, B (Corretor/SRD também importa leads via MCP HubSpot) e C
 
 ## Q3. Hierarquia de informação do dashboard
 
@@ -46,7 +46,7 @@ Qual a hierarquia de informação nas telas do dashboard? (Selecione o que se ap
 - D. Filtros por período/canal/status
 - X. Other (especificar)
 
-[Answer]:
+[Answer]: A, B, C e D
 
 ## Q4. Brand/design system
 
@@ -58,7 +58,7 @@ Há diretrizes de marca, design system ou padrões de UI a seguir? (Selecione um
 - D. Não definido ainda
 - X. Other (especificar)
 
-[Answer]:
+[Answer]: A
 
 ## Q5. Form factor / dispositivos
 
@@ -69,7 +69,7 @@ Quais form factors/devices devem ser suportados? (Selecione o que se aplica)
 - C. Apenas desktop — POC de demonstração
 - X. Other (especificar)
 
-[Answer]:
+[Answer]: A. OBS: Via telegram é o app existente, não precisa desenvolver nenhuma UI
 
 ## Q6. Acessibilidade
 
@@ -81,7 +81,7 @@ Há requisitos de acessibilidade conhecidos? (Selecione um)
 - D. Navegação só por teclado — obrigatório
 - X. Other (especificar)
 
-[Answer]:
+[Answer]: A
 
 ---
 
