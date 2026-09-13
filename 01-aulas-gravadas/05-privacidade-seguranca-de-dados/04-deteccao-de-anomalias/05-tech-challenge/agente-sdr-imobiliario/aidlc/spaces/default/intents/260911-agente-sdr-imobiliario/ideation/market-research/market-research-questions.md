@@ -131,4 +131,4 @@ Este arquivo é o registro de perguntas da etapa Market Research. As respostas a
 - Looks correct
 - Request changes
 
-[Answer]:
+[Answer]: Looks correct

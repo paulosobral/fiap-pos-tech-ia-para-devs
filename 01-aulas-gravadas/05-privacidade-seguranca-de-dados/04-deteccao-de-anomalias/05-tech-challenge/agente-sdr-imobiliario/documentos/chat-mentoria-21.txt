@@ -1,0 +1,225 @@
+ Rodrigo de Araújo Rosa
+12:09
+
+Meu microfone está com problemas aqui, vou colocar minha dúvida aqui no chat.
+❤️1
+IA Devs 4
+12:28
+
+Perfeito Rodrigo!
+Rodrigo de Araújo Rosa
+12:49
+
+Nós teremos acesso a base de dados de vocês Leonardo?
+
+Ou a ideia é gerarmos dados fictícios para preparar o chat bot com questões de RAG e tudo mais?
+Rodrigo de Araújo Rosa
+19:48
+
+Me refiro a base que você comentou no início da reunião.
+Rodrigo de Araújo Rosa
+23:21
+
+Isso, é essa aí mesmo
+
+esses contatos já existentes
+
+Entendi agora, seria para uma segunda fase então.
+Felipe Conde
+24:16
+
+Boa noite pessoal, perdão perdi a apresentação de vocês. Pelo que entendi vc tem esse case em produção Leo?
+wellson almeida dos santos. - 205 H
+26:08
+
+Hoje sua demanda mais no WhatsApp ? Ou não tem importância telegram.
+Felipe Conde
+27:04
+
+O atendimento da IA busca o catalogo apenas dentro da plataforma ou busca também de domínios externos?
+wellson almeida dos santos. - 205 H
+29:42
+
+Mas  professor para trabalho levando em conta para usar api oficial da meta tem custo e tem validar.  A se for utilizar api não oficial número é bloqueado.  Telegram tem api gratis. Como fica isso   em relação ao trabalho?
+Rodrigo de Araújo Rosa
+30:50
+
+👍
+IA Devs 4
+32:01
+
+Objetivo do Desafio Construir um agente de IA capaz de: • Atender leads automaticamente • Realizar conversa humanizada • Qualificar clientes • Identificar intenção de compra, aluguel ou investimento • Coletar informações relevantes • Realizar follow-up automático • Agendar reuniões ou visitas • Integrar com uma base simulada de imóveis • Gerar resumos para corretores
+IA Devs 4
+35:00
+
+https://lais.ai/
+👍2
+Felipe Conde
+35:10 (Editado)
+
+Leo Depois que o agente entrou em produção, qual comportamento dos clientes mais surpreendeu vocês e obrigou a mudar o produto?
+
+ 
+
+Pergunto isso mais pra tentar entender necessidades reais que dificilmente aparecem durante a especificação inicial.
+
+ 
+
+Por exemplo, tem diferença de interesses entre os usuários investidores entre os que buscam moradia quando se tratam de roteiro pra direcionar a um corretor?
+IA Devs 4
+35:21
+
+https://www.garagem.ai/integracoes/maya
+Leonardo
+35:38
+
+lais e Maya
+Rodrigo de Araújo Rosa
+36:18
+
+https://lais.ai/
+Fernanda Valdevino
+37:18
+
+Nós pegamos o desafio há poucos dias e o professor, na apresentação do desafio correto (última mentoria), disse que postergaria a entrega pra meados de Outubro. Inclusive, temos a próxima mentoria em 15 dias. A data de entrega será reajustada, certo?
+Felipe Conde
+37:42
+
+ah perfeito entendi, até certo ponto, tem que desaguar em um humano
+IA Devs 4
+37:44
+
+    Nós pegamos o desafio há poucos dias e o professor, na apresentação do desafio correto (última mentoria), disse que postergaria a entrega pra meados de Outubro. Inclusive, temos a próxima mentoria em 15 dias. A data de entrega será reajustada, certo?
+
+sim sim, entrega ficou para o dia 12 de Outubro
+🙏2
+Leonardo
+37:49
+
+Empresa que atuava CBRE, empresa multinacional B2b focada em imóveis comerciais e corporativos, como base
+❤️1
+wellson almeida dos santos. - 205 H
+38:23
+
+Eu trabalhei na Trinus.co
+❤️1
+Felipe Conde
+39:33
+
+amém!!
+❤️1
+wellson almeida dos santos. - 205 H
+40:58
+
+Entrega ficou para 12 de outubro isso né
+IA Devs 4
+41:12
+
+sim sim, 12 de Outubro
+wellson almeida dos santos. - 205 H
+41:17
+
+Eu ja iniciei estou fazendo as integração
+wellson almeida dos santos. - 205 H
+41:34
+
+Crm facilita.
+Fechar tudo
+Rodrigo de Araújo Rosa
+56:53
+
+@wellson almeida dos santos. - 205 H. Você conseguiu uma versão trial do Facilita CRM
+Felipe Conde
+41:59
+
+ja comecei, coração de stack é python pro agente, .NET pras apis e comunicação com banco PostgSql, e Angular pro front
+Leonardo
+43:04
+
+https://squad.com/
+1 resposta
+Felipe Conde
+44:56
+
+Posso carregar ou reindexam a base do RAG durante o boot da aplicação, ou mantêm esse processo separado e assíncrono? Pensando em levar pro Google cloud a aplicação
+
+tenho medo de pesar
+
+kkkkk
+wellson almeida dos santos. - 205 H
+45:47
+
+Este projeto tem fica online ? Ou tem fica offline só subi quando for rodar?
+❤️1
+
+sim
+Felipe Conde
+46:35
+
+Uma dica geral pra quem ainda não usou, Google Cloud tem 3 meses grátis com créditos de 300 dolares
+❤️1
+wellson almeida dos santos. - 205 H
+48:17
+
+Tem algum contato dele que possamos tirar depois?
+Leonardo
+49:05
+
+11-969678240
+👍1🙏1
+Fernanda Valdevino
+51:12
+
+Se tiver uma reunião semanal, vai ajudar bastante 🤩
+❤️1
+wellson almeida dos santos. - 205 H
+51:24
+
+Isso verdade
+Rodrigo de Araújo Rosa
+51:25
+
+Uma para o dia 29/09 e outra para o dia 19/10
+Felipe Conde
+52:30
+
+Entendi que o MVP é o chat com o Agente, mas pensando além do mvp, o catalogo de imóveis que o Agente vai consultador como base de consulta pra direcionar melhor o lead pro corretor faz sentido ser visível pro usuário em um outra pagina da aplicação?
+Felipe Conde
+54:12
+
+eita, cliente é diferente de imoveis que eu falei? O que defini oq é cliente?
+Felipe Conde
+56:04
+
+ata perfeito kkkk, saquei!!
+Felipe Conde
+01:00:33
+
+Posso pensar na estrategia de pesos/pontos que eu preciso ir somando durante a conversa do Agente e o cliente pra quando o Agente chegar até certo peso/ponto de informação suficiente, ele consegue desaguar pro corretor?
+
+isso fica na parte no código ou no prompt?
+
+beleza
+
+acho que é isso as duvidas por hoje, agregou bastante
+
+top!
+Rodrigo de Araújo Rosa
+01:03:13
+
+Esse cara aqui é bom para criar banco de dados para MVPs
+
+ 
+
+https://mockaroo.com/
+❤️4
+Felipe Conde
+01:04:16
+
+show! valeu
+
+boa noite!
+Rodrigo de Araújo Rosa
+01:04:24
+
+Boa noite
