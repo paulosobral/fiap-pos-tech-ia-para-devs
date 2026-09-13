@@ -98,4 +98,4 @@ Este arquivo é o registro de perguntas da etapa Rough Mockups & Concept Visuali
 - Looks correct
 - Request changes
 
-[Answer]:
+[Answer]: Looks correct
