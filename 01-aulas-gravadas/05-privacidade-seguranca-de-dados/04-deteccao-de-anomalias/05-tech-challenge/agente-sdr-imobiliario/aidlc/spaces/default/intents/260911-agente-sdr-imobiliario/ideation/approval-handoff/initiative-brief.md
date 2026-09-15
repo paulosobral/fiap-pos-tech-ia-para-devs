@@ -10,14 +10,14 @@ O **Agente SDR B2B** resolve isso com atendimento conversacional automatizado 24
 
 ## Validação de mercado
 
-- **Nicho vazio**: nenhum concorrente direto (Lais.ai, Maya/PLAZA, Squad) é especializado em imóveis corporativos/comerciais B2B.
+- **Nicho vazio**: Concorrentes diretos (Lais.ai, Maya/PLAZA, Squad) é especializado em imóveis corporativos/comerciais B2B.
 - **Substituto dominante**: processo manual (planilhas + SDR/corretor) — exatamente a dor que o Agente SDR ataca.
 - **Posicionamento**: "SDR de IA especializado em imóveis corporativos/comerciais B2B — qualificação proprietária com score explicável, detecção de anomalias e custo de operação fully serverless."
 - **Objetivo**: diferencial competitivo do hackathon (demonstração/avaliação); go-to-market no roadmap pós-POC.
 
 ## Viabilidade e riscos
 
-**Veredito: VIÁVEL.** Arquitetura 100% serverless, custo ~R$15/mês com modelo econômico (DeepSeek V3) + SSM no lugar de Secrets Manager. Compliance (LGPD) viável com POC 100% em dados sintéticos end-to-end.
+**Veredito: VIÁVEL.** Arquitetura 100% serverless, custo ~R$15/mês com modelo econômico (OpenRouter com Claude Haiku) + Secrets Manager. Compliance (LGPD) viável com POC 100% em dados sintéticos end-to-end.
 
 Riscos principais e mitigação:
 - **OpenRouter SPOF (ALTO)** → crédito pré-carregado, cap de tokens, fallback Bedrock documentado.

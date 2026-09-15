@@ -18,17 +18,17 @@ Todos os stakeholders concordam com o intent e o escopo da POC (núcleo conversa
 - B. Não — há divergência a resolver
 - X. Other (especificar)
 
-[Answer]:
+[Answer]: A
 
 ## Q2. Riscos críticos com mitigação
 
-Todos os riscos críticos foram reconhecidos com mitigação (OpenRouter SPOF → crédito pré-carregado + fallback; cold start vs NF-03 → warm ping; pacote Lambda 250MB → pré-computar/treinar offline; deadline → MoSCoW sequencial + congelar infra)?
+Todos os riscos críticos foram reconhecidos com mitigação (OpenRouter SPOF → crédito pré-carregado; cold start vs NF-03 → warm ping; pacote Lambda 250MB → pré-computar/treinar offline; deadline → MoSCoW sequencial + congelar infra)?
 
 - A. Sim — riscos reconhecidos e mitigados
 - B. Não — falta mitigação para algum risco
 - X. Other (especificar)
 
-[Answer]:
+[Answer]: A
 
 ## Q3. Compromisso de orçamento/recursos
 
@@ -38,7 +38,7 @@ Há compromisso de orçamento e recursos para a POC (~R$15/mês, conta AWS dedic
 - B. Não — falta compromisso
 - X. Other (especificar)
 
-[Answer]:
+[Answer]: A
 
 ## Q4. Mockups refletem a visão compartilhada
 
@@ -48,7 +48,7 @@ Os wireframes (dashboard W1/W2, Telegram W3, MCP Inspector W4) refletem a visão
 - B. Não — há ajustes necessários
 - X. Other (especificar)
 
-[Answer]:
+[Answer]: A
 
 ## Q5. Pesquisa de mercado suporta o investimento
 
@@ -58,7 +58,7 @@ A pesquisa de mercado suporta o investimento (nicho B2B corporativo não atendid
 - B. Não — falta validação de mercado
 - X. Other (especificar)
 
-[Answer]:
+[Answer]: A
 
 ## Q6. Entrega/equipe dimensionada
 
@@ -68,7 +68,7 @@ A entrega está dimensionada para o prazo (dev solo; MoSCoW sequencial; núcleo 
 - B. Não — precisa replanejar a entrega
 - X. Other (especificar)
 
-[Answer]:
+[Answer]: A
 
 ---
 
@@ -85,4 +85,4 @@ Este arquivo é o registro de perguntas da etapa Approval & Handoff. As resposta
 - Looks correct
 - Request changes
 
-[Answer]:
+[Answer]: Looks correct

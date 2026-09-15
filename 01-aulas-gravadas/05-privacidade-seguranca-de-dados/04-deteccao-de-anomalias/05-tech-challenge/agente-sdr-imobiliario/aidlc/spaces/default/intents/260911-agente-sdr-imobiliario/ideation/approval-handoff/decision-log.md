@@ -19,7 +19,7 @@
 | D-11 | Posicionamento competitivo = nicho B2B corporativo + fully serverless baixo custo + qualificação proprietária com score explicável | market-research Q3 | Decidido |
 | D-12 | POC 100% em dados sintéticos end-to-end (imóveis + leads + CRM) | feasibility (compliance) | Decidido |
 | D-13 | Custo ~R$15/mês com modelo econômico (DeepSeek V3); Claude Haiku = upgrade documentado | feasibility | Decidido |
-| D-14 | SSM Parameter Store no lugar de Secrets Manager (R$0) | feasibility | Decidido |
+| D-14 | Uso de Secrets Manager (R$0) | feasibility | Decidido |
 | D-15 | EventBridge Scheduler (não Step Functions) para follow-up futuro | feasibility | Decidido |
 | D-16 | Região us-east-1 na POC; sa-east-1 no roadmap | feasibility | Decidido |
 | D-17 | MoSCoW sequencial: núcleo primeiro; congelar infra ≥1 semana antes da gravação | feasibility/scope | Decidido |
