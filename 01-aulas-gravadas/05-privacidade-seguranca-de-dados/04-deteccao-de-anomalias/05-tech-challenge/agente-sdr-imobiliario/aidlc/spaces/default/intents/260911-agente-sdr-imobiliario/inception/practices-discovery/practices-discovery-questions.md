@@ -17,7 +17,7 @@
 - C. Sem regra — devolo solo
 - X. Other (especificar)
 
-[Answer]:
+[Answer]: Respsota B a partir da branch feature/01-aulas-gravadas/05-privacidade-seguranca-de-dados
 
 ## Q2. Construir uma fatia fino de ponta a ponta primeiro?
 
@@ -27,7 +27,7 @@ Uma "fatia fina de ponta a ponta" (walking skeleton) é uma versão mínima que 
 - B. Não — ir direto às features
 - X. Other (especificar)
 
-[Answer]:
+[Answer]: A
 
 ## Q3. Como você quer testar?
 
@@ -37,7 +37,7 @@ Uma "fatia fina de ponta a ponta" (walking skeleton) é uma versão mínima que 
 - D. Sem testes (POC de demonstração)
 - X. Other (especificar)
 
-[Answer]:
+[Answer]: A
 
 ## Q4. Como avaliar a cobertura e o gate de qualidade?
 
@@ -46,7 +46,7 @@ Uma "fatia fina de ponta a ponta" (walking skeleton) é uma versão mínima que 
 - C. Sem meta de cobertura
 - X. Other (especificar)
 
-[Answer]:
+[Answer]: B
 
 ## Q5. Como fazer deploy e qual o padrão de estilo?
 
@@ -55,7 +55,7 @@ Uma "fatia fina de ponta a ponta" (walking skeleton) é uma versão mínima que 
 - C. Deploy manual quando quiser
 - X. Other (especificar)
 
-[Answer]:
+[Answer]: Não tenho esteira CI/CD. Pretendo solicitar a criação de script de start.sh/stop.sh para fazer o build, testes e terraform apply / terraform destroy para aplicar a opção C.
 
 ---
 
