@@ -56,12 +56,18 @@
 <!-- Format: NEVER [behavior] (affirmed [date]) -->
 <!-- Example: NEVER throw exceptions across service layer boundaries (affirmed 2026-05-17) -->
 
+- `NEVER` deployar sem passar pelos scripts `start.sh`/`stop.sh`. (affirmed 2026-09-16)
+- `NEVER` tratar cobertura de testes como gate bloqueante neste hackathon. (affirmed 2026-09-16)
+Restrições específicas do projeto, do domínio imobiliário ou do uso de dados pessoais (LGPD) precisam ser confirmadas antes de serem registradas como limites rígidos adicionais. (affirmed 2026-09-16)
 ## Mandated
 
 <!-- Populated by practices-discovery affirmation gate. -->
 <!-- Format: ALWAYS [behavior] (affirmed [date]) -->
 <!-- Example: ALWAYS use Result<T,E> for fallible operations in service layer (affirmed 2026-05-17) -->
 
+- `ALWAYS` integrar via pull request a partir de branch por feature, partindo de `feature/01-aulas-gravadas/05-privacidade-seguranca-de-dados`. (affirmed 2026-09-16)
+- `ALWAYS` construir a fatia fina de ponta a ponta (walking skeleton) antes das features reais. (affirmed 2026-09-16)
+- `ALWAYS` usar scripts `start.sh`/`stop.sh` para build, testes e `terraform apply` / `terraform destroy` no deploy manual. (affirmed 2026-09-16)
 ## Corrections
 
 <!-- Project-specific corrections from human feedback. -->

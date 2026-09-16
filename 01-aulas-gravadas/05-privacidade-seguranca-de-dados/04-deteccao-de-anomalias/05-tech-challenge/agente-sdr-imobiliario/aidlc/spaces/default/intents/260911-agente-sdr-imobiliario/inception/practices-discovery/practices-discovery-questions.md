@@ -17,7 +17,7 @@
 - C. Sem regra — devolo solo
 - X. Other (especificar)
 
-[Answer]: Respsota B a partir da branch feature/01-aulas-gravadas/05-privacidade-seguranca-de-dados
+[Answer]: B (não trunk-based; branch por feature via PR, partindo de feature/01-aulas-gravadas/05-privacidade-seguranca-de-dados)
 
 ## Q2. Construir uma fatia fino de ponta a ponta primeiro?
 
@@ -46,7 +46,7 @@ Uma "fatia fina de ponta a ponta" (walking skeleton) é uma versão mínima que 
 - C. Sem meta de cobertura
 - X. Other (especificar)
 
-[Answer]: B
+[Answer]: B (sem gate bloqueante; testes são entregável de cada Bolt)
 
 ## Q5. Como fazer deploy e qual o padrão de estilo?
 
@@ -67,3 +67,9 @@ Uma "fatia fina de ponta a ponta" (walking skeleton) é uma versão mínima que 
 ## Review
 
 Este arquivo é o registro das perguntas da entrevista de práticas. As respostas assinaladas alimentam team-practices.md e discovered-rules.md.
+
+## Consolidated Summary Confirmation
+
+Does this all look correct?
+
+[Answer]: Looks correct

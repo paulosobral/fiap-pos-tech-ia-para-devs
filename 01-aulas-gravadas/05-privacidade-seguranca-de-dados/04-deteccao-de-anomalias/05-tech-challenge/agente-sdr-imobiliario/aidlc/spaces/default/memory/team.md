@@ -7,21 +7,18 @@
 
 ## Way of Working
 
-<!-- Affirmed during practices-discovery. Example: -->
-<!-- We use GitHub Flow with feature branches. Branches live 3-5 days max. -->
-<!-- Hotfixes branch from main and merge back via expedited review. -->
+Trabalhamos com branch por feature. Cada mudança nasce em uma branch própria, partindo da branch `feature/01-aulas-gravadas/05-privacidade-seguranca-de-dados`, e integra em `main` via pull request com merge. Não usamos trunk-based com squash-merge direto; branches são revisadas e mescladas via PR.
 
 ## Walking Skeleton
 
-<!-- Affirmed during practices-discovery. Example: -->
-<!-- We don't run a walking skeleton — our deployment pipeline is mature -->
-<!-- and the slice cost outweighs the value at our maturity stage. -->
+Sim — construímos uma fatia fina de ponta a ponta primeiro (walking skeleton): uma versão mínima que roda o caminho todo, do primeiro contato ao fim, antes das features reais, para provar que as peças se conectam.
 
 ## Testing Posture
 
-<!-- Affirmed during practices-discovery. Example: -->
-<!-- We use BDD. Specifications drive scenarios; scenarios drive code. -->
-<!-- Each Unit ships with feature files in /features/. -->
+Tratamos testes como entregável de cada Bolt. Escrevemos o código primeiro e depois os testes (test-after), sem meta de cobertura bloqueante definida para o hackathon.
+
+- **Methodology**: test-after
+- **Ordering**: Implementamos cada camada testável aplicável e, em seguida, escrevemos e executamos os testes dessa camada antes de avançar para a próxima.
 
 ## Change Control
 
@@ -29,14 +26,11 @@
 
 ## Deployment
 
-<!-- Affirmed during practices-discovery. -->
+Não temos esteira de CI/CD. O deploy é manual, quando quisermos, por meio de scripts `start.sh`/`stop.sh` que executam build, testes e `terraform apply` / `terraform destroy` para provisionar e derrubar o ambiente.
 
 ## Code Style
 
-<!-- Team-specific conventions beyond the linter. Example: -->
-<!-- - Prefer named exports over default exports -->
-<!-- - All async functions return Result<T, E>, never throw -->
-
+Seguimos configurações existentes no projeto para formatter e linter do repositório. Usamos convenções idiomáticas da linguagem e não criamos regras de nomenclatura adicionais sem decisão explícita da equipe. Antes de sugerir estilo, consultamos as configurações do repositório.
 ## Forbidden
 
 <!-- Team-specific forbidden patterns -->

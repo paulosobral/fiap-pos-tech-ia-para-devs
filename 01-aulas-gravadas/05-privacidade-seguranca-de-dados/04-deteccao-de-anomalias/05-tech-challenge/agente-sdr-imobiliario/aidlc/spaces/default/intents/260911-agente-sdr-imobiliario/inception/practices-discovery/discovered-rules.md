@@ -4,8 +4,13 @@
 
 ## Mandated
 
-Nenhuma regra adicional candidata a `ALWAYS` foi identificada na inspeção greenfield. Os defaults organizacionais já cobrem trunk-based development, qualidade de testes, CI, deployment e estilo de código sem necessidade de endurecimento específico.
+- `ALWAYS` integrar via pull request a partir de branch por feature, partindo de `feature/01-aulas-gravadas/05-privacidade-seguranca-de-dados`.
+- `ALWAYS` construir a fatia fina de ponta a ponta (walking skeleton) antes das features reais.
+- `ALWAYS` usar scripts `start.sh`/`stop.sh` para build, testes e `terraform apply` / `terraform destroy` no deploy manual.
 
 ## Forbidden
 
-Nenhuma regra adicional candidata a `NEVER` foi identificada na inspeção greenfield. Restrições específicas do projeto, do domínio imobiliário ou do uso de dados pessoais precisam ser confirmadas antes de serem registradas como limites rígidos.
+- `NEVER` deployar sem passar pelos scripts `start.sh`/`stop.sh`.
+- `NEVER` tratar cobertura de testes como gate bloqueante neste hackathon.
+
+Restrições específicas do projeto, do domínio imobiliário ou do uso de dados pessoais (LGPD) precisam ser confirmadas antes de serem registradas como limites rígidos adicionais.

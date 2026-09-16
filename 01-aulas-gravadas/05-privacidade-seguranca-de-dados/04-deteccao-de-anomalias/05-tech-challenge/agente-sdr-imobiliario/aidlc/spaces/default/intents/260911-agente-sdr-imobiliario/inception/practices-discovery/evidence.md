@@ -10,12 +10,13 @@
 
 ## Inferências provisórias
 
-- Desenvolvimento baseado em trunk, branch `main`, branches curtos e squash-merge parecem adequados ao contexto.
-- `test-after` foi escolhido como metodologia provisória, conforme default organizacional para ausência de postura afirmada.
-- O escopo `feature` implica piso de 80% de cobertura de linhas e CI antes do merge.
-- Deploy em staging após merge e aprovação manual para produção foram mantidos como proposta organizacional, sem assumir que ambientes reais existam neste hackathon.
-- Estilo deve seguir formatter/linter configurados no repositório.
-- Não foram criadas regras rígidas adicionais porque defaults organizacionais já cobrem os temas observados.
+- Desenvolvimento baseado em branch por feature, com integração via PR partindo de `feature/01-aulas-gravadas/05-privacidade-seguranca-de-dados` (resposta Q1 da entrevista).
+- Walking skeleton: sim — fatia fina de ponta a ponta primeiro (resposta Q2).
+- `test-after` escolhido como metodologia, conforme resposta Q3.
+- Sem meta de cobertura bloqueante; testes são entregável de cada Bolt sem gate de cobertura (resposta Q4).
+- Deploy manual sem esteira de CI/CD, via scripts `start.sh`/`stop.sh` + `terraform apply`/`destroy` (resposta Q5).
+- Estilo segue formatter/linter configurados no repositório.
+- Não foram criadas regras rígidas adicionais além das Mandated/Forbidden derivadas das respostas Q1, Q2 e Q5.
 
 ## Incertezas a resolver na entrevista
 

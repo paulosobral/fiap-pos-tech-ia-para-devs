@@ -4,25 +4,23 @@
 
 ## Way of Working
 
-Trabalhamos com desenvolvimento baseado em trunk. Integramos mudanças em `main` por branches de vida curta, normalmente resolvidas em até 1–2 dias, e usamos squash-merge. Não mantemos branches de longa duração; quando houver trabalho incompleto, avaliamos feature flags.
+Trabalhamos com branch por feature. Cada mudança nasce em uma branch própria, partindo da branch `feature/01-aulas-gravadas/05-privacidade-seguranca-de-dados`, e integra em `main` via pull request com merge. Não usamos trunk-based com squash-merge direto; branches são revisadas e mescladas via PR.
 
 ## Walking Skeleton
 
-Para este projeto solo de hackathon, propomos começar pelo menor fluxo executável de ponta a ponta quando isso reduzir risco de integração. A necessidade de uma cerimônia formal de walking skeleton, sua ativação (`skeleton: on` ou `skeleton: off`) e a exigência de aprovação antes dos demais Bolts permanecem sujeitas à entrevista.
+Sim — construímos uma fatia fina de ponta a ponta primeiro (walking skeleton): uma versão mínima que roda o caminho todo, do primeiro contato ao fim, antes das features reais, para provar que as peças se conectam.
 
 ## Testing Posture
 
-Tratamos testes como entregável de cada Bolt. Para o escopo `feature`, adotamos provisoriamente o padrão organizacional de cobertura mínima de 80% de linhas e execução de CI antes do merge.
+Tratamos testes como entregável de cada Bolt. Escrevemos o código primeiro e depois os testes (test-after), sem meta de cobertura bloqueante definida para o hackathon.
 
 - **Methodology**: test-after
 - **Ordering**: Implementamos cada camada testável aplicável e, em seguida, escrevemos e executamos os testes dessa camada antes de avançar para a próxima.
 
-O Build and Test verifica o piso de cobertura e os alvos de qualidade definidos; não reduzimos esses critérios para fazer uma etapa passar.
-
 ## Deployment
 
-Fazemos deploy em staging após o merge. Produção exige aprovação manual separada, normalmente de liderança técnica e responsável pelo produto, por proteção de ambiente da plataforma de CD. Para este protótipo, confirmaremos na entrevista se haverá staging real, produção real ou somente execução local/demonstração.
+Não temos esteira de CI/CD. O deploy é manual, quando quisermos, por meio de scripts `start.sh`/`stop.sh` que executam build, testes e `terraform apply` / `terraform destroy` para provisionar e derrubar o ambiente.
 
 ## Code Style
 
-Seguimos configurações existentes no projeto para formatter e linter. O CI executa o linter antes do merge e falha quando houver erros. Usamos convenções idiomáticas da linguagem e não criamos regras de nomenclatura adicionais sem decisão explícita da equipe. Antes de sugerir estilo, consultamos as configurações do repositório.
+Seguimos configurações existentes no projeto para formatter e linter do repositório. Usamos convenções idiomáticas da linguagem e não criamos regras de nomenclatura adicionais sem decisão explícita da equipe. Antes de sugerir estilo, consultamos as configurações do repositório.
