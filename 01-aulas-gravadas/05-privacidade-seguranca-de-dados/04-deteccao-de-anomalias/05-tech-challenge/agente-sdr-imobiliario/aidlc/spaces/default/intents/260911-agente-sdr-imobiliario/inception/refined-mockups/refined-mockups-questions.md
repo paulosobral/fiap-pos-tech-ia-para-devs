@@ -131,3 +131,16 @@ Para as APIs (conversation-router, RAG, qualificação, handoff, dashboard), com
 - D) Outro (especifique)
 
 [Answer]: A
+
+---
+
+## Summary Confirmation
+
+**Resumo consolidado das respostas**:
+- **Q1 (Representação das user stories)**: B - Dashboard histórico com refresh manual
+- **Q2 (Padrões de interação)**: A - Ações inline, modals para formulários complexos
+- **Q3 (Estados de tela)**: A - Todos os estados implementados (loading, empty, error, success, anomalia)
+- **Q4 (Design system)**: A - Streamlit default (como definido em wireframes)
+- **Q5 (Acessibilidade WCAG)**: A - WCAG 2.1 AA (recomendado)
+- **Q6 (Responsividade)**: A - Desktop only (foco em gestores e corretores)
+- **Q7 (Developer Experience)**: A - OpenAPI specification completa
