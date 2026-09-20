@@ -4509,3 +4509,33 @@
 **Source Baseline**: sha256:e9a139e636701995bd51c6b06d660126c791a297adc36a21bbce1c9a5553877e
 
 ---
+
+## Stage Skip
+**Timestamp**: 2026-09-20T13:24:30Z
+**Event**: STAGE_SKIPPED
+**Stage**: refined-mockups
+**Reason**: Skipped by jump to domain-design (forward)
+**Skip Kind**: jump
+
+---
+
+## Stage Jump
+**Timestamp**: 2026-09-20T13:24:30Z
+**Event**: STAGE_JUMPED
+**Direction**: FORWARD
+**Source**: refined-mockups
+**Target**: domain-design
+**Scope**: feature
+**Details**: FORWARD jump from refined-mockups to domain-design (2.6). Scope: feature.
+**Source Baseline**: sha256:e9a139e636701995bd51c6b06d660126c791a297adc36a21bbce1c9a5553877e
+
+---
+
+## Stage Start
+**Timestamp**: 2026-09-20T13:24:30Z
+**Event**: STAGE_STARTED
+**Stage**: domain-design
+**Agent**: aidlc-architect-agent
+**Source Baseline**: sha256:e9a139e636701995bd51c6b06d660126c791a297adc36a21bbce1c9a5553877e
+
+---
