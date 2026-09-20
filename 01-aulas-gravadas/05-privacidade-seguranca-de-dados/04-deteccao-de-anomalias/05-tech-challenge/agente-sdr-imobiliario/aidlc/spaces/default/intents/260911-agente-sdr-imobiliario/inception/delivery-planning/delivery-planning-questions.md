@@ -15,7 +15,7 @@ O que devemos construir primeiro?
 - C) Partes mais arriscadas primeiro (SecurityLayer → RAG → Anomaly)
 - D) Outro (especifique)
 
-[Answer]: B
+[Answer]: A
 
 ---
 
@@ -88,3 +88,14 @@ Como lidar com dependências externas (Telegram, OpenRouter, HubSpot)?
 - D) Outro (especifique)
 
 [Answer]: A
+
+---
+
+## Summary Confirmation
+
+**Resumo consolidado das respostas (alinhado com prática de Walking Skeleton)**:
+- **Q1 (Estratégia de sequenciamento)**: A - Walking skeleton primeiro (thin end-to-end slice), depois partes mais valiosas
+- **Q2 (Walking skeleton)**: A - Conversação básica (Telegram → Lambda → LLM)
+- **Q3 (Tolerância a risco)**: A - Baixa (validar tudo antes de avançar)
+- **Q4 (Alocação de equipe)**: A - 1 pessoa sequencial (ideal para hackathon)
+- **Q5 (Dependências externas)**: A - Mockar tudo (mais seguro, menos real)
