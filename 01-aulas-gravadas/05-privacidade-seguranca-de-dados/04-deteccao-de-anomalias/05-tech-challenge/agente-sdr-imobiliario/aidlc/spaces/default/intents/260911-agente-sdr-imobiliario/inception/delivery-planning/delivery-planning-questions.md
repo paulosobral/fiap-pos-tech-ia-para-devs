@@ -15,6 +15,8 @@ O que devemos construir primeiro?
 - C) Partes mais arriscadas primeiro (SecurityLayer → RAG → Anomaly)
 - D) Outro (especifique)
 
+[Answer]: B
+
 ---
 
 ## Q2: Walking Skeleton
@@ -30,6 +32,8 @@ Qual deve ser o walking skeleton?
 - B) Conversação com RAG (Telegram → Lambda → LLM → FAISS)
 - C) Conversação completa (todas as US1-US7 básicas)
 - D) Outro (especifique)
+
+[Answer]: A
 
 ---
 
@@ -47,6 +51,8 @@ Qual é a tolerância a risco para sequenciamento?
 - C) Alta (validar cedo riscos)
 - D) Outro (especifique)
 
+[Answer]: A
+
 ---
 
 ## Q4: Alocação de Equipe
@@ -63,6 +69,8 @@ Como a equipe deve ser alocada para os Bolts?
 - C) 3+ pessoas dedicadas
 - D) Outro (especifique)
 
+[Answer]: A
+
 ---
 
 ## Q5: Dependências Externas
@@ -78,3 +86,5 @@ Como lidar com dependências externas (Telegram, OpenRouter, HubSpot)?
 - B) Integrar reais (Telegram + OpenRouter), mockar HubSpot (conforme PRD)
 - C) Integrar tudo (mais real, mais arriscado)
 - D) Outro (especifique)
+
+[Answer]: A
