@@ -29,7 +29,7 @@
 ## Execution Plan Summary
 - **Total Stages**: 32
 - **Completed**: 10
-- **In Progress**: domain-design
+- **In Progress**: units-generation
 
 ## Runtime State
 - **Revision Count**: 7
@@ -66,8 +66,8 @@
 - [S] requirements-analysis — EXECUTE
 - [S] user-stories — EXECUTE
 - [S] refined-mockups — EXECUTE
-- [-] domain-design — EXECUTE
-- [ ] units-generation — EXECUTE
+- [S] domain-design — EXECUTE
+- [-] units-generation — EXECUTE
 - [ ] contract-design — EXECUTE
 - [ ] delivery-planning — EXECUTE
 
@@ -92,12 +92,12 @@ Per unit: [TBD]
 
 ## Current Status
 - **Lifecycle Phase**: INCEPTION
-- **Current Stage**: domain-design
-- **Next Stage**: units-generation
+- **Current Stage**: units-generation
+- **Next Stage**: contract-design
 - **Status**: Running
-- **Last Updated**: 2026-09-20T13:24:30Z
+- **Last Updated**: 2026-09-20T23:33:40Z
 
 ## Session Resume Point
 - **Last Completed Stage**: practices-discovery
-- **Next Action**: Execute Domain Design
+- **Next Action**: Execute Units Generation
 - **Pending Artifacts**: none

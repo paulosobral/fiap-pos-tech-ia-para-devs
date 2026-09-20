@@ -4539,3 +4539,33 @@
 **Source Baseline**: sha256:e9a139e636701995bd51c6b06d660126c791a297adc36a21bbce1c9a5553877e
 
 ---
+
+## Stage Skip
+**Timestamp**: 2026-09-20T23:33:40Z
+**Event**: STAGE_SKIPPED
+**Stage**: domain-design
+**Reason**: Skipped by jump to units-generation (forward)
+**Skip Kind**: jump
+
+---
+
+## Stage Jump
+**Timestamp**: 2026-09-20T23:33:40Z
+**Event**: STAGE_JUMPED
+**Direction**: FORWARD
+**Source**: domain-design
+**Target**: units-generation
+**Scope**: feature
+**Details**: FORWARD jump from domain-design to units-generation (2.7). Scope: feature.
+**Source Baseline**: sha256:e9a139e636701995bd51c6b06d660126c791a297adc36a21bbce1c9a5553877e
+
+---
+
+## Stage Start
+**Timestamp**: 2026-09-20T23:33:40Z
+**Event**: STAGE_STARTED
+**Stage**: units-generation
+**Agent**: aidlc-architect-agent
+**Source Baseline**: sha256:e9a139e636701995bd51c6b06d660126c791a297adc36a21bbce1c9a5553877e
+
+---
