@@ -7,7 +7,7 @@
 - **Scope**: feature
 - **Start Date**: 2026-09-11T01:30:39Z
 - **State Version**: 8
-- **Active Agent**: aidlc-product-agent
+- **Active Agent**: aidlc-design-agent
 - **Worktree Path**:
 - **Bolt Refs**:
 - **Practices Affirmed Timestamp**: 2026-09-16T01:31:11Z
@@ -29,7 +29,7 @@
 ## Execution Plan Summary
 - **Total Stages**: 32
 - **Completed**: 10
-- **In Progress**: user-stories
+- **In Progress**: refined-mockups
 
 ## Runtime State
 - **Revision Count**: 7
@@ -64,8 +64,8 @@
 - [ ] reverse-engineering — SKIP
 - [x] practices-discovery — EXECUTE
 - [S] requirements-analysis — EXECUTE
-- [-] user-stories — EXECUTE
-- [ ] refined-mockups — EXECUTE
+- [S] user-stories — EXECUTE
+- [-] refined-mockups — EXECUTE
 - [ ] domain-design — EXECUTE
 - [ ] units-generation — EXECUTE
 - [ ] contract-design — EXECUTE
@@ -92,12 +92,12 @@ Per unit: [TBD]
 
 ## Current Status
 - **Lifecycle Phase**: INCEPTION
-- **Current Stage**: user-stories
-- **Next Stage**: refined-mockups
+- **Current Stage**: refined-mockups
+- **Next Stage**: domain-design
 - **Status**: Running
-- **Last Updated**: 2026-09-18T00:39:17Z
+- **Last Updated**: 2026-09-20T13:08:20Z
 
 ## Session Resume Point
 - **Last Completed Stage**: practices-discovery
-- **Next Action**: Execute User Stories
+- **Next Action**: Execute Refined Mockups
 - **Pending Artifacts**: none

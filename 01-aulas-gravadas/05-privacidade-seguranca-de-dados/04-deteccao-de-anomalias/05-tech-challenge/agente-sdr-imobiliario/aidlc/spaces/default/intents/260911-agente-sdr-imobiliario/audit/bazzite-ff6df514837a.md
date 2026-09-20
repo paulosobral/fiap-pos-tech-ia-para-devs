@@ -4479,3 +4479,33 @@
 **Request Id**: review:5b1b264a56ca824a20ecd719532ede23
 
 ---
+
+## Stage Skip
+**Timestamp**: 2026-09-20T13:08:20Z
+**Event**: STAGE_SKIPPED
+**Stage**: user-stories
+**Reason**: Skipped by jump to refined-mockups (forward)
+**Skip Kind**: jump
+
+---
+
+## Stage Jump
+**Timestamp**: 2026-09-20T13:08:20Z
+**Event**: STAGE_JUMPED
+**Direction**: FORWARD
+**Source**: user-stories
+**Target**: refined-mockups
+**Scope**: feature
+**Details**: FORWARD jump from user-stories to refined-mockups (2.5). Scope: feature.
+**Source Baseline**: sha256:e9a139e636701995bd51c6b06d660126c791a297adc36a21bbce1c9a5553877e
+
+---
+
+## Stage Start
+**Timestamp**: 2026-09-20T13:08:20Z
+**Event**: STAGE_STARTED
+**Stage**: refined-mockups
+**Agent**: aidlc-design-agent
+**Source Baseline**: sha256:e9a139e636701995bd51c6b06d660126c791a297adc36a21bbce1c9a5553877e
+
+---
