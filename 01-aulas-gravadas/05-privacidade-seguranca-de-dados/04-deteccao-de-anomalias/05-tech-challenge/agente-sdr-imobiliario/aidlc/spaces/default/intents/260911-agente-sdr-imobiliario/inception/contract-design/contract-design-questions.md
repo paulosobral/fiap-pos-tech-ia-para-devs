@@ -13,6 +13,8 @@ Quais unidades expõem API pública consumida fora do sistema?
 - C) Apenas U7 expõe API pública
 - D) Nenhuma unidade expõe API pública
 
+[Answer]: A
+
 ---
 
 ## Q2: Mecanismo de Integração por Limite
@@ -32,6 +34,8 @@ Qual mecanismo de integração para cada limite inter-unidade?
 - C) HTTP/REST para tudo
 - D) Outro (especifique)
 
+[Answer]: A
+
 ---
 
 ## Q3: Propriedade de Contrato
@@ -50,6 +54,8 @@ Qual unidade é dona de cada contrato?
 - C) Todos os contratos são dono de U1
 - D) Outro (especifique)
 
+[Answer]: A
+
 ---
 
 ## Q4: Versionamento e Breaking Changes
@@ -65,6 +71,8 @@ Qual política de versionamento?
 - B) Versionamento semântico (major.minor.patch)
 - C) Versionamento por data (YYYY-MM-DD)
 - D) Outro (especifique)
+
+[Answer]: A
 
 ---
 
@@ -82,3 +90,16 @@ Qual comportamento em cada limite?
 - B) Retry automático para tudo
 - C) Retry manual para tudo
 - D) Outro (especifique)
+
+[Answer]: A
+
+---
+
+## Summary Confirmation
+
+**Resumo consolidado das respostas (alinhado com PRD §7.1-7.5)**:
+- **Q1 (Superfície de API pública)**: A - U1 e U7 expõem APIs públicas (conforme PRD §7.5)
+- **Q2 (Mecanismo de integração)**: A - SQS para assíncrono, DynamoDB para shared data (conforme PRD §7.1)
+- **Q3 (Propriedade de contrato)**: A - API pública: dono é a unidade que expõe; SQS: dono é producer; DynamoDB: dono é U1
+- **Q4 (Versionamento)**: A - Sem versionamento para POC (simples)
+- **Q5 (Erro, timeout, retry)**: A - Conforme PRD §7.5 (OpenAPI) + DLQ para SQS + retry DynamoDB
