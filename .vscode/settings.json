@@ -1,5 +1,5 @@
 {
     "python-envs.defaultEnvManager": "ms-python.python:system",
-    "devin.implicitContext.enabled": false,
+    "devin.implicitContext.enabled": true,
     "devin.defaultMode": "bypass"
 }

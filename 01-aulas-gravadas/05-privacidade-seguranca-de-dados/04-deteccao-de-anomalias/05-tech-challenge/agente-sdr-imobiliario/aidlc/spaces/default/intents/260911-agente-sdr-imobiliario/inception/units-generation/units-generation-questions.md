@@ -15,6 +15,8 @@ Como agrupar os componentes em unidades de trabalho (Bolts)?
 - C) Por feature (cada funcionalidade principal é uma unidade)
 - D) Outro (especifique)
 
+[Answer]: A
+
 ---
 
 ## Q2: Granularidade das Unidades
@@ -31,6 +33,8 @@ Qual nível de granularidade para as unidades?
 - C) Fine-grained (máximo paralelismo, mais overhead de coordenação)
 - D) Outro (especifique)
 
+[Answer]: A
+
 ---
 
 ## Q3: Ordenação de Dependências
@@ -46,6 +50,8 @@ Como definir a ordem de dependências entre unidades?
 - B) Paralelismo permitido (mais rápido, mais coordenação)
 - C) Híbrido (equilíbrio)
 - D) Outro (especifique)
+
+[Answer]: A
 
 ---
 
@@ -64,6 +70,8 @@ Como as unidades se integram?
 - C) Events para tudo (assíncrono)
 - D) Híbrido (alinhado com PRD §7.1 — síncrono para core, assíncrono para slow)
 
+[Answer]: D
+
 ---
 
 ## Q5: Modelo de Deployment
@@ -79,3 +87,5 @@ Como as unidades são deployadas?
 - B) Independent deploy (mais flexível, mais complexo)
 - C) Hybrid (core monolithic, periféricos independentes)
 - D) Outro (especifique)
+
+[Answer]: A
