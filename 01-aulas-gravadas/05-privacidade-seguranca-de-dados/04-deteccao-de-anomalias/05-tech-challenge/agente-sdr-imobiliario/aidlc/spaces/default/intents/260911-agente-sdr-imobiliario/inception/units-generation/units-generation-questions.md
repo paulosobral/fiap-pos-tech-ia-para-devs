@@ -89,3 +89,14 @@ Como as unidades são deployadas?
 - D) Outro (especifique)
 
 [Answer]: A
+
+---
+
+## Summary Confirmation
+
+**Resumo consolidado das respostas**:
+- **Q1 (Estratégia de limites)**: A - Por deployment target (alinhado com PRD §7.1 — cada Lambda é uma unidade)
+- **Q2 (Granularidade)**: A - Coarse-grained (foco em walking skeleton rápido)
+- **Q3 (Ordenação de dependências)**: A - Estrita topológica (simples, sequencial)
+- **Q4 (Pontos de integração)**: D - Híbrido (alinhado com PRD §7.1 — síncrono para core, assíncrono para slow)
+- **Q5 (Modelo de deployment)**: A - Monolithic deploy (simples, start.sh único)
