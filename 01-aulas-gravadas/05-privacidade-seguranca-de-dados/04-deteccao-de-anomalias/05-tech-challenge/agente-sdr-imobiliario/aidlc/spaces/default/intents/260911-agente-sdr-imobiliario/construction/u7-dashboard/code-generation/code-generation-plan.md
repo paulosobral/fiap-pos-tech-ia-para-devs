@@ -45,3 +45,16 @@ Obrigações: 5-8 testes por componente; testes de unidade + integração para b
 | 7 | FR7.1, FR7.2, FR7.3, FR7.4, Contrato 2, NFR5.1, NFR2.1, NFR4.1, RT6 |
 | 8 | Testing Contract |
 | 9 | Contrato 2, FR7 |
+
+## Rodada de fix (iteration 2)
+
+> Corrige os 6 findings do reviewer adversarial (iteração 1, verdict NOT-READY). Nenhum requisito do Testing Contract foi relaxado; validação terminou green.
+
+- **R-01 (Critical)** — `build_service` passa a exigir `dynamodb_client` e `cloudwatch_client` separados (handler cria `boto3.client("dynamodb")` para os stores e `boto3.client("cloudwatch")` para o meter); teste novo `test_distinct_client_per_service_name` com fakes de API restrita por serviço (falha se o mesmo objeto for usado nos dois componentes — mutação confirmada). *(Contrato 2)*
+- **R-02 (Major)** — `followup` removido de `QUALIFIED_STATES` (qualificação só via `status`, `context.lead_qualified` ou estados `recommendation`/`scheduling`/`handoff`); testes `test_followup_is_not_qualified` e `test_followup_with_lead_qualified_context_counts`. *(FR7.2)*
+- **R-06 (Minor)** — `parse_area_m2` trata vírgula como decimal PT-BR ("12,5 m²" → 12.5; "1.234,56" → 1234.56; "1.200 m²" → 1200.0 mantido); 3 testes novos + caso decimal na roleta. *(FR10.1, FR10.2)*
+- **R-05 (Minor)** — `log_event` JSON extraído para `apps/dashboard-api/logs.py` e adotado por handler, stores e meter; nomes de evento estruturados e testes de `caplog` alinhados. *(NFR5.1)*
+- **R-04 (Minor)** — NFR2.1 remapeada no traceability.json para o implementador (`apps/dashboard-api/infra/alert_store.py` — `project_alert`); teste de integração mantido como evidência complementar. *(NFR2.1)*
+- **R-03 (Minor)** — NFR4.1 (DLQ) reclassificada de `OK` para `Deferred` no traceability.json: Lambda síncrona aws_proxy não descarta mensagens assíncronas; DLQ/filas são IaC da fase Build and Test. Deviation registrada no code-summary.md. *(NFR4.1)*
+
+Resultado da validação: 76 coletados — 74 passed, 2 skipped; TOTAL 98.10% (piso 80%); comando com `COVERAGE_FILE` isolado.

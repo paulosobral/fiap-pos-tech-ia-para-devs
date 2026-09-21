@@ -64,6 +64,25 @@ class SessionStore:
         lead, conversation = self.create(telegram_user_id)
         return lead, conversation, True
 
+    def get_lead(self, lead_id: str) -> Lead | None:
+        item = self._client.get_item(
+            TableName=self._table,
+            Key={"PK": {"S": f"LEAD#{lead_id}"}, "SK": {"S": "PROFILE"}},
+        ).get("Item")
+        return Lead.from_item(self._unmarshal(item)) if item else None
+
+    def save_lead(self, lead: Lead) -> None:
+        self._client.put_item(
+            TableName=self._table, Item=self._marshal({"PK": f"LEAD#{lead.lead_id}", "SK": "PROFILE", **lead.to_item()})
+        )
+
+    def get_conversation(self, lead_id: str, session_id: str) -> Conversation | None:
+        item = self._client.get_item(
+            TableName=self._table,
+            Key={"PK": {"S": f"LEAD#{lead_id}"}, "SK": {"S": f"CONV#{session_id}"}},
+        ).get("Item")
+        return Conversation.from_item(self._unmarshal(item)) if item else None
+
     def save(self, lead: Lead, conversation: Conversation) -> None:
         self._client.put_item(
             TableName=self._table, Item=self._marshal({"PK": f"LEAD#{lead.lead_id}", "SK": "PROFILE", **lead.to_item()})

@@ -1,5 +1,7 @@
+from unittest.mock import MagicMock
+
 from service.flow.lead_qualifier import LeadQualifier
-from service.flow.sales_flow import SalesFlow
+from service.flow.sales_flow import SalesFlow, extract_lead_structure
 
 
 def make_flow(**kw):
@@ -104,6 +106,16 @@ class TestSalesFlow:
         assert info["people_count"] == 20
         assert info["decision_maker"] == "yes"
 
+    def test_extract_budget_keeps_multiple_thousands_separators(self):
+        assert extract_lead_structure("orçamento R$ 1.500.000")["budget"] == "R$ 1.500.000"
+
+    def test_extract_budget_millions_singular_and_plural(self):
+        assert extract_lead_structure("tenho 1,5 milhão para investir")["budget"] == "1,5 milhão"
+        assert extract_lead_structure("tenho 1,5 milhões para investir")["budget"] == "1,5 milhões"
+
+    def test_extract_budget_mixed_form_is_not_truncated(self):
+        assert extract_lead_structure("orçamento de R$ 1.500.000")["budget"] == "R$ 1.500.000"
+
     def test_invoke_merges_partial_info_across_turns(self):
         flow = make_flow()
         first = flow.invoke(
@@ -132,3 +144,53 @@ class TestSalesFlow:
         flow = make_flow(properties_rag=lambda info: [])
         state = flow.invoke({"current_state": "recommendation", "message": "quero ver"})
         assert "Não encontramos imóveis" in state["response"]
+
+
+class TestSchedulingRestriction:
+    def scheduler(self):
+        return MagicMock(return_value={"confirmed": True, "when": "amanhã 10h"})
+
+    def test_restricted_scheduling_defers_action(self):
+        scheduler = self.scheduler()
+        flow = make_flow(scheduler=scheduler, restriction_check=lambda lead_id: lead_id == "L1")
+        state = flow.invoke({"current_state": "scheduling", "message": "amanhã 10h", "lead_id": "L1"})
+        scheduler.assert_not_called()
+        assert state["scheduling_restricted"] is True
+        assert state["current_state"] == "handoff"
+        assert "corretor" in state["response"]
+
+    def test_unrestricted_scheduling_calls_scheduler(self):
+        scheduler = self.scheduler()
+        flow = make_flow(scheduler=scheduler, restriction_check=lambda lead_id: False)
+        state = flow.invoke({"current_state": "scheduling", "message": "amanhã 10h", "lead_id": "L1"})
+        scheduler.assert_called_once()
+        assert state["appointment"]["confirmed"] is True
+        assert "scheduling_restricted" not in state
+
+    def test_scheduling_without_checker_runs_normally(self):
+        scheduler = self.scheduler()
+        flow = make_flow(scheduler=scheduler)
+        state = flow.invoke({"current_state": "scheduling", "message": "amanhã 10h", "lead_id": "L1"})
+        scheduler.assert_called_once()
+        assert state["current_state"] == "handoff"
+
+    def test_restriction_check_failure_is_fail_open(self):
+        scheduler = self.scheduler()
+        flow = make_flow(scheduler=scheduler, restriction_check=lambda lead_id: (_ for _ in ()).throw(RuntimeError("boom")))
+        state = flow.invoke({"current_state": "scheduling", "message": "amanhã 10h", "lead_id": "L1"})
+        scheduler.assert_called_once()
+        assert "scheduling_restricted" not in state
+
+    def test_restricted_followup_is_deferred(self):
+        flow = make_flow(restriction_check=lambda lead_id: lead_id == "L1")
+        state = flow.invoke({"current_state": "followup", "message": "ok", "lead_id": "L1"})
+        assert state["followup_deferred"] is True
+        assert state["current_state"] == "followup"
+        assert "corretor" in state["response"]
+
+    def test_restricted_lead_without_lead_id_is_not_restricted(self):
+        scheduler = self.scheduler()
+        flow = make_flow(scheduler=scheduler, restriction_check=lambda lead_id: True)
+        state = flow.invoke({"current_state": "scheduling", "message": "amanhã 10h"})
+        scheduler.assert_called_once()
+        assert state["current_state"] == "handoff"

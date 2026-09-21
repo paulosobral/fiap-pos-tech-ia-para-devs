@@ -15,7 +15,7 @@ PIPELINE_STATES = (
     "followup",
 )
 UNKNOWN_STATE_LABEL = "outros"
-QUALIFIED_STATES = ("recommendation", "scheduling", "handoff", "followup")
+QUALIFIED_STATES = ("recommendation", "scheduling", "handoff")
 SCHEDULED_STATES = ("scheduling", "handoff")
 QUALIFIED_STATUSES = ("qualified",)
 ROUTE_ROTATION_LABEL = "consultores"
@@ -137,12 +137,23 @@ def intent_volume(profiles: dict[str, dict[str, Any]]) -> dict[str, int]:
 
 
 def parse_area_m2(value: Any) -> float | None:
+    """Converte `area` em m² (texto livre). Formatos aceitos: "800 m²" →
+    800.0; "1.200 m²" (ponto = milhar, padrão u1) → 1200.0; "12,5 m²"
+    (vírgula = decimal, PT-BR) → 12.5; "1.234,56" → 1234.56; "12.5" →
+    12.5 (ponto decimal com 1–2 casas). Sem dígitos → None."""
     if value is None:
         return None
-    digits = re.search(r"(\d+)", str(value).replace(".", "").replace(",", ""))
-    if not digits:
+    match = re.search(r"\d+(?:[.,]\d+)*", str(value))
+    if not match:
         return None
-    return float(digits.group(1))
+    raw = match.group(0)
+    if "," in raw:
+        raw = raw.replace(".", "").replace(",", ".")
+    else:
+        parts = raw.split(".")
+        if len(parts) > 2 or (len(parts) == 2 and len(parts[1]) == 3):
+            raw = "".join(parts)
+    return float(raw)
 
 
 def route_for_profile(profile: dict[str, Any]) -> str:

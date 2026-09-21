@@ -76,7 +76,7 @@ class TestAlertStoreReader:
         reader = AlertStoreReader(FakeScanClient([{"Items": [broken, alert_item()]}]))
         alerts = reader.list_alerts()
         assert [alert["anomaly_id"] for alert in alerts] == ["a1"]
-        assert "missing anomaly_id" in caplog.text
+        assert "alert_item_missing_anomaly_id" in caplog.text
 
     def test_client_error_raises_alert_store_error(self):
         with pytest.raises(AlertStoreError):

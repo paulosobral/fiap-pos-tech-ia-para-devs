@@ -6,6 +6,7 @@
     { "path": "apps/dashboard-api/handler.py" },
     { "path": "apps/dashboard-api/requirements.txt" },
     { "path": "apps/dashboard-api/__init__.py" },
+    { "path": "apps/dashboard-api/logs.py" },
     { "path": "apps/dashboard-api/infra/" },
     { "path": "apps/dashboard-api/infra/__init__.py" },
     { "path": "apps/dashboard-api/infra/alert_store.py" },

@@ -44,6 +44,21 @@ class LeadQualifier:
         parts = ", ".join(result["factors"]) if result["factors"] else "há informações pendentes"
         return f"Seu score é {result['score']} porque {parts}."
 
+    def urgency(self, info: dict[str, Any]) -> str:
+        """Rótulo low/medium/high para o handoff do CRM (entities.md/Contrato 4).
+
+        Reutiliza os MESMOS fatores do score: prazo curto (R3: ≤ 3 meses, com
+        semanas/dias normalizados) e ticket alto (orçamento ≥ 50k).
+        high = os dois; medium = exatamente um; low = nenhum.
+        """
+        urgent_deadline = self._deadline_score(info.get("deadline")) >= 30
+        high_budget = self._budget_score(info.get("budget")) >= 30
+        if urgent_deadline and high_budget:
+            return "high"
+        if urgent_deadline or high_budget:
+            return "medium"
+        return "low"
+
     def is_qualified(self, score: float) -> bool:
         return score >= SCORE_THRESHOLD
 
@@ -99,7 +114,14 @@ class LeadQualifier:
 
     @staticmethod
     def _deadline_months(deadline: str) -> float | None:
-        match = re.search(r"(\d+)\s*(mês|meses|month)", str(deadline).lower())
-        if match:
-            return float(match.group(1))
-        return None
+        """Normaliza prazo para meses: "2 semanas" ≈ 0,47, "15 dias" = 0,5 (base 30 dias/mês)."""
+        match = re.search(r"(\d+)\s*(m[êe]s(?:es)?|month|semanas?|dias?)", str(deadline).lower())
+        if not match:
+            return None
+        value = int(match.group(1))
+        unit = match.group(2)
+        if unit.startswith("sem"):
+            return value * 7 / 30
+        if unit.startswith("dia"):
+            return value / 30
+        return float(value)

@@ -7,13 +7,18 @@ from handler import handler
 
 
 class FakeAwsClient:
-    def __init__(self, pages_by_table=None, cw_results=None, scan_error=None):
+    def __init__(
+        self, pages_by_table=None, cw_results=None, scan_error=None, services=("dynamodb", "cloudwatch")
+    ):
+        self._services = services
         self._pages = pages_by_table or {}
         self._cw = cw_results or {}
         self._scan_error = scan_error
         self.calls: list[dict] = []
 
     def scan(self, **kwargs):
+        if "dynamodb" not in self._services:
+            raise AttributeError("cliente CloudWatch não expõe scan")
         self.calls.append(kwargs)
         if self._scan_error:
             raise self._scan_error
@@ -32,16 +37,19 @@ class FakeAwsClient:
         return {"Items": items}
 
     def get_metric_data(self, **kwargs):
+        if "cloudwatch" not in self._services:
+            raise AttributeError("cliente DynamoDB não expõe get_metric_data")
+        self.calls.append(kwargs)
         query_id = kwargs["MetricDataQueries"][0]["Id"]
         return {"MetricDataResults": self._cw.get(query_id, [{"Values": []}])}
 
 
 class FakeBoto3Module:
-    def __init__(self, client):
-        self._client = client
+    def __init__(self, clients_by_name):
+        self._clients = clients_by_name
 
     def client(self, name):
-        return self._client
+        return self._clients[name]
 
 
 def s(value):
@@ -110,7 +118,11 @@ def seed_env(monkeypatch):
 
 
 def install_fake_boto3(monkeypatch, client):
-    monkeypatch.setitem(sys.modules, "boto3", FakeBoto3Module(client))
+    monkeypatch.setitem(
+        sys.modules,
+        "boto3",
+        FakeBoto3Module({"dynamodb": client, "cloudwatch": client}),
+    )
 
 
 def make_client():
@@ -207,7 +219,7 @@ class TestHandler:
         response = handler(get_event())
         assert response["statusCode"] == 500
         assert "erro interno" in json.loads(response["body"])["message"]
-        assert "kpi aggregation failed" in caplog.text
+        assert "kpi_aggregation_failed" in caplog.text
 
     def test_non_dict_event_returns_500(self, monkeypatch):
         seed_env(monkeypatch)
@@ -219,6 +231,52 @@ class TestHandler:
 class TestBuildService:
     def test_build_service_wires_di_with_env(self, monkeypatch):
         seed_env(monkeypatch)
-        service = handler_module.build_service(make_client(), env={"SESSIONS_TABLE": "t1"})
+        service = handler_module.build_service(
+            make_client(), make_client(), env={"SESSIONS_TABLE": "t1"}
+        )
         assert service.conversations._table == "t1"
         assert service.now_fn() == FROZEN_NOW
+
+    def test_distinct_client_per_service_name(self, monkeypatch):
+        """R-01: dynamodb e cloudwatch exigem clientes distintos — o fake
+        dynamodb não expõe get_metric_data e o fake cloudwatch não expõe
+        scan; se o mesmo objeto servir aos dois componentes, o handler não
+        consegue agregar (zeros nas métricas ou 500 nos stores)."""
+        dynamodb_client = FakeAwsClient(
+            pages_by_table={
+                "sdr-sessions": [
+                    {
+                        "Items": [
+                            conv("s1", "l1", "scheduling", "2026-09-20T10:00:00Z"),
+                            lead("l1", "2026-09-20T09:00:00Z"),
+                        ]
+                    }
+                ],
+                "sdr-alerts": [{"Items": []}],
+            },
+            services=("dynamodb",),
+        )
+        cloudwatch_client = FakeAwsClient(
+            cw_results={
+                "response_p90": [{"Values": [0.8]}],
+                "cost_monthly": [{"Values": [15.0]}],
+            },
+            services=("cloudwatch",),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "boto3",
+            FakeBoto3Module({"dynamodb": dynamodb_client, "cloudwatch": cloudwatch_client}),
+        )
+        seed_env(monkeypatch)
+        response = handler(get_event())
+        assert response["statusCode"] == 200
+        body = json.loads(response["body"])
+        assert body["response_time_p90"] == 0.8
+        assert body["cost_monthly"] == 15.0
+        assert body["leads_week"] == 1
+        assert len(cloudwatch_client.calls) == 2
+        service = handler_module.build_service(dynamodb_client, cloudwatch_client, env={})
+        assert service.conversations._client is dynamodb_client
+        assert service.alerts._client is dynamodb_client
+        assert service.meter._client is cloudwatch_client

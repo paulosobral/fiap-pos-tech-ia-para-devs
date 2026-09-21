@@ -59,6 +59,10 @@ def webhook_event(update_body, secret="tok"):
     return {"headers": {"X-Telegram-Bot-Api-Secret-Token": secret}, "body": update_body}
 
 
+def internal_event(path, body, secret="internal-tok", method="POST"):
+    return {"path": path, "httpMethod": method, "headers": {"X-Internal-Secret": secret}, "body": json.dumps(body)}
+
+
 def make_router(secret="tok", with_pii=False):
     store = SessionStore(FakeDynamo(), "t")
     pii_store = None
@@ -79,6 +83,7 @@ def make_router(secret="tok", with_pii=False):
             crm_queue_url="https://sqs/crm",
             secret_token=secret,
             pii_store=pii_store,
+            internal_secret_token="internal-tok",
         ),
         sqs,
         telegram,

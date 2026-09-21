@@ -7,13 +7,18 @@ from handler import handler
 
 
 class FakeAwsClient:
-    def __init__(self, pages_by_table=None, cw_results=None, scan_error=None):
+    def __init__(
+        self, pages_by_table=None, cw_results=None, scan_error=None, services=("dynamodb", "cloudwatch")
+    ):
+        self._services = services
         self._pages = pages_by_table or {}
         self._cw = cw_results or {}
         self._scan_error = scan_error
         self.calls: list[dict] = []
 
     def scan(self, **kwargs):
+        if "dynamodb" not in self._services:
+            raise AttributeError("cliente CloudWatch não expõe scan")
         self.calls.append(kwargs)
         if self._scan_error:
             raise self._scan_error
@@ -32,16 +37,19 @@ class FakeAwsClient:
         return {"Items": items}
 
     def get_metric_data(self, **kwargs):
+        if "cloudwatch" not in self._services:
+            raise AttributeError("cliente DynamoDB não expõe get_metric_data")
+        self.calls.append(kwargs)
         query_id = kwargs["MetricDataQueries"][0]["Id"]
         return {"MetricDataResults": self._cw.get(query_id, [{"Values": []}])}
 
 
 class FakeBoto3Module:
-    def __init__(self, client):
-        self._client = client
+    def __init__(self, clients_by_name):
+        self._clients = clients_by_name
 
     def client(self, name):
-        return self._client
+        return self._clients[name]
 
 
 def s(value):
@@ -106,7 +114,11 @@ def seed(monkeypatch, client):
     monkeypatch.setattr(
         handler_module, "utc_now", lambda: datetime(2026, 9, 20, 12, 0, 0, tzinfo=timezone.utc)
     )
-    monkeypatch.setitem(sys.modules, "boto3", FakeBoto3Module(client))
+    monkeypatch.setitem(
+        sys.modules,
+        "boto3",
+        FakeBoto3Module({"dynamodb": client, "cloudwatch": client}),
+    )
 
 
 def full_client():
@@ -214,7 +226,7 @@ class TestKpisPipeline:
     def test_store_down_returns_500(self, monkeypatch, caplog):
         seed(monkeypatch, FakeAwsClient(scan_error=RuntimeError("dynamodb down")))
         assert handler(get_event())["statusCode"] == 500
-        assert "kpi aggregation failed" in caplog.text
+        assert "kpi_aggregation_failed" in caplog.text
 
     def test_cloudwatch_down_still_returns_200_with_zeros(self, monkeypatch):
         client = FakeAwsClient(

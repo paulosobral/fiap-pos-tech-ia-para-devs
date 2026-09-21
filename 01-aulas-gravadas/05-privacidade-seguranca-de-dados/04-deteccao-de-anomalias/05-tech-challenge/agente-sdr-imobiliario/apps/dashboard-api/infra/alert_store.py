@@ -4,7 +4,7 @@ import json
 import logging
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from logs import log_event
 
 ALERT_STATUS_OPEN = "open"
 _JSON_FIELDS = ("features",)
@@ -76,7 +76,7 @@ class AlertStoreReader:
                 for raw in response.get("Items", []):
                     item = unmarshal_item(raw)
                     if not item.get("anomaly_id"):
-                        logger.warning("alert item missing anomaly_id; skipped")
+                        log_event("alert_item_missing_anomaly_id", level=logging.WARNING)
                         continue
                     items.append(item)
                 last_key = response.get("LastEvaluatedKey")
@@ -86,7 +86,7 @@ class AlertStoreReader:
         except AlertStoreError:
             raise
         except Exception as exc:
-            logger.error("alert store unavailable: %s", exc)
+            log_event("alert_store_unavailable", level=logging.ERROR, error=str(exc))
             raise AlertStoreError("alert store unavailable") from exc
         items.sort(key=lambda item: str(item.get("detected_at") or ""), reverse=True)
         return items

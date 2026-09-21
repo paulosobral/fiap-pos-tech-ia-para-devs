@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from logs import log_event
 
 
 class CloudWatchMeter:
@@ -45,7 +45,7 @@ class CloudWatchMeter:
                 "cost_monthly", self._cost_metric, "Maximum", self._cost_lookback, end
             )
         except Exception as exc:
-            logger.error("metrics read failed: %s", exc)
+            log_event("metrics_read_failed", level=logging.ERROR, error=str(exc))
             return {"response_time_p90": None, "cost_monthly": None}
         return {
             "response_time_p90": _to_float(response_value),

@@ -15,6 +15,7 @@
     { "path": "apps/conversation-router/service/flow/__init__.py" },
     { "path": "apps/conversation-router/service/flow/lead_qualifier.py" },
     { "path": "apps/conversation-router/service/flow/sales_flow.py" },
+    { "path": "apps/conversation-router/service/restriction.py" },
     { "path": "apps/conversation-router/infra/__init__.py" },
     { "path": "apps/conversation-router/infra/session_store.py" },
     { "path": "apps/conversation-router/tests/__init__.py" },
@@ -25,6 +26,7 @@
     { "path": "apps/conversation-router/tests/unit/test_guardrails.py" },
     { "path": "apps/conversation-router/tests/unit/test_lead_qualifier.py" },
     { "path": "apps/conversation-router/tests/unit/test_sales_flow.py" },
+    { "path": "apps/conversation-router/tests/unit/test_restriction.py" },
     { "path": "apps/conversation-router/tests/integration/__init__.py" },
     { "path": "apps/conversation-router/tests/integration/fixtures.py" },
     { "path": "apps/conversation-router/tests/integration/test_conversation_router.py" }

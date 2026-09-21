@@ -11,8 +11,8 @@
     { "id": "FR9.3", "status": "OK", "target": "apps/dashboard-api/infra/alert_store.py" },
     { "id": "FR10.1", "status": "OK", "target": "apps/dashboard-api/service/kpi_calc.py" },
     { "id": "FR10.2", "status": "OK", "target": "apps/dashboard-api/service/kpi_calc.py" },
-    { "id": "NFR5.1", "status": "OK", "target": "apps/dashboard-api/service/kpis.py" },
-    { "id": "NFR2.1", "status": "OK", "target": "apps/dashboard-api/tests/integration/test_kpis_pipeline.py" },
-    { "id": "NFR4.1", "status": "OK", "target": "apps/dashboard-api/handler.py" }
+    { "id": "NFR5.1", "status": "OK", "target": "apps/dashboard-api/logs.py" },
+    { "id": "NFR2.1", "status": "OK", "target": "apps/dashboard-api/infra/alert_store.py" },
+    { "id": "NFR4.1", "status": "Deferred", "target": "aidlc/spaces/default/intents/260911-agente-sdr-imobiliario/construction/u7-dashboard/code-generation/code-summary.md" }
   ]
 }

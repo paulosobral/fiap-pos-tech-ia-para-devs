@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import json
-import logging
 from datetime import datetime, timezone
 from typing import Any, Callable
 
 from infra.alert_store import project_alert
+from logs import log_event
 from service import kpi_calc
 from service.kpi_calc import (
     alerts_last_24h,
@@ -20,13 +19,7 @@ from service.kpi_calc import (
     state_funnel,
 )
 
-logger = logging.getLogger(__name__)
-
 ALERTS_PAYLOAD_LIMIT = 100
-
-
-def log_event(event: str, **fields: Any) -> None:
-    logger.info(json.dumps({"event": event, **fields}, default=str))
 
 
 def utc_now() -> datetime:

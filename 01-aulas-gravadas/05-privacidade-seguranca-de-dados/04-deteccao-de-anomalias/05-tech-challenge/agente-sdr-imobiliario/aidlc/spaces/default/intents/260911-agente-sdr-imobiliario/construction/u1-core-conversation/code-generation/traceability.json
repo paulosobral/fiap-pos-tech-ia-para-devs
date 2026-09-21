@@ -34,7 +34,12 @@
     { "id": "FR1.3", "status": "OK", "target": "apps/conversation-router/infra/session_store.py" },
     { "id": "FR2.1", "status": "OK", "target": "apps/conversation-router/service/flow/sales_flow.py" },
     { "id": "FR2.2", "status": "OK", "target": "apps/conversation-router/service/flow/sales_flow.py" },
-    { "id": "FR2.3", "status": "OK", "target": "apps/conversation-router/service/flow/lead_qualifier.py" },
+    {
+      "id": "FR2.3",
+      "status": "Deferred",
+      "target": "apps/conversation-router/service/flow/lead_qualifier.py",
+      "justification": "Parcial: a extração captura metragem/região/orçamento/prazo/pessoas/decisor e o score/roleta usam esses sinais, mas NÃO há classificação de perfil B2B (empresa principal) vs investidor PF implementada nesta unidade — a detecção de perfil fica para a integração do SDR Agent (deviation registrada no code-summary.md)."
+    },
     { "id": "FR3.1", "status": "OK", "target": "apps/conversation-router/service/flow/sales_flow.py" },
     { "id": "FR3.2", "status": "OK", "target": "apps/conversation-router/service/flow/lead_qualifier.py" },
     { "id": "FR3.3", "status": "OK", "target": "apps/conversation-router/service/flow/lead_qualifier.py" },

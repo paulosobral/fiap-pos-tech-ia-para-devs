@@ -79,3 +79,44 @@ class TestSessionStore:
             "PK": {"S": "LEAD#l1"},
             "SK": {"S": "PROFILE"},
         }
+
+    def test_get_lead_by_id(self):
+        client = make_client(lead_item=LEAD_ITEM)
+        store = SessionStore(client, "t")
+        lead = store.get_lead("l1")
+        assert lead is not None
+        assert lead.lead_id == "l1"
+        assert client.get_item.call_args.kwargs["Key"] == {
+            "PK": {"S": "LEAD#l1"},
+            "SK": {"S": "PROFILE"},
+        }
+
+    def test_get_lead_missing_returns_none(self):
+        store = SessionStore(make_client(), "t")
+        assert store.get_lead("nope") is None
+
+    def test_save_lead_writes_profile_only(self):
+        client = make_client()
+        store = SessionStore(client, "t")
+        lead, _, _ = store.get_or_create(5)
+        client.put_item.reset_mock()
+        store.save_lead(lead)
+        assert client.put_item.call_count == 1
+        item = client.put_item.call_args.kwargs["Item"]
+        assert item["SK"]["S"] == "PROFILE"
+
+    def test_get_conversation_by_session_id(self):
+        client = make_client(conv_items=[CONV_ITEM])
+        client.get_item.return_value = {"Item": CONV_ITEM}
+        store = SessionStore(client, "t")
+        conv = store.get_conversation("l1", "s1")
+        assert conv is not None
+        assert conv.session_id == "s1"
+        assert client.get_item.call_args.kwargs["Key"] == {
+            "PK": {"S": "LEAD#l1"},
+            "SK": {"S": "CONV#s1"},
+        }
+
+    def test_get_conversation_missing_returns_none(self):
+        store = SessionStore(make_client(), "t")
+        assert store.get_conversation("l1", "nope") is None

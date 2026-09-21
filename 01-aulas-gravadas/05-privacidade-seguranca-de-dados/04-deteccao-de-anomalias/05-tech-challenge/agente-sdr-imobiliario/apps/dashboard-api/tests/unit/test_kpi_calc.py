@@ -78,6 +78,16 @@ class TestQualificationAndFunnel:
         profiles = {"a": profile(status="qualified")}
         assert kpi_calc.qualification_rate(profiles, latest) == 1.0
 
+    def test_followup_is_not_qualified(self):
+        latest = {"a": {"current_state": "followup", "context": {}}}
+        profiles = {"a": profile()}
+        assert kpi_calc.qualification_rate(profiles, latest) == 0.0
+
+    def test_followup_with_lead_qualified_context_counts(self):
+        latest = {"a": {"current_state": "followup", "context": {"lead_qualified": True}}}
+        profiles = {"a": profile()}
+        assert kpi_calc.qualification_rate(profiles, latest) == 1.0
+
     def test_zero_when_no_leads(self):
         assert kpi_calc.qualification_rate({}, {}) == 0.0
 
@@ -131,9 +141,10 @@ class TestIntentAndRoute:
             "big": profile(area="800 m²"),
             "override": profile(area="100 m²", route="diretor"),
             "thousands": profile(area="1.200 m²"),
+            "decimal_comma": profile(area="600,5 m²"),
         }
         distribution = kpi_calc.route_distribution(profiles)
-        assert distribution == {"consultores": 2, "diretor": 3}
+        assert distribution == {"consultores": 2, "diretor": 4}
 
     def test_missing_area_rotates_to_consultores(self):
         assert kpi_calc.route_for_profile(profile(area=None)) == "consultores"
@@ -141,6 +152,17 @@ class TestIntentAndRoute:
 
     def test_parse_area_m2_thousands_separator(self):
         assert kpi_calc.parse_area_m2("1.200 m²") == 1200.0
+
+    def test_parse_area_m2_decimal_comma_ptbr(self):
+        assert kpi_calc.parse_area_m2("12,5 m²") == 12.5
+        assert kpi_calc.parse_area_m2("600,5 m²") == 600.5
+
+    def test_parse_area_m2_mixed_thousands_and_decimal(self):
+        assert kpi_calc.parse_area_m2("1.234,56") == 1234.56
+
+    def test_parse_area_m2_dot_decimal(self):
+        assert kpi_calc.parse_area_m2("12.5") == 12.5
+        assert kpi_calc.parse_area_m2("800.25 m²") == 800.25
 
 
 class TestAlertsWindow:

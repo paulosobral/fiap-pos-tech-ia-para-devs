@@ -162,6 +162,24 @@ VALID_STATES = (
     "followup",
 )
 
+# Esteira Kanban do CRM (FR7.3/FR11.3) — espelha KANBAN_STAGES do u3; usada para
+# tornar a atualização de estágio via /internal/crm-status monotônica (sem regressão).
+KANBAN_STAGE_ORDER = (
+    "novo",
+    "qualificado",
+    "contato-feito",
+    "visita-agendada",
+    "handoff",
+    "ganho",
+    "perdido",
+)
+
+# Status internos do Lead ("new"/"qualified") projetados na esteira Kanban.
+KANBAN_STATUS_MAP = {
+    "new": "novo",
+    "qualified": "qualificado",
+}
+
 _PHONE_RE = re.compile(r"\+55\s?\d{2}\s?\d{4,5}-?\d{4}")
 
 

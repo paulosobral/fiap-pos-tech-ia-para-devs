@@ -5510,3 +5510,126 @@
 **Review Record Digest**: sha256:b31737164a95801e443bc4726088f2cd48d7db6cc563fa6361639ffe2e7c9691
 
 ---
+
+## Error Logged
+**Timestamp**: 2026-09-21T18:01:10Z
+**Event**: ERROR_LOGGED
+**Tool**: aidlc-state
+**Command**: aidlc-state reject code-generation --project-dir <project-dir>
+**Error**: Refusing to reject "code-generation": received reply "(empty)" did not match an offered choice at the held gate. The reply is cancellation boilerplate, not a decision. Re-present the original held gate with every offered choice and wait for the human to choose one.
+
+---
+
+## Error Logged
+**Timestamp**: 2026-09-21T18:01:21Z
+**Event**: ERROR_LOGGED
+**Tool**: aidlc-state
+**Command**: aidlc-state reject code-generation --project-dir <project-dir>
+**Error**: Refusing to reject "code-generation": received reply "(empty)" did not match an offered choice at the held gate. The reply is cancellation boilerplate, not a decision. Re-present the original held gate with every offered choice and wait for the human to choose one.
+
+---
+
+## Error Logged
+**Timestamp**: 2026-09-21T18:01:44Z
+**Event**: ERROR_LOGGED
+**Tool**: aidlc-state
+**Command**: aidlc-state approve
+**Error**: Stage status cannot be changed with aidlc-state.ts approve because that bypasses the workflow's completion and approval checks. Use aidlc-orchestrate.ts report --stage <slug> --result <awaiting-approval|approved|rejected|revised|completed|skipped>; use aidlc-orchestrate.ts park to pause, and next/jump to move through the workflow.
+
+---
+
+## Error Logged
+**Timestamp**: 2026-09-21T18:01:46Z
+**Event**: ERROR_LOGGED
+**Tool**: aidlc-state
+**Command**: aidlc-state approve
+**Error**: Stage status cannot be changed with aidlc-state.ts approve because that bypasses the workflow's completion and approval checks. Use aidlc-orchestrate.ts report --stage <slug> --result <awaiting-approval|approved|rejected|revised|completed|skipped>; use aidlc-orchestrate.ts park to pause, and next/jump to move through the workflow.
+
+---
+
+## Error Logged
+**Timestamp**: 2026-09-21T18:01:51Z
+**Event**: ERROR_LOGGED
+**Tool**: aidlc-state
+**Command**: aidlc-state reject code-generation --project-dir <project-dir>
+**Error**: Refusing to reject "code-generation": received reply "(empty)" did not match an offered choice at the held gate. The reply is cancellation boilerplate, not a decision. Re-present the original held gate with every offered choice and wait for the human to choose one.
+
+---
+
+## Error Logged
+**Timestamp**: 2026-09-21T18:02:01Z
+**Event**: ERROR_LOGGED
+**Tool**: aidlc-state
+**Command**: aidlc-state lookup --key gates
+**Error**: Unknown lookup subcommand: --key. Valid: phase-of, next-stage, agent-for, number-of, stages-in-scope, first-in-phase, validate-stage, validate-phase
+
+---
+
+## Error Logged
+**Timestamp**: 2026-09-21T18:04:07Z
+**Event**: ERROR_LOGGED
+**Tool**: aidlc-state
+**Command**: aidlc-state reject code-generation --project-dir <project-dir>
+**Error**: Refusing to reject "code-generation": received reply "(empty)" did not match an offered choice at the held gate. The reply is cancellation boilerplate, not a decision. Re-present the original held gate with every offered choice and wait for the human to choose one.
+
+---
+
+## Error Logged
+**Timestamp**: 2026-09-21T18:04:24Z
+**Event**: ERROR_LOGGED
+**Tool**: aidlc-state
+**Command**: aidlc-state reject code-generation --user-input Request Changes
+**Error**: Stage status cannot be changed with aidlc-state.ts reject because that bypasses the workflow's completion and approval checks. Use aidlc-orchestrate.ts report --stage <slug> --result <awaiting-approval|approved|rejected|revised|completed|skipped>; use aidlc-orchestrate.ts park to pause, and next/jump to move through the workflow.
+
+---
+
+## Error Logged
+**Timestamp**: 2026-09-21T18:04:30Z
+**Event**: ERROR_LOGGED
+**Tool**: aidlc-state
+**Command**: aidlc-state reject code-generation --user-input Request Changes --project-dir <project-dir>
+**Error**: Refusing to reject "code-generation": Request Changes requires nonblank revision feedback in --feedback (or --reason through aidlc-orchestrate.ts report).
+
+---
+
+## Error Logged
+**Timestamp**: 2026-09-21T18:04:35Z
+**Event**: ERROR_LOGGED
+**Tool**: aidlc-state
+**Command**: aidlc-state reject code-generation --user-input Request Changes --project-dir <project-dir>
+**Error**: Refusing to reject "code-generation": Request Changes requires nonblank revision feedback in --feedback (or --reason through aidlc-orchestrate.ts report).
+
+---
+
+## Error Logged
+**Timestamp**: 2026-09-21T18:04:40Z
+**Event**: ERROR_LOGGED
+**Tool**: aidlc-state
+**Command**: aidlc-state reject code-generation --feedback Fix review findings per unit before re-review. Integration criticals: implement POST /internal/inbound-text with X-Internal-Secret in u1 conversation-router (unblocks u2 R-01, u4 R-01); align u2/u3/u4 session-store access to u1 actual store pattern (no nonexistent GSI session-index; mirror u1 composite keys); fill CRM handoff lead_data name/urgency/budget/deadline/area from PII registry (u1 R-05, u3 R-01/R-06); add /internal/crm-status minimal receiver in u1 (u3 R-04); wire is_restricted check in u1 scheduler path (u5 R-02). Runtime bugs: u1 budget regexes (thousands separators, milhao singular) + deadline weeks/days normalization; u6 read at not ts + per-lead guard isolation + no token in GatewayError; u7 separate CloudWatch client from storage client + QUALIFIED_STATES without followup; u5 _TIME_FIELDS include at + no per-batch min-max normalization + restriction lifecycle with exit; u2 Whisper singleton + ffmpeg failure path; u4 rollback-failure dedupe staleness; u3 monotonic stage guard + PII-free logs; u6 silence window local tz. Traceability claims: mark DLQ items deferred to IaC, FR9.2 autoencoder deviation, FR2.3 PARTIAL, NFR2.1/NFR5.1 honest targets. All units must keep pytest green at >=80% line coverage. --user-input Request Changes --project-dir <project-dir>
+**Error**: Cannot request changes for "code-generation" because no new human reply has been received for this approval question. Wait for the human to type Request Changes and their feedback, then retry.
+
+---
+
+## Human Turn
+**Timestamp**: 2026-09-21T18:05:03Z
+**Event**: HUMAN_TURN
+**Session**: ses_f4e2e271affe4PLp6h3d0GHXCZ
+
+---
+
+## Gate Rejected
+**Timestamp**: 2026-09-21T18:05:07Z
+**Event**: GATE_REJECTED
+**Stage**: code-generation
+**Feedback**: Fix review findings per unit before re-review. Integration criticals: implement POST /internal/inbound-text with X-Internal-Secret in u1 conversation-router (unblocks u2 R-01, u4 R-01); align u2/u3/u4 session-store access to u1 actual store pattern (no nonexistent GSI session-index; mirror u1 composite keys); fill CRM handoff lead_data name/urgency/budget/deadline/area from PII registry (u1 R-05, u3 R-01/R-06); add /internal/crm-status minimal receiver in u1 (u3 R-04); wire is_restricted check in u1 scheduler path (u5 R-02). Runtime bugs: u1 budget regexes (thousands separators, milhao singular) + deadline weeks/days normalization; u6 read at not ts + per-lead guard isolation + no token in GatewayError; u7 separate CloudWatch client from storage client + QUALIFIED_STATES without followup; u5 _TIME_FIELDS include at + no per-batch min-max normalization + restriction lifecycle with exit; u2 Whisper singleton + ffmpeg failure path; u4 rollback-failure dedupe staleness; u3 monotonic stage guard + PII-free logs; u6 silence window local tz. Traceability claims: mark DLQ items deferred to IaC, FR9.2 autoencoder deviation, FR2.3 PARTIAL, NFR2.1/NFR5.1 honest targets. All units must keep pytest green at >=80% line coverage.
+
+---
+
+## Stage Revising
+**Timestamp**: 2026-09-21T18:05:07Z
+**Event**: STAGE_REVISING
+**Stage**: code-generation
+**Revision count**: 8
+**Feedback**: Fix review findings per unit before re-review. Integration criticals: implement POST /internal/inbound-text with X-Internal-Secret in u1 conversation-router (unblocks u2 R-01, u4 R-01); align u2/u3/u4 session-store access to u1 actual store pattern (no nonexistent GSI session-index; mirror u1 composite keys); fill CRM handoff lead_data name/urgency/budget/deadline/area from PII registry (u1 R-05, u3 R-01/R-06); add /internal/crm-status minimal receiver in u1 (u3 R-04); wire is_restricted check in u1 scheduler path (u5 R-02). Runtime bugs: u1 budget regexes (thousands separators, milhao singular) + deadline weeks/days normalization; u6 read at not ts + per-lead guard isolation + no token in GatewayError; u7 separate CloudWatch client from storage client + QUALIFIED_STATES without followup; u5 _TIME_FIELDS include at + no per-batch min-max normalization + restriction lifecycle with exit; u2 Whisper singleton + ffmpeg failure path; u4 rollback-failure dedupe staleness; u3 monotonic stage guard + PII-free logs; u6 silence window local tz. Traceability claims: mark DLQ items deferred to IaC, FR9.2 autoencoder deviation, FR2.3 PARTIAL, NFR2.1/NFR5.1 honest targets. All units must keep pytest green at >=80% line coverage.
+
+---

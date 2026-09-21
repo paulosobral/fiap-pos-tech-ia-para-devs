@@ -1,17 +1,28 @@
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any, Callable
+
+logger = logging.getLogger(__name__)
 
 CONFIDENCE_THRESHOLD = 0.85
 INTENT_CONFIRM_QUESTION = "Você está buscando compra, locação ou investimento?"
 
 # Extração sobre texto JÁ MASCARADO (placeholders [NOME]/[EMAIL] não colidem com os padrões).
+# Número: separadores de milhar múltiplos (\d{1,3}(\.\d{3})+, ex. 1.500.000) OU decimal pt-BR (1,5).
+# Unidade: "milhões"/"milhão"/"milhao" (singular "milhão" tem Ã — sem ele cairia em "mil", erro ×1000), "mil", "k".
+_BUDGET_NUMBER_RE = r"\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:[.,]\d+)?"
+_BUDGET_UNIT_RE_TEXT = r"mil(?:h[õo]es|h[ãa]o)?|k"
 _AREA_RE = re.compile(r"\b(\d+(?:[.,]\d+)?)\s*(?:m²|m2|metros quadrados|metro quadrado)", re.IGNORECASE)
 _BUDGET_PREFIXED_RE = re.compile(
-    r"(?:r\$\s*|orçamento\s*(?:de|:)?\s*)(\d+(?:[.,]\d+)?)\s*(mil(?:h[õo]es|ão|ao)?|k)?", re.IGNORECASE
+    rf"(?:r\$\s*|orçamento\s*(?:de|:)?\s*)({_BUDGET_NUMBER_RE})\s*({_BUDGET_UNIT_RE_TEXT})?",
+    re.IGNORECASE,
 )
-_BUDGET_UNIT_RE = re.compile(r"\b(\d+(?:[.,]\d+)?)\s*(mil(?:h[õo]es|ão|ao)?|k)\b", re.IGNORECASE)
+_BUDGET_UNIT_RE = re.compile(
+    rf"\b({_BUDGET_NUMBER_RE})\s*({_BUDGET_UNIT_RE_TEXT})\b",
+    re.IGNORECASE,
+)
 _DEADLINE_RE = re.compile(r"(?:prazo\s*(?:de|:)?\s*)?(\d+)\s*(m[êe]s(?:es)?|semanas?|dias?)", re.IGNORECASE)
 _PEOPLE_RE = re.compile(r"(\d+)\s*(?:pessoas|colaboradores|usuários|usuarios|funcionários|funcionarios)", re.IGNORECASE)
 _REGION_RE = re.compile(
@@ -55,6 +66,7 @@ class SalesFlow:
         llm_classify_intent: Callable[[str], tuple[str, float]] | None = None,
         specialist_rotation: list[str] | None = None,
         specialist_fallback: str = "diretor",
+        restriction_check: Callable[[str], bool] | None = None,
     ) -> None:
         self.qualifier = lead_qualifier
         self.properties_rag = properties_rag
@@ -63,6 +75,18 @@ class SalesFlow:
         self._llm_classify = llm_classify_intent or self._default_classify
         self.specialist_rotation = specialist_rotation or []
         self.specialist_fallback = specialist_fallback
+        # FR9.4: checker de restrição de agendamento (alertas de anomalia — U5, is_restricted(lead_id)).
+        self.restriction_check = restriction_check
+
+    def _is_restricted(self, lead_id: str | None) -> bool:
+        """Consulta o checker injetável; fail-open = NÃO restrito em ausência/erro."""
+        if self.restriction_check is None or not lead_id:
+            return False
+        try:
+            return bool(self.restriction_check(lead_id))
+        except Exception:
+            logger.warning("restriction check failed; treating as unrestricted (fail-open)")
+            return False
 
     @staticmethod
     def _default_classify(message: str) -> tuple[str, float]:
@@ -179,6 +203,12 @@ class SalesFlow:
         return state
 
     def _handle_scheduling(self, state: dict[str, Any], message: str) -> dict[str, Any]:
+        if self._is_restricted(state.get("lead_id")):
+            # FR9.4: lead sinalizado pela U5 — agendamento autônomo adiado; corretor assume a confirmação.
+            state["scheduling_restricted"] = True
+            state["current_state"] = "handoff"
+            state["response"] = "O agendamento da visita precisa de confirmação do corretor; em breve ele fará contato."
+            return state
         if self.scheduler is None:
             state["current_state"] = "handoff"
             state["response"] = "Agendamento registrado. Vou repassar seu perfil ao corretor."
@@ -201,6 +231,13 @@ class SalesFlow:
         return state
 
     def _handle_followup(self, state: dict[str, Any], message: str) -> dict[str, Any]:
+        if self._is_restricted(state.get("lead_id")):
+            # FR9.4: sem outreach autônomo para lead sinalizado — follow-up fica sob responsabilidade do corretor.
+            state["followup_deferred"] = True
+            state["current_state"] = "followup"
+            state["done"] = True
+            state["response"] = "Anotado! Seu atendimento seguirá com o corretor responsável."
+            return state
         state["current_state"] = "followup"
         state["done"] = True
         state.setdefault("response", "Anotado! Retomaremos o contato em breve.")
