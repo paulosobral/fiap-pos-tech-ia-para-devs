@@ -40,7 +40,8 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
     flow = HttpFlowGateway(
         _http_client(),
         base_url=_env("FLOW_BASE_URL"),
-        secret_token=os.environ.get("INTERNAL_SECRET_TOKEN"),
+        # Obrigatória: o receptor real (/internal/crm-status da u1) rejeita 401 sem o header.
+        secret_token=_env("INTERNAL_SECRET_TOKEN"),
     )
     status = StatusSync(crm, flow)
     max_receives = int(os.environ.get("CRM_MAX_RECEIVES", "3"))

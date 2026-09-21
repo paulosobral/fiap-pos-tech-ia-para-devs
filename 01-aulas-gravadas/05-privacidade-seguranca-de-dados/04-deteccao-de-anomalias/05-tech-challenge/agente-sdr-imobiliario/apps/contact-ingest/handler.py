@@ -40,7 +40,7 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
     router = HttpRouterGateway(
         _http_client(),
         base_url=_env("ROUTER_BASE_URL"),
-        secret_token=os.environ.get("INTERNAL_SECRET_TOKEN"),
+        secret_token=_env("INTERNAL_SECRET_TOKEN"),
     )
     ingest = ContactIngest(parser=parser, dedupe=dedupe, sessions=sessions, router=router)
     summary = ingest.handle_event(event)

@@ -42,9 +42,23 @@ class TestSchedulingGate:
 
     def test_is_restricted_false_for_blank_lead(self):
         assert SchedulingGate(FakeAlerts()).is_restricted("") is False
+        assert SchedulingGate(FakeAlerts()).restriction_reason("") is None
 
     def test_restriction_reason_falls_back_to_action_taken(self):
         alerts = FakeAlerts(restricted_item={"lead_id": "l-1", "action_taken": "schedule_restricted"})
         gate = SchedulingGate(alerts)
         assert gate.restriction_reason("l-1") == "schedule_restricted"
         assert gate.restriction_reason("unknown") is None
+
+    def test_restrict_logs_json_event(self, caplog):
+        import json
+        import logging
+
+        caplog.set_level(logging.INFO)
+        gate = SchedulingGate(FakeAlerts())
+        gate.restrict("l-1", "a-1")
+        record = [r for r in caplog.records if r.name == "infra.logging_utils"][-1]
+        event = json.loads(record.getMessage())
+        assert event["event"] == "scheduling_restricted"
+        assert event["lead_id"] == "l-1"
+        assert event["anomaly_id"] == "a-1"

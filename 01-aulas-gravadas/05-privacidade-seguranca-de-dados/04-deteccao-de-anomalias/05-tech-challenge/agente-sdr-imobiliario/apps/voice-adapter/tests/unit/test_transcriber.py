@@ -30,6 +30,7 @@ def fake_ffmpeg(monkeypatch):
 
     def fake_run(cmd, *args, **kwargs):
         calls["cmd"] = cmd
+        calls["kwargs"] = kwargs
         return MagicMock(returncode=0)
 
     monkeypatch.setattr(transcriber_module.subprocess, "run", fake_run)
@@ -46,18 +47,49 @@ class TestWhisperTranscriber:
         assert fake_ffmpeg["cmd"][0] == "ffmpeg"
         assert fake_ffmpeg["cmd"][-1].endswith("output.wav")
 
-    @pytest.mark.parametrize(
-        "error",
-        [
-            pytest.param(subprocess.CalledProcessError(1, "ffmpeg"), id="ffmpeg-fail"),
-            pytest.param(OSError("no ffmpeg binary"), id="ffmpeg-missing"),
-        ],
-    )
-    def test_conversion_errors_raise_audio_conversion_error(self, error, monkeypatch):
+    def test_ffmpeg_failure_raises_audio_conversion_error(self, monkeypatch):
         transcriber, _ = make_transcriber(make_model())
-        monkeypatch.setattr(transcriber_module.subprocess, "run", MagicMock(side_effect=error))
+        monkeypatch.setattr(
+            transcriber_module.subprocess,
+            "run",
+            MagicMock(side_effect=subprocess.CalledProcessError(1, "ffmpeg")),
+        )
         with pytest.raises(AudioConversionError):
             transcriber.transcribe(b"audio-bytes")
+
+    def test_missing_ffmpeg_raises_transcription_error_not_audio_conversion(self, monkeypatch):
+        transcriber, _ = make_transcriber(make_model())
+        monkeypatch.setattr(
+            transcriber_module.subprocess,
+            "run",
+            MagicMock(side_effect=OSError("no ffmpeg binary")),
+        )
+        with pytest.raises(TranscriptionError) as excinfo:
+            transcriber.transcribe(b"audio-bytes")
+        assert not isinstance(excinfo.value, AudioConversionError)
+
+    def test_ffmpeg_timeout_raises_transcription_error_not_audio_conversion(self, monkeypatch):
+        transcriber, _ = make_transcriber(make_model())
+        monkeypatch.setattr(
+            transcriber_module.subprocess,
+            "run",
+            MagicMock(side_effect=subprocess.TimeoutExpired("ffmpeg", 20)),
+        )
+        with pytest.raises(TranscriptionError) as excinfo:
+            transcriber.transcribe(b"audio-bytes")
+        assert not isinstance(excinfo.value, AudioConversionError)
+
+    def test_conversion_runs_with_timeout(self, fake_ffmpeg):
+        transcriber, _ = make_transcriber(make_model())
+        transcriber.transcribe(b"audio-bytes")
+        assert fake_ffmpeg["kwargs"]["timeout"] == 20
+
+    def test_conversion_timeout_is_configurable(self, fake_ffmpeg):
+        model = make_model()
+        factory = MagicMock(return_value=model)
+        transcriber = WhisperTranscriber(model_factory=factory, conversion_timeout=5)
+        transcriber.transcribe(b"audio-bytes")
+        assert fake_ffmpeg["kwargs"]["timeout"] == 5
 
     def test_empty_audio_raises_conversion_error(self):
         transcriber, _ = make_transcriber(make_model())

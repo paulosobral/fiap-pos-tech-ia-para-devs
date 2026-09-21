@@ -34,6 +34,19 @@ class TestTelegramGateway:
         with pytest.raises(GatewayError, match="sendMessage failed"):
             TelegramGateway(FakeHttp(error=ConnectionError("boom")), bot_token="tok").send_message(42, "olá")
 
+    def test_gateway_error_never_carries_url_or_token_from_original_exception(self):
+        leaked = ConnectionError(
+            "HTTPSConnectionPool(host='api.telegram.org', port=443): "
+            "url=https://api.telegram.org/botSECRETTOKEN123/sendMessage"
+        )
+        with pytest.raises(GatewayError) as excinfo:
+            TelegramGateway(FakeHttp(error=leaked), bot_token="SECRETTOKEN123").send_message(42, "olá")
+        message = str(excinfo.value)
+        assert "SECRETTOKEN123" not in message
+        assert "https://" not in message
+        assert "ConnectionError" in message
+        assert "sendMessage failed" in message
+
     def test_base_url_trailing_slash_is_normalized(self):
         http = FakeHttp()
         TelegramGateway(http, bot_token="tok", base_url="https://api.telegram.org/").send_message(1, "x")

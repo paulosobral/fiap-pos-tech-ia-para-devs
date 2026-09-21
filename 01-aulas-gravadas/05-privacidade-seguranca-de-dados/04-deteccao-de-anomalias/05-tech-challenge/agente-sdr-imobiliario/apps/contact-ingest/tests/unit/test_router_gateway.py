@@ -23,13 +23,24 @@ class TestHttpRouterGateway:
             "session_id": "s1",
             "text": "Quero uma laje na Faria Lima",
         }
-        assert call_kwargs["headers"]["X-Internal-Secret"] == "sec"
+        assert call_kwargs["headers"] == {
+            "Content-Type": "application/json",
+            "X-Internal-Secret": "sec",
+        }
 
-    def test_reinject_without_secret_omits_header(self):
-        gateway, _ = make_gateway(secret=None)
-        gateway.reinject(42, "s1", "Ola")
+    def test_reinject_body_fields_are_exact_contract_shape(self):
+        gateway, _ = make_gateway()
+        gateway.reinject(123456789, "session-abc", "Tenho interesse")
         _, call_kwargs = gateway._http.post.call_args
-        assert "X-Internal-Secret" not in call_kwargs["headers"]
+        assert call_kwargs["json"]["telegram_user_id"] == 123456789
+        assert call_kwargs["json"]["session_id"] == "session-abc"
+        assert call_kwargs["json"]["text"] == "Tenho interesse"
+
+    def test_missing_secret_fails_fast_without_post(self):
+        http = MagicMock()
+        with pytest.raises(ValueError, match="X-Internal-Secret"):
+            HttpRouterGateway(http, base_url="http://router.local", secret_token="")
+        http.post.assert_not_called()
 
     def test_connection_error_raises_router_error(self):
         gateway, http = make_gateway(post_ok=False)
@@ -49,6 +60,6 @@ class TestHttpRouterGateway:
 
     def test_trailing_slash_is_stripped(self):
         _, http = make_gateway()
-        gateway = HttpRouterGateway(http, base_url="http://router.local")
+        gateway = HttpRouterGateway(http, base_url="http://router.local", secret_token="sec")
         gateway.reinject(42, "s1", "Ola")
         assert gateway._http.post.call_args[0][0].startswith("http://router.local/")

@@ -15,6 +15,11 @@ class RouterGateway(Protocol):
 
 
 class HttpRouterGateway:
+    """Re-injeção no ConversationRouter (contrato interno real da U1):
+    POST {base}/internal/inbound-text com header X-Internal-Secret == env
+    INTERNAL_SECRET_TOKEN e body {"telegram_user_id": int, "session_id": str, "text": str}.
+    """
+
     def __init__(
         self,
         http: Any,
@@ -22,15 +27,15 @@ class HttpRouterGateway:
         secret_token: str | None = None,
         timeout: int = 10,
     ) -> None:
+        if not secret_token:
+            raise RouterError("internal secret is required for re-injection")
         self._http = http
         self._base_url = base_url.rstrip("/")
         self._secret = secret_token
         self._timeout = timeout
 
     def reinject(self, telegram_user_id: int, session_id: str, text: str) -> None:
-        headers = {"Content-Type": "application/json"}
-        if self._secret:
-            headers["X-Internal-Secret"] = self._secret
+        headers = {"Content-Type": "application/json", "X-Internal-Secret": self._secret}
         try:
             response = self._http.post(
                 f"{self._base_url}/internal/inbound-text",

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import json
-import logging
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from infra.structured_log import log_event
 
 FOLLOWUP_SK = "FOLLOWUP"
 
@@ -69,7 +68,7 @@ class FollowupStateStore:
         except FollowupStateError:
             raise
         except Exception as exc:
-            logger.error("followup state store unavailable: %s", exc)
+            log_event("followup_state_unavailable", error=str(exc))
             raise FollowupStateError("followup state store unavailable") from exc
         items = response.get("Items", [])
         return _unmarshal(items[0]) if items else None
@@ -90,5 +89,5 @@ class FollowupStateStore:
         try:
             self._client.put_item(TableName=self._table, Item=item)
         except Exception as exc:
-            logger.error("followup state write failed: %s", exc)
+            log_event("followup_state_write_failed", error=str(exc))
             raise FollowupStateError("followup state write failed") from exc

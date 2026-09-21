@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -8,6 +9,14 @@ from typing import Any, Callable, Protocol
 from infra.csv_store import CsvStore, CsvStoreError
 
 logger = logging.getLogger(__name__)
+
+
+def log_event(event: str, level: int = logging.INFO, **fields: Any) -> None:
+    logger.log(level, json.dumps({"event": event, **fields}, default=str))
+
+
+def _text(value: Any) -> str:
+    return "" if value is None else str(value)
 
 
 class CrmError(Exception):
@@ -37,7 +46,7 @@ class CsvCrmGateway:
         try:
             rows = self._store.load()
         except CsvStoreError as exc:
-            logger.error("crm store unreadable: %s", exc)
+            log_event("crm_store_unreadable", level=logging.ERROR, error=str(exc))
             raise CrmError("crm store unreadable") from exc
         lead_id = str(lead.get("lead_id") or "")
         existing = next((row for row in rows if row["lead_id"] == lead_id), None)
@@ -46,21 +55,35 @@ class CsvCrmGateway:
             record = {
                 "crm_id": str(uuid.uuid4()),
                 "lead_id": lead_id,
-                "name": str(lead.get("name") or ""),
-                "email": str(lead.get("email") or ""),
-                "phone": str(lead.get("phone") or ""),
-                "score": str(lead.get("score") or ""),
-                "urgency": str(lead.get("urgency") or ""),
-                "intent": str(lead.get("intent") or ""),
-                "stage": str(lead.get("stage") or ""),
-                "session_id": str(lead.get("session_id") or ""),
+                "name": _text(lead.get("name")),
+                "email": _text(lead.get("email")),
+                "phone": _text(lead.get("phone")),
+                "score": _text(lead.get("score")),
+                "urgency": _text(lead.get("urgency")),
+                "intent": _text(lead.get("intent")),
+                "budget": _text(lead.get("budget")),
+                "deadline": _text(lead.get("deadline")),
+                "area": _text(lead.get("area")),
+                "stage": _text(lead.get("stage")),
+                "session_id": _text(lead.get("session_id")),
                 "created_at": timestamp,
                 "updated_at": timestamp,
             }
             rows.append(record)
         else:
             record = dict(existing)
-            for column in ("name", "email", "phone", "score", "urgency", "intent", "session_id"):
+            for column in (
+                "name",
+                "email",
+                "phone",
+                "score",
+                "urgency",
+                "intent",
+                "budget",
+                "deadline",
+                "area",
+                "session_id",
+            ):
                 value = lead.get(column)
                 if value is not None:
                     record[column] = str(value)
@@ -68,7 +91,7 @@ class CsvCrmGateway:
         try:
             self._store.save(rows)
         except CsvStoreError as exc:
-            logger.error("crm store unwritable: %s", exc)
+            log_event("crm_store_unwritable", level=logging.ERROR, error=str(exc))
             raise CrmError("crm store unwritable") from exc
         return record
 
@@ -76,7 +99,7 @@ class CsvCrmGateway:
         try:
             rows = self._store.load()
         except CsvStoreError as exc:
-            logger.error("crm store unreadable: %s", exc)
+            log_event("crm_store_unreadable", level=logging.ERROR, error=str(exc))
             raise CrmError("crm store unreadable") from exc
         return next((row for row in rows if row["lead_id"] == lead_id), None)
 
@@ -84,7 +107,7 @@ class CsvCrmGateway:
         try:
             rows = self._store.load()
         except CsvStoreError as exc:
-            logger.error("crm store unreadable: %s", exc)
+            log_event("crm_store_unreadable", level=logging.ERROR, error=str(exc))
             raise CrmError("crm store unreadable") from exc
         existing = next((row for row in rows if row["lead_id"] == lead_id), None)
         if existing is None:
@@ -94,7 +117,7 @@ class CsvCrmGateway:
         try:
             self._store.save(rows)
         except CsvStoreError as exc:
-            logger.error("crm store unwritable: %s", exc)
+            log_event("crm_store_unwritable", level=logging.ERROR, error=str(exc))
             raise CrmError("crm store unwritable") from exc
 
 
@@ -112,10 +135,21 @@ except ImportError:  # pragma: no cover
 
 
 def build_hubspot_client() -> Any:
-    """Fábrica do cliente MCP HubSpot — só usada na demo ao vivo (FR11.1)."""
+    """Fábrica do cliente MCP HubSpot — wiring EXCLUSIVO da demo ao vivo (FR11.1).
+
+    Devolve a CLASSE `ClientSession` do SDK, não uma instância pronta: a API real
+    do SDK MCP é async e exige bootstrap de transporte (stdio_client/sse) com
+    handshake `initialize` antes do primeiro `call_tool`. A demo precisa de um
+    adapter async→sync (ex.: `asyncio.run` envolvendo o bootstrap) que entregue
+    ao `McpCrmGateway` um cliente pronto com `call_tool(name, arguments)` síncrono.
+    Sem o SDK instalado, levanta McpUnavailableError. Caminho de execução real
+    fora do alcance da POC: FR11.1 registrado como PENDING em traceability.json
+    (demo não executável sem conta HubSpot MCP) — ver code-summary, "Deviations
+    da rodada de fix".
+    """
     if not _HAS_MCP:
         raise McpUnavailableError("mcp sdk not installed")
-    return ClientSession  # placeholder de wiring real fora da POC
+    return ClientSession
 
 
 class McpClient(Protocol):
@@ -133,14 +167,17 @@ class McpCrmGateway:
 
     def upsert_lead(self, lead: dict[str, Any]) -> dict[str, Any]:
         properties = {
-            "lead_id": str(lead.get("lead_id") or ""),
-            "name": str(lead.get("name") or ""),
-            "email": str(lead.get("email") or ""),
-            "phone": str(lead.get("phone") or ""),
-            "score": str(lead.get("score") or ""),
-            "urgency": str(lead.get("urgency") or ""),
-            "intent": str(lead.get("intent") or ""),
-            "session_id": str(lead.get("session_id") or ""),
+            "lead_id": _text(lead.get("lead_id")),
+            "name": _text(lead.get("name")),
+            "email": _text(lead.get("email")),
+            "phone": _text(lead.get("phone")),
+            "score": _text(lead.get("score")),
+            "urgency": _text(lead.get("urgency")),
+            "intent": _text(lead.get("intent")),
+            "budget": _text(lead.get("budget")),
+            "deadline": _text(lead.get("deadline")),
+            "area": _text(lead.get("area")),
+            "session_id": _text(lead.get("session_id")),
         }
         result = self._call("crm_upsert_lead", {"properties": properties})
         return result.get("record", result)
@@ -156,9 +193,9 @@ class McpCrmGateway:
         try:
             result = self._client.call_tool(name, arguments)
         except Exception as exc:
-            logger.error("mcp tool %s failed: %s", name, exc)
+            log_event("mcp_tool_failed", level=logging.ERROR, tool=name, error=str(exc))
             raise CrmError(f"mcp tool {name} failed") from exc
         if not isinstance(result, dict):
-            logger.error("mcp tool %s returned non-object result", name)
+            log_event("mcp_tool_invalid_payload", level=logging.ERROR, tool=name)
             raise CrmError(f"mcp tool {name} returned invalid payload")
         return result

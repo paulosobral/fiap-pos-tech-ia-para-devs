@@ -2,8 +2,15 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
+
+try:
+    from zoneinfo import ZoneInfo
+
+    BUSINESS_TIMEZONE = ZoneInfo("America/Sao_Paulo")
+except Exception:
+    BUSINESS_TIMEZONE = timezone(timedelta(hours=-3), name="America/Sao_Paulo")
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +33,6 @@ NEGATIVE_WORDS = (
     "ódio",
     "idiota",
     "burro",
-    "cancelar",
-    "processo",
     "denúncia",
     "protesto",
     "engano",
@@ -37,7 +42,7 @@ NEGATIVE_WORDS = (
 )
 
 _TEXT_FIELDS = ("text", "content", "message")
-_TIME_FIELDS = ("ts", "timestamp", "created_at", "sent_at")
+_TIME_FIELDS = ("at", "ts", "timestamp", "created_at", "sent_at")
 
 
 def _message_text(message: dict[str, Any]) -> str:
@@ -49,6 +54,11 @@ def _message_text(message: dict[str, Any]) -> str:
 
 
 def _message_hour(message: dict[str, Any]) -> int | None:
+    """Hora local do lead: lê o campo real `at` da U1 (handler.py grava
+    {"role", "text", "at"} com ISO UTC) e converte para America/Sao_Paulo.
+    `ts` e demais variantes ficam como compatibilidade; timestamps naive são
+    interpretados como UTC antes da conversão.
+    """
     for field in _TIME_FIELDS:
         raw = message.get(field)
         if isinstance(raw, str) and raw:
@@ -57,8 +67,8 @@ def _message_hour(message: dict[str, Any]) -> int | None:
             except ValueError:
                 continue
             if parsed.tzinfo is None:
-                return parsed.hour
-            return parsed.astimezone(timezone.utc).hour
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(BUSINESS_TIMEZONE).hour
     return None
 
 
@@ -66,7 +76,8 @@ class ConversationFeatureExtractor:
     """Extrator de features por conversa (FR9.1), 100% determinístico.
 
     Volume de mensagens, comprimento médio, sentimento heurístico (palavras
-    negativas em pt-BR) e razão de horários atípicos (fora da janela útil).
+    negativas em pt-BR) e razão de horários atípicos (fora da janela útil
+    08:00–18:59 em America/Sao_Paulo, fuso dos leads +55).
     Função pura: mesmas entradas → mesmas features, sem clock interno — o
     clock injetável do job diário vive no orquestrador (`AnomalyDetector`).
     """

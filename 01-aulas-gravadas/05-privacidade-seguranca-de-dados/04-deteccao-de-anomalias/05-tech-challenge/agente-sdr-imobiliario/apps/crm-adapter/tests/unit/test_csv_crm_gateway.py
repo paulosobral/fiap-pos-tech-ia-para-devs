@@ -13,8 +13,11 @@ def lead(**overrides):
         "email": "ana@empresa.com",
         "phone": "+5511999990000",
         "score": 85,
-        "urgency": "alta",
+        "urgency": "high",
         "intent": "compra",
+        "budget": "R$ 800.000",
+        "deadline": "1 mês",
+        "area": "150 m2",
         "session_id": "s1",
     }
     base.update(overrides)
@@ -36,6 +39,9 @@ class TestCsvCrmGateway:
         record = gateway.upsert_lead(lead())
         assert record["crm_id"]
         assert record["stage"] == ""
+        assert record["budget"] == "R$ 800.000"
+        assert record["deadline"] == "1 mês"
+        assert record["area"] == "150 m2"
         assert record["created_at"] == "2026-09-20T00:00:00+00:00"
         reloaded = gateway.get_lead("lead-1")
         assert reloaded["crm_id"] == record["crm_id"]
@@ -44,9 +50,10 @@ class TestCsvCrmGateway:
     def test_upsert_existing_updates_same_row(self, store):
         gateway = CsvCrmGateway(store, clock=fixed_clock)
         first = gateway.upsert_lead(lead())
-        second = gateway.upsert_lead(lead(score=95))
+        second = gateway.upsert_lead(lead(score=95, budget="R$ 1.000.000"))
         assert first["crm_id"] == second["crm_id"]
         assert second["score"] == "95"
+        assert second["budget"] == "R$ 1.000.000"
         rows = store.load()
         assert len(rows) == 1
         assert rows[0]["created_at"] == "2026-09-20T00:00:00+00:00"

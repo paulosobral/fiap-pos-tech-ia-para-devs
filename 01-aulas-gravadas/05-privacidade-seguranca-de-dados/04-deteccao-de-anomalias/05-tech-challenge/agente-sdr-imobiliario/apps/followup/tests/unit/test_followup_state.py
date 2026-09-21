@@ -1,3 +1,6 @@
+import json
+import logging
+
 import pytest
 
 from infra.followup_state import FollowupStateError, FollowupStateStore
@@ -63,3 +66,16 @@ class TestFollowupStateStore:
     def test_read_failure_raises_followup_state_error(self):
         with pytest.raises(FollowupStateError, match="unavailable"):
             FollowupStateStore(FakeStateClient(error=RuntimeError("dynamo down"))).get_state("lead-1")
+
+    def test_failure_logs_are_structured_json(self, caplog):
+        caplog.set_level(logging.INFO)
+        with pytest.raises(FollowupStateError):
+            FollowupStateStore(FakeStateClient(error=RuntimeError("dynamo down"))).get_state("lead-1")
+        with pytest.raises(FollowupStateError):
+            FollowupStateStore(FakeStateClient(error=RuntimeError("dynamo down"))).record_followup(
+                "lead-1", 2, "2026-09-20T12:00:00+00:00", 5
+            )
+        events = [json.loads(r.message) for r in caplog.records if r.message.startswith("{")]
+        names = {e.get("event") for e in events}
+        assert "followup_state_unavailable" in names
+        assert "followup_state_write_failed" in names

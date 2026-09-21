@@ -56,6 +56,19 @@ class TestConversationStore:
         conversations = store.list_conversations()
         assert [c["session_id"] for c in conversations] == ["s1"]
 
+    def test_skipped_items_log_json_event(self, caplog):
+        import json
+        import logging
+
+        caplog.set_level(logging.INFO)
+        page = {"Items": [raw_conversation("s1", "l1"), {"SK": {"S": "CONV#broken"}}]}
+        store, _ = make_store([page])
+        store.list_conversations()
+        record = [r for r in caplog.records if r.name == "infra.logging_utils"][-1]
+        event = json.loads(record.getMessage())
+        assert event["event"] == "conversation_item_skipped"
+        assert event["reason"] == "missing_identifiers"
+
     def test_profile_items_are_not_returned(self):
         page = {
             "Items": [

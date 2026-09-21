@@ -18,6 +18,7 @@
     { "path": "apps/followup/infra/conversation_store.py" },
     { "path": "apps/followup/infra/followup_state.py" },
     { "path": "apps/followup/infra/silence_window.py" },
+    { "path": "apps/followup/infra/structured_log.py" },
     { "path": "apps/followup/tests/" },
     { "path": "apps/followup/tests/__init__.py" },
     { "path": "apps/followup/tests/conftest.py" },

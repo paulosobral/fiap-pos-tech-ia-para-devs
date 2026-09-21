@@ -38,12 +38,14 @@ class WhisperTranscriber:
         compute_type: str = "int8",
         language: str = "pt",
         model_factory: Any | None = None,
+        conversion_timeout: int = 20,
     ) -> None:
         self._model_size = model_size
         self._device = device
         self._compute_type = compute_type
         self._language = language
         self._model_factory = model_factory
+        self._conversion_timeout = conversion_timeout
         self._model: Any | None = None
 
     def transcribe(self, audio_bytes: bytes) -> str:
@@ -62,6 +64,13 @@ class WhisperTranscriber:
         return text
 
     def _convert_to_wav(self, audio_bytes: bytes, workdir: str) -> str:
+        """Converte o áudio em WAV 16k mono via ffmpeg (com timeout).
+
+        Erros de ÁUDIO (ffmpeg roda e rejeita a entrada) → AudioConversionError
+        → drop + fallback ao lead. Erros de AMBIENTE/TRANSIENTES (ffmpeg ausente
+        ou travado) → TranscriptionError com causa raiz → retry/redrive → DLQ
+        (NFR4.1); nunca engolidos silenciosamente.
+        """
         source = os.path.join(workdir, "input.audio")
         target = os.path.join(workdir, "output.wav")
         try:
@@ -71,13 +80,19 @@ class WhisperTranscriber:
                 ["ffmpeg", "-y", "-i", source, "-ar", "16000", "-ac", "1", target],
                 check=True,
                 capture_output=True,
+                timeout=self._conversion_timeout,
             )
         except subprocess.CalledProcessError as exc:
             logger.error("ffmpeg conversion failed: %s", exc.stderr)
             raise AudioConversionError("ffmpeg conversion failed") from exc
+        except subprocess.TimeoutExpired as exc:
+            logger.error(
+                "ffmpeg conversion timed out after %ss: %s", self._conversion_timeout, exc
+            )
+            raise TranscriptionError("ffmpeg conversion timed out") from exc
         except OSError as exc:
             logger.error("ffmpeg unavailable: %s", exc)
-            raise AudioConversionError("ffmpeg unavailable") from exc
+            raise TranscriptionError("ffmpeg unavailable") from exc
         return target
 
     def _load_model(self) -> Any:

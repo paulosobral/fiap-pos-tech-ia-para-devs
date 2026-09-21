@@ -15,6 +15,7 @@
     { "path": "apps/anomaly-detector/infra/__init__.py" },
     { "path": "apps/anomaly-detector/infra/alert_store.py" },
     { "path": "apps/anomaly-detector/infra/conversation_store.py" },
+    { "path": "apps/anomaly-detector/infra/logging_utils.py" },
     { "path": "apps/anomaly-detector/tests/" },
     { "path": "apps/anomaly-detector/tests/__init__.py" },
     { "path": "apps/anomaly-detector/tests/conftest.py" },

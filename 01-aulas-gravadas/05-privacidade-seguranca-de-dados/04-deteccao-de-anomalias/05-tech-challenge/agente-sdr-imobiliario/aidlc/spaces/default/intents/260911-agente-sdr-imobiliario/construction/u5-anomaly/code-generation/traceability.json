@@ -4,12 +4,12 @@
   "upstream_ids": ["FR9", "FR9.1", "FR9.2", "FR9.3", "FR9.4", "NFR5.1", "NFR2.1", "NFR4.1"],
   "coverage": [
     { "id": "FR9", "status": "OK", "target": "apps/anomaly-detector/service/anomaly_detector.py" },
-    { "id": "FR9.1", "status": "OK", "target": "apps/anomaly-detector/service/feature_extractor.py" },
-    { "id": "FR9.2", "status": "OK", "target": "apps/anomaly-detector/service/scorer.py" },
+    { "id": "FR9.1", "status": "OK", "target": "apps/anomaly-detector/service/feature_extractor.py (campo real `at` da U1 lido em _TIME_FIELDS; janela útil 08:00-18:59 em America/Sao_Paulo)" },
+    { "id": "FR9.2", "status": "Deferred", "target": "apps/anomaly-detector/service/scorer.py (contorno de POC: Isolation Forest + PCA com erro de reconstrução substitui o Autoencoder contratado - justificativa em construction/u5-anomaly/code-generation/code-summary.md, Deviations)" },
     { "id": "FR9.3", "status": "OK", "target": "apps/anomaly-detector/infra/alert_store.py" },
-    { "id": "FR9.4", "status": "OK", "target": "apps/anomaly-detector/service/scheduler_gate.py" },
-    { "id": "NFR5.1", "status": "OK", "target": "apps/anomaly-detector/service/anomaly_detector.py" },
+    { "id": "FR9.4", "status": "OK", "target": "apps/anomaly-detector/service/scheduler_gate.py (restrição materializada scheduling_restricted=True + status=open no item, consultável via GSI lead-index; consumida pelo checker REAL da U1 - apps/conversation-router/service/restriction.py DynamoRestrictionCheck; integração provada em apps/anomaly-detector/tests/integration/test_anomaly_pipeline.py TestU1RestrictionContract)" },
+    { "id": "NFR5.1", "status": "OK", "target": "apps/anomaly-detector/infra/logging_utils.py (log_event JSON compartilhado por detector, stores, gate, scorer e handler - provado por caplog em tests/unit e tests/integration)" },
     { "id": "NFR2.1", "status": "OK", "target": "apps/anomaly-detector/tests/integration/test_anomaly_pipeline.py" },
-    { "id": "NFR4.1", "status": "OK", "target": "apps/anomaly-detector/handler.py" }
+    { "id": "NFR4.1", "status": "Deferred", "target": "DLQ da regra do EventBridge - configuração IaC adiada para o estágio de infraestrutura; apps/anomaly-detector/handler.py não implementa DLQ (retry async da Lambda cobre falhas de leitura/escrita no estágio atual)" }
   ]
 }

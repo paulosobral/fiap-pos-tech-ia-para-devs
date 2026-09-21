@@ -55,3 +55,48 @@ class TestDedupeStore:
         store, client = make_store()
         client.delete_item.side_effect = RuntimeError("dynamo down")
         assert store.delete("mid-1") is False
+
+    def test_mark_quarantine_writes_poison_marker(self):
+        store, client = make_store()
+        assert store.mark_quarantine("mid-1", "rollback_failed:SessionError") is True
+        _, kwargs = client.put_item.call_args
+        item = kwargs["Item"]
+        assert kwargs["TableName"] == "sdr-ingest-dedupe"
+        assert item["message_id"] == {"S": "mid-1"}
+        assert item["status"] == {"S": "QUARANTINE"}
+        assert item["quarantine_reason"] == {"S": "rollback_failed:SessionError"}
+        assert "quarantined_at" in item
+
+    def test_mark_quarantine_error_returns_false(self):
+        store, client = make_store()
+        client.put_item.side_effect = RuntimeError("dynamo down")
+        assert store.mark_quarantine("mid-1", "rollback_failed:SessionError") is False
+
+    def test_take_quarantined_releases_only_quarantine_mark(self):
+        store, client = make_store()
+        client.get_item.return_value = {
+            "Item": {"message_id": {"S": "mid-1"}, "status": {"S": "QUARANTINE"}}
+        }
+        assert store.take_quarantined("mid-1") is True
+        client.delete_item.assert_called_once_with(
+            TableName="sdr-ingest-dedupe", Key={"message_id": {"S": "mid-1"}}
+        )
+
+    def test_take_quarantined_ignores_completed_ingest_mark(self):
+        store, client = make_store()
+        client.get_item.return_value = {
+            "Item": {"message_id": {"S": "mid-1"}, "status": {"S": "INGESTED"}}
+        }
+        assert store.take_quarantined("mid-1") is False
+        client.delete_item.assert_not_called()
+
+    def test_take_quarantined_missing_item_returns_false(self):
+        store, client = make_store()
+        client.get_item.return_value = {}
+        assert store.take_quarantined("mid-1") is False
+        client.delete_item.assert_not_called()
+
+    def test_take_quarantined_error_returns_false(self):
+        store, client = make_store()
+        client.get_item.side_effect = RuntimeError("dynamo down")
+        assert store.take_quarantined("mid-1") is False

@@ -94,6 +94,13 @@ class TestVoiceAdapter:
         assert adapter.process_message(message()) == "retry"
         telegram.send_message.assert_not_called()
 
+    def test_environment_failure_is_retryable_without_fallback(self):
+        adapter, telegram, transcriber, router, _ = make_adapter()
+        transcriber.transcribe.side_effect = TranscriptionError("ffmpeg unavailable")
+        assert adapter.process_message(message()) == "retry"
+        telegram.send_message.assert_not_called()
+        router.reinject.assert_not_called()
+
     def test_reinject_failure_is_retryable(self):
         adapter, telegram, _, router, _ = make_adapter()
         router.reinject.side_effect = RouterError("router down")

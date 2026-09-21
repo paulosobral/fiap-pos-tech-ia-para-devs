@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import json
-import logging
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from infra.structured_log import log_event
 
 CONVERSATION_SK_PREFIX = "CONV#"
 PROFILE_SK = "PROFILE"
@@ -62,7 +61,7 @@ class ConversationStore:
         for item in self._scan_by_prefix(PROFILE_SK):
             lead_id = item.get("lead_id")
             if not lead_id:
-                logger.warning("lead profile item missing lead_id; skipped")
+                log_event("lead_profile_skipped", reason="missing_lead_id")
                 continue
             profiles[str(lead_id)] = item
         return profiles
@@ -83,7 +82,7 @@ class ConversationStore:
                         items.append(item)
                         continue
                     if not item.get("session_id") or not item.get("lead_id"):
-                        logger.warning("conversation item missing identifiers; skipped")
+                        log_event("conversation_item_skipped", reason="missing_identifiers")
                         continue
                     items.append(item)
                 last_key = response.get("LastEvaluatedKey")
@@ -93,6 +92,6 @@ class ConversationStore:
         except ConversationStoreError:
             raise
         except Exception as exc:
-            logger.error("conversation store unavailable: %s", exc)
+            log_event("conversation_store_unavailable", error=str(exc))
             raise ConversationStoreError("conversation store unavailable") from exc
         return items

@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import re
 from typing import Any
 
 from infra.dedupe_store import DedupeError
 from infra.session_store import SessionError
-from service.email_parser import EmailParser
+from service.email_parser import EmailParser, ParsedContact
 from service.router_gateway import RouterError, RouterGateway
 
 logger = logging.getLogger(__name__)
@@ -17,6 +19,8 @@ OUTCOME_DROP = "drop"
 
 OUTCOMES = (OUTCOME_OK, OUTCOME_RETRY, OUTCOME_DROP)
 
+_WS_RE = re.compile(r"\s+")
+
 
 class PendingRetryError(Exception):
     """Sinaliza falha transitória ao Lambda (async retry) — nunca para e-mail inválido."""
@@ -24,6 +28,11 @@ class PendingRetryError(Exception):
 
 def log_event(event: str, **fields: Any) -> None:
     logger.info(json.dumps({"event": event, **fields}, default=str))
+
+
+def exc_type(exc: BaseException) -> str:
+    """Nome da classe da exceção (PII-safe): `str(exc)` verbatim pode vazar payload."""
+    return type(exc).__name__
 
 
 class ContactIngest:
@@ -69,7 +78,7 @@ class ContactIngest:
         try:
             return self._ingest(mail)
         except Exception as exc:
-            logger.error("unexpected failure: %s", exc)
+            logger.error("unexpected failure: %s", exc_type(exc))
             return OUTCOME_RETRY
 
     def _ingest(self, mail: dict[str, Any]) -> str:
@@ -78,11 +87,15 @@ class ContactIngest:
         if parsed is None:
             log_event("unparseable_email", message_id=message_id)
             return OUTCOME_DROP
+        dedupe_key = self._dedupe_key(mail, parsed)
+        source = self._source_domain(mail)
         try:
-            first = self.dedupe.put_first(message_id, self._source_domain(mail))
+            first = self.dedupe.put_first(dedupe_key, source)
         except DedupeError as exc:
-            log_event("dedupe_unavailable", message_id=message_id, error=str(exc))
+            log_event("dedupe_unavailable", message_id=message_id, error=exc_type(exc))
             return OUTCOME_RETRY
+        if not first:
+            first = self._release_quarantined(dedupe_key, source, message_id)
         if not first:
             log_event("duplicate_suppressed", message_id=message_id)
             return OUTCOME_DROP
@@ -91,8 +104,8 @@ class ContactIngest:
                 {"name": parsed.name, "email": parsed.email, "phone": parsed.phone}
             )
         except SessionError as exc:
-            self._rollback(message_id)
-            log_event("session_open_failed", message_id=message_id, error=str(exc))
+            self._rollback(dedupe_key, message_id, exc)
+            log_event("session_open_failed", message_id=message_id, error=exc_type(exc))
             return OUTCOME_RETRY
         try:
             self.router.reinject(
@@ -101,12 +114,12 @@ class ContactIngest:
                 text=parsed.message_text,
             )
         except RouterError as exc:
-            self._rollback(message_id)
+            self._rollback(dedupe_key, message_id, exc)
             log_event(
                 "router_reinject_failed",
                 message_id=message_id,
                 session_id=session["session_id"],
-                error=str(exc),
+                error=exc_type(exc),
             )
             return OUTCOME_RETRY
         log_event(
@@ -117,12 +130,68 @@ class ContactIngest:
         )
         return OUTCOME_OK
 
-    def _rollback(self, message_id: str) -> None:
-        """Remove a marca de dedupe (best-effort) para permitir o reprocesso."""
+    def _dedupe_key(self, mail: dict[str, Any], parsed: ParsedContact) -> str:
+        """Chave de dedupe nunca vazia: `messageId` da SES ou hash de conteúdo.
+
+        `messageId` ausente/vazio colapsaria e-mails distintos na mesma chave;
+        nesses casos a chave é derivada por sha256 de (remetente, assunto,
+        corpo normalizado) — e-mails distintos têm chaves distintas.
+        """
+        message_id = str(mail.get("messageId") or "").strip()
+        if message_id:
+            return message_id
+        parts = (
+            str(mail.get("source") or "").strip().lower(),
+            (parsed.subject or "").strip().lower(),
+            _WS_RE.sub(" ", parsed.message_text or "").strip().lower(),
+        )
+        digest = hashlib.sha256("\x1f".join(parts).encode()).hexdigest()
+        return f"sha256:{digest}"
+
+    def _release_quarantined(self, dedupe_key: str, source: str | None, message_id: str) -> bool:
+        """Marca QUARANTINE (tentativa falha sem rollback) não é duplicata.
+
+        Libera a marca (delete) e retoma o reprocesso; a marca de ingest
+        concluída devolve `False` (duplicata real → drop).
+        """
         try:
-            self.dedupe.delete(message_id)
+            released = self.dedupe.take_quarantined(dedupe_key)
         except Exception as exc:
-            logger.error("dedupe rollback failed: %s", exc)
+            log_event("quarantine_release_failed", message_id=message_id, error=exc_type(exc))
+            return False
+        if not released:
+            return False
+        log_event("quarantine_released_for_reprocess", message_id=message_id)
+        try:
+            return self.dedupe.put_first(dedupe_key, source)
+        except DedupeError as exc:
+            log_event("dedupe_unavailable", message_id=message_id, error=exc_type(exc))
+            return False
+
+    def _rollback(self, dedupe_key: str, message_id: str, failure: BaseException) -> None:
+        """Remove a marca de dedupe (best-effort) para permitir o reprocesso.
+
+        Se o rollback falhar, a marca é movida para QUARANTINE (poison
+        explícito de tentativa falha, motivo PII-safe) — nada de marca stale
+        descartando o lead silenciosamente no reprocesso.
+        """
+        try:
+            deleted = bool(self.dedupe.delete(dedupe_key))
+        except Exception as exc:
+            logger.error("dedupe rollback failed: %s", exc_type(exc))
+            deleted = False
+        if deleted:
+            return
+        reason = f"rollback_failed:{exc_type(failure)}"
+        try:
+            marked = bool(self.dedupe.mark_quarantine(dedupe_key, reason))
+        except Exception as exc:
+            logger.error("dedupe quarantine failed: %s", exc_type(exc))
+            marked = False
+        if marked:
+            log_event("dedupe_quarantined", message_id=message_id, reason=reason)
+        else:
+            log_event("dedupe_quarantine_failed", message_id=message_id)
 
     @staticmethod
     def _source_domain(mail: dict[str, Any]) -> str | None:

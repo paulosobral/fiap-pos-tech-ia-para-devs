@@ -81,7 +81,7 @@ class HeuristicEmailParser:
             part = message.get_body(preferencelist=("plain",))
             return str(part.get_content()) if part is not None else ""
         except Exception as exc:
-            logger.error("unreadable email content: %s", exc)
+            logger.error("unreadable email content: %s", type(exc).__name__)
             return ""
 
     def _extract_email(self, mail: dict[str, Any], common: dict[str, Any], body: str) -> str | None:

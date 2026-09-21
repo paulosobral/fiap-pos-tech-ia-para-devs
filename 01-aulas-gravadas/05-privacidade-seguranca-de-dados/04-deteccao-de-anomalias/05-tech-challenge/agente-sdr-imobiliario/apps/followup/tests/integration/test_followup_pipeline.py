@@ -24,7 +24,7 @@ def conversation_raw(lead_id, session_id, created_at, messages=None, intent=None
         "SK": {"S": f"CONV#{session_id}"},
         "session_id": {"S": session_id},
         "lead_id": {"S": lead_id},
-        "messages": {"S": json.dumps(messages or [{"role": "lead", "text": "quero locar", "ts": created_at}])},
+        "messages": {"S": json.dumps(messages or [{"role": "lead", "text": "quero locar", "at": created_at}])},
         "context": {"S": json.dumps(context)},
         "current_state": {"S": "qualification"},
         "pii_masked": {"BOOL": False},
@@ -92,6 +92,7 @@ def env_tables(monkeypatch):
     monkeypatch.setenv("SESSIONS_TABLE", "sdr-sessions-test")
     monkeypatch.setenv("FOLLOWUP_TABLE", "sdr-followup-state-test")
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-token")
+    monkeypatch.setenv("TIMEZONE", "UTC")
     monkeypatch.setenv("SILENCE_WINDOW_START", "0")
     monkeypatch.setenv("SILENCE_WINDOW_END", "0")
     for name in ("FOLLOWUP_CADENCE_DAYS",):
@@ -156,8 +157,8 @@ class TestFollowupPipeline:
             "sess-1",
             iso(now - timedelta(days=5)),
             messages=[
-                {"role": "agent", "text": "follow-up", "ts": iso(followup_at)},
-                {"role": "lead", "text": "ainda tenho interesse", "ts": iso(now - timedelta(hours=1))},
+                {"role": "agent", "text": "follow-up", "at": iso(followup_at)},
+                {"role": "lead", "text": "ainda tenho interesse", "at": iso(now - timedelta(hours=1))},
             ],
         )
         dynamo = FakeDynamo([replied, profile_raw("lead-1")])
@@ -199,7 +200,7 @@ class TestFollowupPipeline:
                         {
                             "role": "lead",
                             "text": "sou ana@empresa.com, tel 11988887777, laje na Faria Lima",
-                            "ts": iso(now - timedelta(days=2)),
+                            "at": iso(now - timedelta(days=2)),
                         }
                     ],
                 ),

@@ -20,7 +20,7 @@ def normal_conversation(lead_id="lead-1", session_id="sess-1"):
     return {
         "session_id": session_id,
         "lead_id": lead_id,
-        "messages": [{"role": "lead", "text": "bom dia", "ts": "2026-09-19T10:00:00+00:00"}],
+        "messages": [{"role": "lead", "text": "bom dia", "at": "2026-09-19T13:00:00+00:00"}],
     }
 
 
@@ -30,7 +30,7 @@ def suspicious_conversation(lead_id="lead-x", session_id="sess-x"):
         "session_id": session_id,
         "lead_id": lead_id,
         "messages": [
-            {"role": "lead", "text": text, "ts": "2026-09-20T03:00:00+00:00"} for _ in range(30)
+            {"role": "lead", "text": text, "at": "2026-09-20T03:00:00+00:00"} for _ in range(30)
         ],
     }
 
@@ -47,9 +47,11 @@ class FakeReader:
 
 
 class FakeAlerts:
-    def __init__(self, error=None):
+    def __init__(self, error=None, open_restriction_leads=()):
         self.saved = []
         self.restricted = []
+        self.resolve_calls = []
+        self.open_restriction_leads = set(open_restriction_leads)
         self.error = error
 
     def save_anomaly(self, anomaly):
@@ -60,6 +62,12 @@ class FakeAlerts:
 
     def restrict_scheduling(self, anomaly_id):
         self.restricted.append(anomaly_id)
+
+    def resolve_open_restriction(self, lead_id, reason=None, resolved_at=None):
+        self.resolve_calls.append(lead_id)
+        if lead_id in self.open_restriction_leads:
+            return [f"{lead_id}#open"]
+        return []
 
 
 class FakeGate:
@@ -89,7 +97,14 @@ class TestAnomalyDetector:
         gate = FakeGate(alerts)
         reader = FakeReader([normal_conversation(), suspicious_conversation()])
         summary = build_detector(reader, alerts, gate).run()
-        assert summary == {"conversations": 2, "scored": 2, "anomalies": 1, "restricted": 1, "errors": 0}
+        assert summary == {
+            "conversations": 2,
+            "scored": 2,
+            "anomalies": 1,
+            "restricted": 1,
+            "resolved": 0,
+            "errors": 0,
+        }
         assert len(alerts.saved) == 1
         item = alerts.saved[0]
         assert item["anomaly_id"] == "sess-x#2026-09-20"
@@ -108,19 +123,79 @@ class TestAnomalyDetector:
 
     def test_empty_conversation_set_is_handled_gracefully(self):
         summary = build_detector(FakeReader([]), FakeAlerts()).run()
-        assert summary == {"conversations": 0, "scored": 0, "anomalies": 0, "restricted": 0, "errors": 0}
+        assert summary == {
+            "conversations": 0,
+            "scored": 0,
+            "anomalies": 0,
+            "restricted": 0,
+            "resolved": 0,
+            "errors": 0,
+        }
 
     def test_all_normal_conversations_produce_no_alerts(self):
         alerts = FakeAlerts()
         reader = FakeReader([normal_conversation(f"lead-{i}", f"sess-{i}") for i in range(3)])
         summary = build_detector(reader, alerts).run()
         assert summary["anomalies"] == 0
+        assert summary["resolved"] == 0
         assert alerts.saved == []
+        assert alerts.resolve_calls == ["lead-0", "lead-1", "lead-2"]
+
+    def test_lead_scored_normal_has_open_restriction_auto_resolved(self):
+        alerts = FakeAlerts(open_restriction_leads={"lead-1"})
+        reader = FakeReader([normal_conversation()])
+        summary = build_detector(reader, alerts).run()
+        assert summary["resolved"] == 1
+        assert alerts.resolve_calls == ["lead-1"]
+
+    def test_anomalous_lead_is_never_auto_resolved(self):
+        alerts = FakeAlerts(open_restriction_leads={"lead-x"})
+        gate = FakeGate(alerts)
+        reader = FakeReader([suspicious_conversation()])
+        summary = build_detector(reader, alerts, gate).run()
+        assert summary["anomalies"] == 1
+        assert summary["resolved"] == 0
+        assert alerts.resolve_calls == []
+
+    def test_partially_anomalous_lead_is_never_auto_resolved(self):
+        alerts = FakeAlerts(open_restriction_leads={"lead-mix"})
+        gate = FakeGate(alerts)
+        reader = FakeReader(
+            [normal_conversation("lead-mix", "sess-mix-1"), suspicious_conversation("lead-mix", "sess-mix-2")]
+        )
+        summary = build_detector(reader, alerts, gate).run()
+        assert summary["anomalies"] == 1
+        assert summary["resolved"] == 0
+        assert alerts.resolve_calls == []
+
+    def test_extraction_failure_lead_is_not_auto_resolved(self):
+        class ExplodingExtractor:
+            def extract(self, conversation):
+                if conversation["session_id"] == "bad":
+                    raise RuntimeError("boom")
+                return {FEATURE_VOLUME: 0, FEATURE_LENGTH: 0.0, FEATURE_SENTIMENT: 0.0, FEATURE_HOURS: 0.0}
+
+        alerts = FakeAlerts(open_restriction_leads={"lead-b"})
+        reader = FakeReader([{"session_id": "bad", "lead_id": "lead-b", "messages": []}, normal_conversation()])
+        detector = AnomalyDetector(
+            conversations=reader, alerts=alerts, scorer=HeuristicScorer(), extractor=ExplodingExtractor(), now_fn=lambda: FIXED_NOW
+        )
+        summary = detector.run()
+        assert summary["errors"] == 1
+        assert summary["scored"] == 1
+        assert "lead-b" not in alerts.resolve_calls
 
     def test_conversation_without_lead_id_is_counted_not_scored(self):
         broken = {"session_id": "sess-9", "messages": []}
         summary = build_detector(FakeReader([broken]), FakeAlerts()).run()
-        assert summary == {"conversations": 1, "scored": 1, "anomalies": 0, "restricted": 0, "errors": 0}
+        assert summary == {
+            "conversations": 1,
+            "scored": 1,
+            "anomalies": 0,
+            "restricted": 0,
+            "resolved": 0,
+            "errors": 0,
+        }
 
     def test_feature_extraction_failure_counts_error_and_continues(self):
         class ExplodingExtractor:

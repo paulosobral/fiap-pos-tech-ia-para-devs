@@ -13,8 +13,11 @@ def lead(**overrides):
         "email": "ana@empresa.com",
         "phone": "+5511999990000",
         "score": 85,
-        "urgency": "alta",
+        "urgency": "high",
         "intent": "compra",
+        "budget": "R$ 800.000",
+        "deadline": "1 mês",
+        "area": "150 m2",
         "session_id": "s1",
     }
     base.update(overrides)
@@ -36,6 +39,9 @@ class TestMcpCrmGateway:
         name, arguments = client.call_tool.call_args[0]
         assert name == "crm_upsert_lead"
         assert arguments["properties"]["email"] == "ana@empresa.com"
+        assert arguments["properties"]["budget"] == "R$ 800.000"
+        assert arguments["properties"]["deadline"] == "1 mês"
+        assert arguments["properties"]["area"] == "150 m2"
 
     def test_get_lead_returns_record(self):
         client = fake_mcp({"crm_id": "hs-1"})

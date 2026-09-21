@@ -86,7 +86,7 @@ class SessionWriter:
             self._client.put_item(TableName=self._table, Item=lead_item)
             self._client.put_item(TableName=self._table, Item=conversation_item)
         except Exception as exc:
-            logger.error("session store unavailable: %s", exc)
+            logger.error("session store unavailable: %s", type(exc).__name__)
             raise SessionError("session store unavailable") from exc
         return {"lead_id": lead_id, "session_id": session_id, "telegram_user_id": user_id}
 

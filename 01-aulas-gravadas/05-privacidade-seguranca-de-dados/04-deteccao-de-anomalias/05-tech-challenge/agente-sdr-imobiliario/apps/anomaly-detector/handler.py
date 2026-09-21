@@ -6,6 +6,7 @@ from typing import Any
 
 from infra.alert_store import AlertStore
 from infra.conversation_store import ConversationStore
+from infra.logging_utils import log_event
 from service.anomaly_detector import AnomalyDetector, utc_now
 from service.feature_extractor import ConversationFeatureExtractor
 from service.scorer import HeuristicScorer, SklearnScorer
@@ -28,7 +29,7 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
     import boto3
 
     if not isinstance(event, dict):
-        logger.warning("unexpected EventBridge payload; running scheduled job anyway")
+        log_event("unexpected_eventbridge_payload")
     client = boto3.client("dynamodb")
     alerts = AlertStore(client, os.environ.get("ALERTS_TABLE", "sdr-alerts"))
     detector = AnomalyDetector(

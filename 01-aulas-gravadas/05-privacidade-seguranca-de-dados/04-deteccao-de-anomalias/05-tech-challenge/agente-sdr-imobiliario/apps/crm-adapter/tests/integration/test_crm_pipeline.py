@@ -13,6 +13,7 @@ from service.status_sync import StatusSync
 
 
 def crm_message(**overrides):
+    """Payload do Contract 4 na forma real da u1 (superfície interna documentada)."""
     base = {
         "message_id": "m1",
         "lead_id": "lead-1",
@@ -21,8 +22,11 @@ def crm_message(**overrides):
             "email": "ana@empresa.com",
             "phone": "+5511999990000",
             "score": 85,
-            "urgency": "alta",
+            "urgency": "high",
             "intent": "compra",
+            "budget": "R$ 800.000",
+            "deadline": "1 mês",
+            "area": "150 m2",
         },
         "session_id": "s1",
         "timestamp": "2026-09-20T00:00:00+00:00",
@@ -63,6 +67,9 @@ class TestCrmPipeline:
         rows = path.open(encoding="utf-8").read()
         assert "lead-1" in rows
         assert "qualificado" in rows
+        assert "R$ 800.000" in rows
+        assert "1 mês" in rows
+        assert "150 m2" in rows
         flow.notify_status.assert_called_once_with("lead-1", "s1", "qualificado")
 
     def test_low_score_lead_lands_in_novo(self, tmp_path):
@@ -79,9 +86,29 @@ class TestCrmPipeline:
             flow=flow,
             sessions=sessions,
         )
-        message = crm_message(lead_data={**crm_message()["lead_data"], "score": 30, "urgency": "baixa"})
+        message = crm_message(lead_data={**crm_message()["lead_data"], "score": 30, "urgency": "low"})
         adapter.handle_event({"Records": [sqs_record("r1", json.dumps(message))]})
         flow.notify_status.assert_called_once_with("lead-1", "s1", "novo")
+
+    def test_regression_blocked_on_redelivery(self, tmp_path):
+        """Redelivery at-least-once não regride estágio avançado pelo corretor."""
+        from infra.csv_store import CsvStore
+        from service.crm_gateway import CsvCrmGateway
+
+        gateway = CsvCrmGateway(CsvStore(str(tmp_path / "crm-leads.csv")))
+        flow = MagicMock()
+        sessions = MagicMock()
+        sessions.get_session.return_value = {"session_id": "s1"}
+        adapter = CrmAdapter(crm=gateway, status=StatusSync(gateway, flow), flow=flow, sessions=sessions)
+        event = {"Records": [sqs_record("r1", json.dumps(crm_message()))]}
+        adapter.handle_event(event)
+        assert flow.notify_status.call_args_list[-1][0] == ("lead-1", "s1", "qualificado")
+        # Corretor avança a esteira no CRM; mensagem idêntica volta (redelivery/re-enfileiramento u1).
+        gateway.update_stage("lead-1", "contato-feito")
+        adapter.handle_event(event)
+        assert flow.notify_status.call_args_list[-1][0] == ("lead-1", "s1", "contato-feito")
+        rows = gateway.get_lead("lead-1")
+        assert rows["stage"] == "contato-feito"
 
     def test_mixed_batch_drops_invalid_without_failure(self):
         adapter, *_ = make_adapter()
@@ -92,20 +119,20 @@ class TestCrmPipeline:
         assert adapter.handle_event({"Records": records}) == {"batchItemFailures": []}
 
     def test_retry_record_listed_in_failures(self):
-        adapter, crm, flow, _ = make_adapter()
+        adapter, crm, _, _ = make_adapter()
         crm.upsert_lead.side_effect = CrmError("crm down")
         result = adapter.handle_event({"Records": [sqs_record("r1", json.dumps(crm_message()))]})
         assert result == {"batchItemFailures": [{"itemIdentifier": "r1"}]}
 
     def test_malformed_body_dropped_explicitly(self):
-        adapter, crm, flow, _ = make_adapter()
+        adapter, crm, _, _ = make_adapter()
         assert adapter.handle_event({"Records": [sqs_record("r1", "not-json")]}) == {
             "batchItemFailures": []
         }
         crm.upsert_lead.assert_not_called()
 
     def test_unknown_lead_dropped_in_batch(self):
-        adapter, crm, flow, _ = make_adapter()
+        adapter, crm, _, _ = make_adapter()
         adapter.sessions.get_session.return_value = None
         result = adapter.handle_event({"Records": [sqs_record("r1", json.dumps(crm_message()))]})
         assert result == {"batchItemFailures": []}
@@ -118,7 +145,7 @@ class TestCrmPipeline:
         assert result == {"batchItemFailures": [{"itemIdentifier": "r1"}]}
 
     def test_retry_policy_exhausted_drops_after_policy(self):
-        adapter, crm, flow, _ = make_adapter()
+        adapter, crm, _, _ = make_adapter()
         crm.upsert_lead.side_effect = CrmError("crm down")
         record = sqs_record("r1", json.dumps(crm_message()))
         record["attributes"] = {"ApproximateReceiveCount": "3"}
@@ -158,16 +185,28 @@ class TestHandlerWiring:
         monkeypatch.setitem(sys.modules, "boto3", boto3)
         monkeypatch.setitem(sys.modules, "requests", requests)
         monkeypatch.setenv("FLOW_BASE_URL", "http://flow.local")
+        monkeypatch.setenv("INTERNAL_SECRET_TOKEN", "seg-interno")
         monkeypatch.setenv("CRM_CSV_PATH", str(tmp_path / "crm-leads.csv"))
         event = {"Records": [sqs_record("r1", json.dumps({"message_id": "m1"}))]}
         result = handler(event)
         assert result == {"batchItemFailures": []}
         boto3.client.assert_called_once_with("dynamodb")
 
-    def test_handler_missing_env_raises(self, monkeypatch, tmp_path):
+    def test_handler_missing_flow_base_url_raises(self, monkeypatch, tmp_path):
         monkeypatch.setitem(sys.modules, "boto3", MagicMock())
         monkeypatch.setitem(sys.modules, "requests", MagicMock())
         monkeypatch.delenv("FLOW_BASE_URL", raising=False)
+        monkeypatch.setenv("INTERNAL_SECRET_TOKEN", "seg-interno")
+        monkeypatch.setenv("CRM_CSV_PATH", str(tmp_path / "crm-leads.csv"))
+        with pytest.raises(RuntimeError):
+            handler({"Records": []})
+
+    def test_handler_missing_internal_secret_raises(self, monkeypatch, tmp_path):
+        """INTERNAL_SECRET_TOKEN é obrigatória (fail-fast): receptor real rejeita 401 sem header."""
+        monkeypatch.setitem(sys.modules, "boto3", MagicMock())
+        monkeypatch.setitem(sys.modules, "requests", MagicMock())
+        monkeypatch.setenv("FLOW_BASE_URL", "http://flow.local")
+        monkeypatch.delenv("INTERNAL_SECRET_TOKEN", raising=False)
         monkeypatch.setenv("CRM_CSV_PATH", str(tmp_path / "crm-leads.csv"))
         with pytest.raises(RuntimeError):
             handler({"Records": []})

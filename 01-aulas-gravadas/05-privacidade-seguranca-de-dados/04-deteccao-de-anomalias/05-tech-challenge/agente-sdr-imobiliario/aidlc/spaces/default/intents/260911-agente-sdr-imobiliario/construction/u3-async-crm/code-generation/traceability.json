@@ -13,7 +13,7 @@
     "Contract 5"
   ],
   "coverage": [
-    { "id": "FR11.1", "status": "OK", "target": "apps/crm-adapter/service/crm_gateway.py" },
+    { "id": "FR11.1", "status": "Deferred", "target": "apps/crm-adapter/service/crm_gateway.py" },
     { "id": "FR11.2", "status": "OK", "target": "apps/crm-adapter/service/crm_gateway.py" },
     { "id": "FR11.3", "status": "OK", "target": "apps/crm-adapter/service/status_sync.py" },
     { "id": "FR7.3", "status": "OK", "target": "apps/crm-adapter/service/status_sync.py" },

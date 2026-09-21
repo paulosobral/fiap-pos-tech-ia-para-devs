@@ -13,6 +13,8 @@ from service.voice_adapter import VoiceAdapter
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+_transcriber: WhisperTranscriber | None = None
+
 
 def _env(name: str) -> str:
     value = os.environ.get(name)
@@ -27,16 +29,26 @@ def _http_client() -> Any:
     return requests.Session()
 
 
+def get_transcriber() -> WhisperTranscriber:
+    """Singleton lazy em nível de módulo: a mesma instância sobrevive entre invocações
+    warm do Lambda, então o modelo Whisper (carregado no primeiro uso) não é recarregado
+    por mensagem."""
+    global _transcriber
+    if _transcriber is None:
+        _transcriber = WhisperTranscriber()
+    return _transcriber
+
+
 def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
     import boto3
 
     http = _http_client()
     telegram = TelegramGateway(http, bot_token=_env("TELEGRAM_BOT_TOKEN"))
-    transcriber = WhisperTranscriber()
+    transcriber = get_transcriber()
     router = HttpRouterGateway(
         http,
         base_url=_env("ROUTER_BASE_URL"),
-        secret_token=os.environ.get("INTERNAL_SECRET_TOKEN"),
+        secret_token=_env("INTERNAL_SECRET_TOKEN"),
     )
     sessions = SessionLookup(
         boto3.client("dynamodb"), os.environ.get("SESSIONS_TABLE", "sdr-sessions")

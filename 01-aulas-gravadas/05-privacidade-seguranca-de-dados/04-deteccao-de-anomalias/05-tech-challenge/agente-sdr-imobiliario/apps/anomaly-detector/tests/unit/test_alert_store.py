@@ -7,6 +7,8 @@ from infra.alert_store import (
     ACTION_ALERT_ISSUED,
     ACTION_SCHEDULE_RESTRICTED,
     ALERT_STATUS_OPEN,
+    ALERT_STATUS_RESOLVED,
+    RESTRICTION_AUTO_RESOLVE_REASON,
     AlertStore,
     AlertStoreError,
 )
@@ -98,3 +100,81 @@ class TestAlertStore:
         store, _ = make_store(fail=True)
         with pytest.raises(AlertStoreError):
             store.find_open_restriction("l-1")
+
+    def test_resolve_restriction_marks_item_resolved_with_reason_and_ts(self):
+        store, client = make_store()
+        store.resolve_restriction("a-1", RESTRICTION_AUTO_RESOLVE_REASON, "2026-09-21T10:00:00+00:00")
+        kwargs = client.update_item.call_args.kwargs
+        assert kwargs["Key"] == {"PK": {"S": "a-1"}}
+        assert kwargs["ExpressionAttributeNames"]["#st"] == "status"
+        assert kwargs["ExpressionAttributeValues"][":s"] == {"S": ALERT_STATUS_RESOLVED}
+        assert kwargs["ExpressionAttributeValues"][":t"] == {"S": "2026-09-21T10:00:00+00:00"}
+        assert kwargs["ExpressionAttributeValues"][":r"] == {"S": RESTRICTION_AUTO_RESOLVE_REASON}
+
+    def test_resolve_restriction_failure_raises_alert_store_error(self):
+        store, _ = make_store(fail=True)
+        with pytest.raises(AlertStoreError):
+            store.resolve_restriction("a-1", "reason", "2026-09-21T10:00:00+00:00")
+
+    def test_restrict_scheduling_failure_raises_alert_store_error(self):
+        store, _ = make_store(fail=True)
+        with pytest.raises(AlertStoreError):
+            store.restrict_scheduling("a-1")
+
+    def test_resolve_open_restriction_resolves_only_open_restricted_items(self):
+        open_restricted = anomaly_item("a-1", scheduling_restricted=True)
+        already_resolved = anomaly_item("a-2", scheduling_restricted=True, status=ALERT_STATUS_RESOLVED)
+        unrestricted = anomaly_item("a-3")
+        store, client = make_store([open_restricted, already_resolved, unrestricted])
+        resolved = store.resolve_open_restriction("l-1", resolved_at="2026-09-21T10:00:00+00:00")
+        assert resolved == ["a-1"]
+        assert client.update_item.call_count == 1
+
+    def test_resolve_open_restriction_defaults_reason_and_timestamp(self):
+        store, client = make_store([anomaly_item("a-1", scheduling_restricted=True)])
+        resolved = store.resolve_open_restriction("l-1")
+        assert resolved == ["a-1"]
+        kwargs = client.update_item.call_args.kwargs
+        assert kwargs["ExpressionAttributeValues"][":r"] == {"S": RESTRICTION_AUTO_RESOLVE_REASON}
+        resolved_at = kwargs["ExpressionAttributeValues"][":t"]["S"]
+        assert resolved_at.endswith("+00:00")
+
+    def test_find_open_restriction_paginates_query(self):
+        page_one = {
+            "Items": [raw_item(anomaly_item("a-1", detected_at="2026-09-19T03:30:00+00:00", scheduling_restricted=True))],
+            "LastEvaluatedKey": {"PK": {"S": "a-1"}},
+        }
+        page_two = {
+            "Items": [raw_item(anomaly_item("a-2", detected_at="2026-09-20T03:30:00+00:00", scheduling_restricted=True))]
+        }
+        store, client = make_store()
+        client.query.side_effect = [page_one, page_two]
+        found = store.find_open_restriction("l-1")
+        assert found["anomaly_id"] == "a-2"
+        assert client.query.call_count == 2
+        assert client.query.call_args_list[1].kwargs["ExclusiveStartKey"] == {"PK": {"S": "a-1"}}
+
+    def test_resolve_open_restriction_paginates_query(self):
+        page_one = {
+            "Items": [raw_item(anomaly_item("a-1", scheduling_restricted=True))],
+            "LastEvaluatedKey": {"PK": {"S": "a-1"}},
+        }
+        page_two = {"Items": [raw_item(anomaly_item("a-2", scheduling_restricted=True))]}
+        store, client = make_store()
+        client.query.side_effect = [page_one, page_two]
+        resolved = store.resolve_open_restriction("l-1", resolved_at="2026-09-21T10:00:00+00:00")
+        assert resolved == ["a-1", "a-2"]
+        assert client.query.call_count == 2
+
+    def test_store_failures_log_json_event(self, caplog):
+        import json
+        import logging
+
+        caplog.set_level(logging.INFO)
+        store, _ = make_store(fail=True)
+        with pytest.raises(AlertStoreError):
+            store.save_anomaly(anomaly_item())
+        record = [r for r in caplog.records if r.name == "infra.logging_utils"][-1]
+        event = json.loads(record.getMessage())
+        assert event["event"] == "alert_store_unavailable"
+        assert event["operation"] == "save_anomaly"

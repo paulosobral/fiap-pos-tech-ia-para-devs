@@ -11,16 +11,16 @@
 ## Como rodar ESTA unidade (comando exato, da raiz do repo)
 
 ```bash
-.venv/bin/python -m pytest apps/crm-adapter/tests --cov=apps/crm-adapter --cov-report=term-missing --cov-fail-under=80
+COVERAGE_FILE=/tmp/.cov-u3 .venv/bin/python -m pytest apps/crm-adapter/tests --cov=apps/crm-adapter --cov-report=term-missing --cov-fail-under=80 -q
 ```
 
-- Escopo: apenas `apps/crm-adapter/tests` (86 testes no momento da gravação; comando jamais dispara as suítes do u1/u2 — rodá-las juntas quebra o bootstrap de path, cada unidade tem comando próprio).
+- Escopo: apenas `apps/crm-adapter/tests` (117 testes no momento da rodada de fix; comando jamais dispara as suítes do u1/u2 — rodá-las juntas quebra o bootstrap de path, cada unidade tem comando próprio). `COVERAGE_FILE` isolado evita colisão com as suítes paralelas.
 - Comando de compilação de validação: `.venv/bin/python -m compileall apps/crm-adapter`.
 
 ## Cobertura esperada
 
 - Piso obrigatório (Testing Contract, escopo `feature`): **80% de linhas** sobre `apps/crm-adapter` — `--cov-fail-under=80` no comando.
-- Resultado atual: **99.57%** (TOTAL: 939 stmts, 4 miss). Misses restantes são linhas defensivas de arquivos de teste (ramos `else: raise AssertionError` e fallback de `open` em teste de I/O).
+- Resultado atual (pós-fix): **99.59%** (TOTAL: 1224 stmts, 5 miss). Misses restantes são linhas defensivas de arquivos de teste (ramos `else: raise AssertionError` e fallback de `open` em teste de I/O).
 
 ## Mocking/stubbing
 
@@ -34,5 +34,6 @@
 
 - Mensagens do Contract 4 geradas por helpers (`crm_message()`, `sqs_record()`); corpo SQS serializado com `json.dumps`.
 - Nenhuma credencial real: tokens de teste são literais inertes (`"sec"`, `"tok"`); env só via monkeypatch (nunca hardcoded em código de produção).
-- `lead_data` dos fixtures carrega PII sintética (nome/e-mail/telefone fictícios) — usada também para provar que os logs estruturados não vazam PII (assertions sobre `caplog.text`).
+- `lead_data` dos fixtures carrega PII sintética (nome/e-mail/telefone fictícios) — usada também para provar que os logs estruturados não vazam PII, inclusive no caminho `invalid_body` (preview mascarado com o padrão oficial) e nos caminhos de erro (JSON via `log_event`); assertions sobre `caplog.text`.
+- Snapshot do payload REAL do produtor (`real_producer_message()`, espelho do `_enqueue_crm` da u1): casos sem registro de PII (email/phone null, fallback de `name`) e com registro completo.
 - Arquivos CSV de teste vivem em `tmp_path` e são descartados pelo pytest.

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import json
-import logging
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from infra.logging_utils import log_event
 
 CONVERSATION_SK_PREFIX = "CONV#"
 _JSON_FIELDS = ("messages", "context")
@@ -66,7 +65,7 @@ class ConversationStore:
                 for raw in response.get("Items", []):
                     item = unmarshal_item(raw)
                     if not item.get("session_id") or not item.get("lead_id"):
-                        logger.warning("conversation item missing identifiers; skipped")
+                        log_event("conversation_item_skipped", reason="missing_identifiers")
                         continue
                     conversations.append(item)
                 last_key = response.get("LastEvaluatedKey")
@@ -76,6 +75,6 @@ class ConversationStore:
         except ConversationStoreError:
             raise
         except Exception as exc:
-            logger.error("conversation store unavailable: %s", exc)
+            log_event("conversation_store_unavailable", error=str(exc))
             raise ConversationStoreError("conversation store unavailable") from exc
         return conversations

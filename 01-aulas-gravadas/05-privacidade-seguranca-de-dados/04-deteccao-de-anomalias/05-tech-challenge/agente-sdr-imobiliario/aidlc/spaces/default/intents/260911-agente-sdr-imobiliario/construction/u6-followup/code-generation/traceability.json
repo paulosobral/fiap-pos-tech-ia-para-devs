@@ -1,14 +1,52 @@
 {
   "stage": "code-generation",
   "unit": "u6-followup",
-  "upstream_ids": ["FR8", "FR8.1", "FR8.2", "FR8.3", "NFR5.1", "NFR2.1", "NFR4.1"],
+  "upstream_ids": [
+    "FR8",
+    "FR8.1",
+    "FR8.2",
+    "FR8.3",
+    "NFR5.1",
+    "NFR2.1",
+    "NFR4.1"
+  ],
   "coverage": [
-    { "id": "FR8", "status": "OK", "target": "apps/followup/service/followup.py" },
-    { "id": "FR8.1", "status": "OK", "target": "apps/followup/service/cadence.py" },
-    { "id": "FR8.2", "status": "OK", "target": "apps/followup/service/message_builder.py" },
-    { "id": "FR8.3", "status": "OK", "target": "apps/followup/infra/silence_window.py" },
-    { "id": "NFR5.1", "status": "OK", "target": "apps/followup/service/followup.py" },
-    { "id": "NFR2.1", "status": "OK", "target": "apps/followup/tests/integration/test_followup_pipeline.py" },
-    { "id": "NFR4.1", "status": "OK", "target": "apps/followup/handler.py" }
+    {
+      "id": "FR8",
+      "status": "OK",
+      "target": "apps/followup/service/followup.py"
+    },
+    {
+      "id": "FR8.1",
+      "status": "OK",
+      "target": "apps/followup/service/cadence.py"
+    },
+    {
+      "id": "FR8.2",
+      "status": "OK",
+      "target": "apps/followup/service/message_builder.py"
+    },
+    {
+      "id": "FR8.3",
+      "status": "OK",
+      "target": "apps/followup/infra/silence_window.py"
+    },
+    {
+      "id": "NFR5.1",
+      "status": "OK",
+      "target": "apps/followup/service/followup.py",
+      "note": "log_event JSON padronizado em toda a unidade (infra/structured_log.py compartilhado por service e infra); sem logger em prosa"
+    },
+    {
+      "id": "NFR2.1",
+      "status": "OK",
+      "target": "apps/followup/tests/integration/test_followup_pipeline.py"
+    },
+    {
+      "id": "NFR4.1",
+      "status": "Deferred",
+      "target": "apps/followup/handler.py",
+      "note": "Implementado nesta unidade: retry no próximo tick (estado não gravado em falha). DLQ do alvo EventBridge é config de IaC — estágios infrastructure/deployment (Build and Test)"
+    }
   ]
 }

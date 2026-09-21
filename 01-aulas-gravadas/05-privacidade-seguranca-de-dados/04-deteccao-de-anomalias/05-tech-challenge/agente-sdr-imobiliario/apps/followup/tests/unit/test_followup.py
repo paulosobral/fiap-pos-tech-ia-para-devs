@@ -1,9 +1,12 @@
+import json
+import logging
 from datetime import datetime, timezone
 
 import pytest
 
 from infra.silence_window import SilenceWindow
 from service.cadence import CadenceCalculator
+from service.duplicate_guard import DuplicateGuard
 from service.followup import FollowupService
 from service.telegram_gateway import GatewayError
 from service.message_builder import FollowupMessageBuilder
@@ -21,7 +24,7 @@ def conversation(lead_id="lead-1", session_id="sess-1", created_at=DAY_2, messag
         "session_id": session_id,
         "lead_id": lead_id,
         "created_at": created_at,
-        "messages": messages if messages is not None else [{"role": "lead", "text": "quero locar", "ts": created_at}],
+        "messages": messages if messages is not None else [{"role": "lead", "text": "quero locar", "at": created_at}],
         "context": context or {"channel": "telegram"},
         "current_state": current_state,
     }
@@ -76,6 +79,17 @@ class FakeGuard:
             if last_lead_message_at > state["last_followup_at"]:
                 return "lead_replied"
         return None
+
+
+class FlakyGuardState(FakeState):
+    def __init__(self, failing_lead):
+        super().__init__()
+        self._failing_lead = failing_lead
+
+    def get_state(self, lead_id):
+        if lead_id == self._failing_lead:
+            raise RuntimeError("dynamo throttling")
+        return super().get_state(lead_id)
 
 
 class FakeTelegram:
@@ -139,8 +153,8 @@ class TestFollowupService:
         replied = conversation(
             created_at=DAY_5,
             messages=[
-                {"role": "agent", "text": "follow-up", "ts": DAY_2},
-                {"role": "lead", "text": "ainda tenho interesse", "ts": "2026-09-19T14:00:00+00:00"},
+                {"role": "agent", "text": "follow-up", "at": DAY_2},
+                {"role": "lead", "text": "ainda tenho interesse", "at": "2026-09-19T14:00:00+00:00"},
             ],
         )
         guard = FakeGuard({"lead-1": {"last_step": 2, "last_followup_at": DAY_2, "replied": True}})
@@ -149,6 +163,59 @@ class TestFollowupService:
         summary = build_service(conversations, guard=guard, telegram=telegram).run()
         assert summary["skipped_replied"] == 1
         assert telegram.sent == []
+
+    def test_u1_message_shape_at_field_drives_reply_suppression(self):
+        replied = conversation(
+            created_at=DAY_5,
+            messages=[
+                {"role": "agent", "text": "follow-up dia 2", "at": DAY_2},
+                {"role": "lead", "text": "ainda tenho interesse", "at": "2026-09-19T14:00:00+00:00"},
+            ],
+        )
+        guard = FakeGuard({"lead-1": {"last_step": 2, "last_followup_at": DAY_2, "replied": True}})
+        telegram = FakeTelegram()
+        conversations = FakeConversations([replied], {"lead-1": profile()})
+        summary = build_service(conversations, guard=guard, telegram=telegram).run()
+        assert summary["skipped_replied"] == 1
+        assert telegram.sent == []
+
+    def test_last_lead_message_at_reads_u1_at_field(self):
+        conv = {"messages": [{"role": "lead", "text": "oi", "at": "2026-09-19T14:00:00+00:00"}]}
+        assert FollowupService._last_lead_message_at(conv) == "2026-09-19T14:00:00+00:00"
+
+    def test_state_read_failure_is_isolated_per_lead(self):
+        guard = DuplicateGuard(FlakyGuardState("lead-bad"))
+        telegram = FakeTelegram()
+        conversations = FakeConversations(
+            [conversation(lead_id="lead-bad", session_id="s-bad"), conversation(lead_id="lead-ok", session_id="s-ok")],
+            {"lead-bad": profile("lead-bad"), "lead-ok": profile("lead-ok")},
+        )
+        summary = build_service(conversations, guard=guard, telegram=telegram).run()
+        assert summary["errors"] == 1
+        assert summary["sent"] == 1
+        assert telegram.sent[0]["chat_id"] == 42
+
+    def test_lead_failure_log_is_structured_json(self, caplog):
+        caplog.set_level(logging.INFO)
+        guard = DuplicateGuard(FlakyGuardState("lead-bad"))
+        conversations = FakeConversations(
+            [conversation(lead_id="lead-bad", session_id="s-bad")],
+            {"lead-bad": profile("lead-bad")},
+        )
+        build_service(conversations, guard=guard).run()
+        events = [json.loads(r.message) for r in caplog.records if r.message.startswith("{")]
+        assert any(
+            e.get("event") == "followup_lead_failed" and e.get("lead_id") == "lead-bad" for e in events
+        )
+
+    def test_conversation_without_lead_id_logs_structured_json(self, caplog):
+        caplog.set_level(logging.INFO)
+        broken = {"session_id": "s-1", "created_at": DAY_2, "messages": []}
+        conversations = FakeConversations([broken], {})
+        summary = build_service(conversations).run()
+        assert summary["leads"] == 0
+        events = [json.loads(r.message) for r in caplog.records if r.message.startswith("{")]
+        assert any(e.get("event") == "conversation_skipped" for e in events)
 
     def test_lead_without_context_is_dropped_explicitly(self):
         telegram = FakeTelegram()

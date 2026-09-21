@@ -40,7 +40,7 @@ def conversation_raw(lead_id="lead-1", session_id="sess-1", created_at="2026-09-
         "SK": {"S": f"CONV#{session_id}"},
         "session_id": {"S": session_id},
         "lead_id": {"S": lead_id},
-        "messages": {"S": json.dumps([{"role": "lead", "text": "quero locar", "ts": created_at}])},
+        "messages": {"S": json.dumps([{"role": "lead", "text": "quero locar", "at": created_at}])},
         "context": {"S": json.dumps({"channel": "telegram"})},
         "current_state": {"S": "qualification"},
         "pii_masked": {"BOOL": False},
@@ -76,6 +76,15 @@ class TestConversationStore:
         broken = {"PK": {"S": "LEAD#x"}, "SK": {"S": "CONV#s1"}, "messages": {"S": "[]"}}
         store = ConversationStore(FakeScanClient([broken, conversation_raw()]))
         assert len(store.list_conversations()) == 1
+
+    def test_skipped_item_logs_are_structured_json(self, caplog):
+        import logging
+
+        caplog.set_level(logging.INFO)
+        broken = {"PK": {"S": "LEAD#x"}, "SK": {"S": "CONV#s1"}, "messages": {"S": "[]"}}
+        ConversationStore(FakeScanClient([broken, conversation_raw()])).list_conversations()
+        events = [json.loads(r.message) for r in caplog.records if r.message.startswith("{")]
+        assert any(e.get("event") == "conversation_item_skipped" for e in events)
 
     def test_scan_pagination_follows_last_evaluated_key(self):
         items = [conversation_raw(f"lead-{i}", f"sess-{i}") for i in range(3)]

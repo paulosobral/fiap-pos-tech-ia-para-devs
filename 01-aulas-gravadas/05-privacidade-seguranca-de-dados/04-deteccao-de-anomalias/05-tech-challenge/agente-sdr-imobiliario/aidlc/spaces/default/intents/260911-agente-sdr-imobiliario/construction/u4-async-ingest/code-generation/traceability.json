@@ -7,8 +7,8 @@
     { "id": "FR12.1", "status": "OK", "target": "apps/contact-ingest/handler.py" },
     { "id": "FR12.2", "status": "OK", "target": "apps/contact-ingest/service/email_parser.py" },
     { "id": "FR12.3", "status": "OK", "target": "apps/contact-ingest/service/contact_ingest.py" },
-    { "id": "NFR4.1", "status": "OK", "target": "apps/contact-ingest/service/contact_ingest.py" },
+    { "id": "NFR4.1", "status": "Deferred", "target": "apps/contact-ingest/handler.py" },
     { "id": "NFR5.1", "status": "OK", "target": "apps/contact-ingest/service/contact_ingest.py" },
-    { "id": "NFR2.1", "status": "OK", "target": "apps/contact-ingest/tests/integration/test_ingest_pipeline.py" }
+    { "id": "NFR2.1", "status": "OK", "target": "apps/contact-ingest/service/contact_ingest.py" }
   ]
 }

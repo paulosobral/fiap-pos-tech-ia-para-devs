@@ -1,20 +1,13 @@
 from __future__ import annotations
 
-import json
-import logging
 from datetime import datetime
 from typing import Any, Callable
 
 from infra.silence_window import SilenceWindow
+from infra.structured_log import log_event
 from service.cadence import CadenceCalculator, parse_iso8601, utc_now
 from service.message_builder import FollowupMessageBuilder
 from service.telegram_gateway import GatewayError
-
-logger = logging.getLogger(__name__)
-
-
-def log_event(event: str, **fields: Any) -> None:
-    logger.info(json.dumps({"event": event, **fields}, default=str))
 
 
 class FollowupService:
@@ -73,9 +66,13 @@ class FollowupService:
             "not_due": 0,
         }
         for lead_id, conversation in sorted(latest.items()):
-            self._process_lead(
-                str(lead_id), conversation, profiles.get(str(lead_id)) or {}, window_open, summary
-            )
+            try:
+                self._process_lead(
+                    str(lead_id), conversation, profiles.get(str(lead_id)) or {}, window_open, summary
+                )
+            except Exception as exc:
+                summary["errors"] += 1
+                log_event("followup_lead_failed", lead_id=str(lead_id), error=str(exc))
         log_event("followup_run_completed", **summary)
         return summary
 
@@ -148,7 +145,7 @@ class FollowupService:
         for conversation in conversations:
             lead_id = conversation.get("lead_id")
             if not lead_id:
-                logger.warning("conversation without lead_id; skipped")
+                log_event("conversation_skipped", reason="missing_lead_id")
                 continue
             current = latest.get(str(lead_id))
             if current is None or self._created_key(conversation) > self._created_key(current):
@@ -164,10 +161,15 @@ class FollowupService:
 
     @staticmethod
     def _last_lead_message_at(conversation: dict[str, Any]) -> str | None:
+        """Última mensagem do lead no schema real do produtor (U1): `{"role", "text", "at"}`.
+
+        `ts` é fallback de compatibilidade; o campo real gravado pelo
+        conversation-router é `at` (ISO-8601 UTC).
+        """
         timestamps = [
-            str(message.get("ts"))
+            str(message.get("at") or message.get("ts"))
             for message in conversation.get("messages") or []
-            if message.get("role") == "lead" and message.get("ts")
+            if message.get("role") == "lead" and (message.get("at") or message.get("ts"))
         ]
         return max(timestamps) if timestamps else None
 

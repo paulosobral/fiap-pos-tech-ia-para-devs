@@ -43,16 +43,31 @@ class TestHttpRouterGateway:
         with pytest.raises(RouterError):
             gateway.reinject(42, "s1", "texto")
 
-    def test_no_secret_no_header(self):
+    def test_missing_secret_fails_fast_before_any_request(self):
         http = MagicMock()
+        with pytest.raises(RouterError):
+            HttpRouterGateway(http, base_url="http://router.local")
+        http.post.assert_not_called()
+
+    def test_reinject_sends_u1_accepted_contract_shape(self):
+        gateway, http = make_gateway()
         http.post.return_value = make_response()
-        gateway = HttpRouterGateway(http, base_url="http://router.local")
-        gateway.reinject(1, "s", "t")
-        assert "X-Internal-Secret" not in http.post.call_args.kwargs["headers"]
+        gateway.reinject(42, "s1", "texto transcrito")
+        url, kwargs = http.post.call_args[0][0], http.post.call_args.kwargs
+        assert url == "http://router.local/internal/inbound-text"
+        assert kwargs["json"] == {
+            "telegram_user_id": 42,
+            "session_id": "s1",
+            "text": "texto transcrito",
+        }
+        assert kwargs["headers"] == {
+            "Content-Type": "application/json",
+            "X-Internal-Secret": "sec",
+        }
 
     def test_trailing_slash_normalized(self):
         http = MagicMock()
         http.post.return_value = make_response()
-        gateway = HttpRouterGateway(http, base_url="http://router.local/")
+        gateway = HttpRouterGateway(http, base_url="http://router.local/", secret_token="sec")
         gateway.reinject(1, "s", "t")
         assert http.post.call_args[0][0] == "http://router.local/internal/inbound-text"

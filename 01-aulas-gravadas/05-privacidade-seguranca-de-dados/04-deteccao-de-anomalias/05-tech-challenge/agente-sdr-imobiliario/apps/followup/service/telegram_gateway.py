@@ -8,11 +8,14 @@ class GatewayError(Exception):
 
 
 class TelegramGateway:
-    """Envio do follow-up via Telegram Bot API (Contrato 1 — sendMessage).
+    """Envio do follow-up via Telegram Bot API `sendMessage` (mesmo mecanismo de
+    envio da U1 — o Contrato 1 cobre apenas o webhook de entrada).
 
     HTTP injetado (padrão do voice-adapter). Diferente do voice-adapter, o
     erro é propagado (`GatewayError`): o orquestrador não grava o estado do
     passo, e o próximo tick repete o follow-up (retry assíncrono da Lambda).
+    A mensagem do `GatewayError` nunca inclui a URL/token do bot — apenas o
+    tipo da exceção ou o status HTTP (PII-safe nos logs).
     """
 
     def __init__(
@@ -35,6 +38,6 @@ class TelegramGateway:
                 timeout=self._timeout,
             )
         except Exception as exc:
-            raise GatewayError(f"sendMessage failed: {exc}") from exc
+            raise GatewayError(f"sendMessage failed: {type(exc).__name__}") from exc
         if not response.ok:
             raise GatewayError(f"sendMessage rejected with status {response.status_code}")

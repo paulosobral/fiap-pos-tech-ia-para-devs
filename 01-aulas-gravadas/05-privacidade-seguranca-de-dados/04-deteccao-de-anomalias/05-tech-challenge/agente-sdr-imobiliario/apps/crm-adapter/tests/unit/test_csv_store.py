@@ -24,6 +24,12 @@ class TestCsvStore:
         rows = store.load()
         assert rows == [row(email="ana@empresa.com", score="85")]
 
+    def test_handoff_columns_roundtrip(self, tmp_path):
+        """Colunas de handoff do Contract 4 atualizado (budget/deadline/area)."""
+        store = CsvStore(str(tmp_path / "leads.csv"))
+        store.save([row(budget="R$ 800.000", deadline="1 mês", area="150 m2")])
+        assert store.load() == [row(budget="R$ 800.000", deadline="1 mês", area="150 m2")]
+
     def test_load_missing_file_returns_empty(self, tmp_path):
         assert CsvStore(str(tmp_path / "missing.csv")).load() == []
 

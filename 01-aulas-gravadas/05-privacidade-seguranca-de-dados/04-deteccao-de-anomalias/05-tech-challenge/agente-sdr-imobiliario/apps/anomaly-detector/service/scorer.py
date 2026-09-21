@@ -1,17 +1,16 @@
 from __future__ import annotations
 
-import logging
+import random
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+from infra.logging_utils import log_event
 from service.feature_extractor import (
     FEATURE_HOURS,
     FEATURE_LENGTH,
     FEATURE_SENTIMENT,
     FEATURE_VOLUME,
 )
-
-logger = logging.getLogger(__name__)
 
 KIND_NONE = "none"
 KIND_ENSEMBLE = "ml_ensemble"
@@ -90,13 +89,33 @@ class SklearnScorer:
     """Ensemble Isolation Forest + PCA (erro de reconstrução como sinal
     residual estilo autoencoder) — FR9.2.
 
+    Calibração fixa, independente do lote: os sinais brutos são padronizados
+    contra um baseline de referência determinístico (distribuição uniforme na
+    região de inliers das faixas heurísticas — as "estatísticas persistentes"
+    da calibração) e reescalados por funções fixas com constantes de módulo —
+    nunca por mínimos/máximos do lote. Assim o mesmo item produz o mesmo
+    score em lotes de tamanhos diferentes, o threshold (`ANOMALY_THRESHOLD`)
+    fica ajustável entre corridas e um lote sem outliers não declara
+    anomalia nenhuma.
+
     Imports guardados dentro do método: sem scikit-learn no runtime levanta
     `ScorerDependencyError` com mensagem clara. Lotes pequenos (< MIN_BATCH)
-    caem para o fallback heurístico: fit não-supervisionado em amostra mínima
-    gera falso-positivo evitável (postura documentada no code-summary).
+    caem para o fallback heurístico: população mínima não justifica o custo
+    do ensemble (postura de falso-positivo documentada no code-summary).
     """
 
     MIN_BATCH = 5
+    BASELINE_SIZE = 200
+    FEATURE_ORDER = (FEATURE_VOLUME, FEATURE_LENGTH, FEATURE_SENTIMENT, FEATURE_HOURS)
+    BASELINE_RANGES = {
+        FEATURE_VOLUME: (0.0, 20.0),
+        FEATURE_LENGTH: (0.0, 400.0),
+        FEATURE_SENTIMENT: (0.0, 0.2),
+        FEATURE_HOURS: (0.0, 0.2),
+    }
+    ISO_FLOOR = -1.0
+    ISO_CEIL = 1.0
+    PCA_ERROR_SCALE = 3.0
 
     def __init__(
         self,
@@ -109,13 +128,14 @@ class SklearnScorer:
         self.contamination = contamination
         self.random_state = random_state
         self._fallback = fallback or HeuristicScorer(threshold)
+        self._models: tuple[Any, Any, Any] | None = None
 
     def score_many(self, feature_rows: list[dict[str, Any]]) -> list[ScoringResult]:
         if len(feature_rows) < self.MIN_BATCH:
-            logger.info(
-                "sklearn scorer skipped: batch of %s below minimum %s; using heuristic fallback",
-                len(feature_rows),
-                self.MIN_BATCH,
+            log_event(
+                "sklearn_scorer_fallback",
+                batch_size=len(feature_rows),
+                min_batch=self.MIN_BATCH,
             )
             return self._fallback.score_many(feature_rows)
         try:
@@ -153,23 +173,55 @@ class SklearnScorer:
         import numpy as np
 
         matrix = np.array(
-            [[float(row.get(key) or 0.0) for key in (FEATURE_VOLUME, FEATURE_LENGTH, FEATURE_SENTIMENT, FEATURE_HOURS)] for row in rows]
+            [[float(row.get(key) or 0.0) for key in self.FEATURE_ORDER] for row in rows]
         )
-        scaled = StandardScaler().fit_transform(matrix)
-        iso_model = IsolationForest(
-            contamination=self.contamination, random_state=self.random_state
-        ).fit(scaled)
-        isolation = self._normalize_to_unit(-iso_model.decision_function(scaled))
-        pca_model = PCA(n_components=2, random_state=self.random_state).fit(scaled)
+        scaler, iso_model, pca_model = self._reference_models(
+            IsolationForest, PCA, StandardScaler
+        )
+        scaled = scaler.transform(matrix)
+        isolation = [
+            self._calibrate_isolation(-float(margin))
+            for margin in iso_model.decision_function(scaled)
+        ]
         reconstructed = pca_model.inverse_transform(pca_model.transform(scaled))
         errors = ((scaled - reconstructed) ** 2).mean(axis=1)
-        reconstruction = self._normalize_to_unit(errors)
+        reconstruction = [self._calibrate_reconstruction(float(error)) for error in errors]
         return isolation, reconstruction
 
-    @staticmethod
-    def _normalize_to_unit(values: Any) -> list[float]:
-        low, high = float(min(values)), float(max(values))
-        span = high - low
-        if span <= 0.0:
-            return [0.0 for _ in values]
-        return [round((float(value) - low) / span, 6) for value in values]
+    def _reference_models(self, IsolationForest: Any, PCA: Any, StandardScaler: Any) -> tuple[Any, Any, Any]:
+        """Baseline fixo de referência: fit único por instância, dados
+        determinísticos — o lote real é pontuado, nunca refitado.
+        """
+        if self._models is None:
+            import numpy as np
+
+            baseline = np.array(self._baseline_rows())
+            scaler = StandardScaler().fit(baseline)
+            scaled_baseline = scaler.transform(baseline)
+            iso_model = IsolationForest(
+                contamination=self.contamination, random_state=self.random_state
+            ).fit(scaled_baseline)
+            pca_model = PCA(n_components=2, random_state=self.random_state).fit(scaled_baseline)
+            self._models = (scaler, iso_model, pca_model)
+        return self._models
+
+    def _baseline_rows(self) -> list[list[float]]:
+        rng = random.Random(self.random_state)
+        return [
+            [rng.uniform(*self.BASELINE_RANGES[key]) for key in self.FEATURE_ORDER]
+            for _ in range(self.BASELINE_SIZE)
+        ]
+
+    @classmethod
+    def _calibrate_isolation(cls, raw_margin: float) -> float:
+        """Mapeia o -decision_function (limites teóricos ≈ (-1, 1)) para [0, 1]:
+        0.5 é a fronteira da referência (offset da contaminação configurada).
+        """
+        return min(max((raw_margin - cls.ISO_FLOOR) / (cls.ISO_CEIL - cls.ISO_FLOOR), 0.0), 1.0)
+
+    @classmethod
+    def _calibrate_reconstruction(cls, error: float) -> float:
+        """Reescala o erro quadrático médio (em desvios-padrão do baseline) por
+        escala fixa: erro ≥ PCA_ERROR_SCALE → 1.0, independente do lote.
+        """
+        return min(max(error / cls.PCA_ERROR_SCALE, 0.0), 1.0)

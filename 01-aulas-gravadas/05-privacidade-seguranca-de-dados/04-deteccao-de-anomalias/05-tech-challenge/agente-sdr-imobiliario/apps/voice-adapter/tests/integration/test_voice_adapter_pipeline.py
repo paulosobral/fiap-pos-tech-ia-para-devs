@@ -104,6 +104,7 @@ class TestHandlerWiring:
         monkeypatch.setitem(sys.modules, "requests", requests)
         monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "tok")
         monkeypatch.setenv("ROUTER_BASE_URL", "http://router.local")
+        monkeypatch.setenv("INTERNAL_SECRET_TOKEN", "sec")
         event = {"Records": [sqs_record("r1", json.dumps({"message_id": "m1"}))]}
         result = handler(event)
         assert result == {"batchItemFailures": []}
@@ -114,5 +115,45 @@ class TestHandlerWiring:
         monkeypatch.setitem(sys.modules, "requests", MagicMock())
         monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
         monkeypatch.setenv("ROUTER_BASE_URL", "http://router.local")
+        monkeypatch.setenv("INTERNAL_SECRET_TOKEN", "sec")
         with pytest.raises(RuntimeError):
             handler({"Records": []})
+
+    def test_handler_missing_internal_secret_env_raises(self, monkeypatch):
+        monkeypatch.setitem(sys.modules, "boto3", MagicMock())
+        monkeypatch.setitem(sys.modules, "requests", MagicMock())
+        monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "tok")
+        monkeypatch.setenv("ROUTER_BASE_URL", "http://router.local")
+        monkeypatch.delenv("INTERNAL_SECRET_TOKEN", raising=False)
+        with pytest.raises(RuntimeError):
+            handler({"Records": []})
+
+
+class TestHandlerTranscriberSingleton:
+    def test_transcriber_created_once_across_warm_invocations(self, monkeypatch):
+        import handler as handler_module
+
+        created = []
+
+        class CountingTranscriber:
+            def __init__(self) -> None:
+                created.append(self)
+
+        monkeypatch.setattr(handler_module, "WhisperTranscriber", CountingTranscriber)
+        monkeypatch.setattr(handler_module, "_transcriber", None)
+        monkeypatch.setitem(sys.modules, "boto3", MagicMock())
+        monkeypatch.setitem(sys.modules, "requests", MagicMock())
+        monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "tok")
+        monkeypatch.setenv("ROUTER_BASE_URL", "http://router.local")
+        monkeypatch.setenv("INTERNAL_SECRET_TOKEN", "sec")
+        handler_module.handler({"Records": []})
+        handler_module.handler({"Records": []})
+        assert len(created) == 1
+
+    def test_get_transcriber_returns_same_instance(self, monkeypatch):
+        import handler as handler_module
+
+        monkeypatch.setattr(handler_module, "_transcriber", None)
+        first = handler_module.get_transcriber()
+        second = handler_module.get_transcriber()
+        assert first is second

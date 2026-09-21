@@ -95,6 +95,7 @@ class TestContactIngest:
         summary = ingest.handle_event({"Records": [{"ses": {"mail": ses_mail()}}]})
         assert summary["retry"] == 1
         dedupe.delete.assert_called_once_with("mid-1")
+        dedupe.mark_quarantine.assert_not_called()
         router.reinject.assert_not_called()
 
     def test_router_failure_retries_and_rolls_back_dedupe(self):
@@ -103,13 +104,109 @@ class TestContactIngest:
         summary = ingest.handle_event({"Records": [{"ses": {"mail": ses_mail()}}]})
         assert summary["retry"] == 1
         dedupe.delete.assert_called_once_with("mid-1")
+        dedupe.mark_quarantine.assert_not_called()
 
-    def test_rollback_failure_still_retries(self):
+    def test_rollback_failure_still_retries_and_quarantines(self):
         ingest, _, dedupe, sessions, _ = make_ingest()
         sessions.open_session.side_effect = SessionError("dynamo down")
         dedupe.delete.side_effect = RuntimeError("delete boom")
         summary = ingest.handle_event({"Records": [{"ses": {"mail": ses_mail()}}]})
         assert summary["retry"] == 1
+        assert dedupe.mark_quarantine.call_args.args[0] == "mid-1"
+        assert dedupe.mark_quarantine.call_args.args[1].startswith("rollback_failed:")
+
+    def test_quarantined_stale_mark_releases_and_reingests(self):
+        ingest, _, dedupe, sessions, router = make_ingest()
+        dedupe.put_first.side_effect = [False, True]
+        dedupe.take_quarantined.return_value = True
+        summary = ingest.handle_event({"Records": [{"ses": {"mail": ses_mail()}}]})
+        assert summary["ok"] == 1
+        dedupe.take_quarantined.assert_called_once_with("mid-1")
+        sessions.open_session.assert_called_once()
+        router.reinject.assert_called_once()
+
+    def test_completed_ingest_mark_is_never_released(self):
+        ingest, _, dedupe, sessions, router = make_ingest(dedupe_first=False)
+        dedupe.take_quarantined.return_value = False
+        summary = ingest.handle_event({"Records": [{"ses": {"mail": ses_mail()}}]})
+        assert summary["drop"] == 1
+        dedupe.take_quarantined.assert_called_once_with("mid-1")
+        sessions.open_session.assert_not_called()
+        router.reinject.assert_not_called()
+
+    def test_quarantine_marking_failure_is_logged_not_silent(self, caplog):
+        ingest, _, dedupe, sessions, _ = make_ingest()
+        sessions.open_session.side_effect = SessionError("dynamo down")
+        dedupe.delete.side_effect = RuntimeError("delete boom")
+        dedupe.mark_quarantine.side_effect = RuntimeError("dynamo down")
+        with caplog.at_level(logging.INFO):
+            summary = ingest.handle_event({"Records": [{"ses": {"mail": ses_mail()}}]})
+        assert summary["retry"] == 1
+        assert '"event": "dedupe_quarantine_failed"' in caplog.text
+
+    def test_missing_message_id_uses_content_hash_key(self):
+        ingest, _, dedupe, *_ = make_ingest()
+        summary = ingest.handle_event({"Records": [{"ses": {"mail": ses_mail(message_id="")}}]})
+        assert summary["ok"] == 1
+        key = dedupe.put_first.call_args.args[0]
+        assert key.startswith("sha256:")
+        assert len(key) > len("sha256:")
+
+    def test_two_emails_without_message_id_do_not_collapse(self):
+        ingest, parser, dedupe, sessions, _ = make_ingest()
+        parser.parse.side_effect = [
+            parsed(),
+            parsed(message_text="Outro interesse, outra laje", subject="Outro assunto"),
+        ]
+        records = [
+            {"ses": {"mail": ses_mail(message_id="")}},
+            {"ses": {"mail": ses_mail(message_id="")}},
+        ]
+        summary = ingest.handle_event({"Records": records})
+        assert summary["ok"] == 2
+        keys = [call.args[0] for call in dedupe.put_first.call_args_list]
+        assert keys[0] != keys[1]
+        assert all(key.startswith("sha256:") for key in keys)
+
+    def test_same_content_without_message_id_dedupes_to_one_ingest(self):
+        ingest, parser, dedupe, sessions, router = make_ingest()
+        parser.parse.side_effect = [parsed(), parsed()]
+        dedupe.put_first.side_effect = [True, False]
+        dedupe.take_quarantined.return_value = False
+        records = [
+            {"ses": {"mail": ses_mail(message_id="")}},
+            {"ses": {"mail": ses_mail(message_id="")}},
+        ]
+        summary = ingest.handle_event({"Records": records})
+        assert summary["ok"] == 1
+        assert summary["drop"] == 1
+        assert sessions.open_session.call_count == 1
+        router.reinject.assert_called_once()
+
+    def test_source_without_domain_uses_none(self):
+        ingest, _, dedupe, *_ = make_ingest()
+        mail = ses_mail()
+        mail["source"] = "plain-sender"
+        summary = ingest.handle_event({"Records": [{"ses": {"mail": mail}}]})
+        assert summary["ok"] == 1
+        dedupe.put_first.assert_called_once_with("mid-1", None)
+
+    def test_error_logs_do_not_leak_exception_payload(self, caplog):
+        ingest, parser, *_ = make_ingest()
+        parser.parse.side_effect = ValueError("payload lead ana@empresa.com quer visita")
+        with caplog.at_level(logging.INFO):
+            summary = ingest.handle_event({"Records": [{"ses": {"mail": ses_mail()}}]})
+        assert summary["retry"] == 1
+        assert "ana@empresa.com" not in caplog.text
+        assert "ValueError" in caplog.text
+
+    def test_router_error_log_carries_type_only(self, caplog):
+        ingest, _, _, _, router = make_ingest()
+        router.reinject.side_effect = RouterError("smtp relay hint: ana@empresa.com")
+        with caplog.at_level(logging.INFO):
+            ingest.handle_event({"Records": [{"ses": {"mail": ses_mail()}}]})
+        assert "ana@empresa.com" not in caplog.text
+        assert '"error": "RouterError"' in caplog.text
 
     def test_unexpected_failure_retries_without_raising(self):
         ingest, parser, *_ = make_ingest()
@@ -133,6 +230,35 @@ class TestContactIngest:
             {"message_id": "m2", "outcome": "drop"},
             {"message_id": "m3", "outcome": "ok"},
         ]
+
+    def test_quarantine_release_error_falls_back_to_duplicate(self, caplog):
+        ingest, _, dedupe, sessions, _ = make_ingest()
+        dedupe.put_first.return_value = False
+        dedupe.take_quarantined.side_effect = RuntimeError("get boom")
+        with caplog.at_level(logging.INFO):
+            summary = ingest.handle_event({"Records": [{"ses": {"mail": ses_mail()}}]})
+        assert summary["drop"] == 1
+        assert '"event": "quarantine_release_failed"' in caplog.text
+        sessions.open_session.assert_not_called()
+
+    def test_quarantine_release_put_race_falls_back_to_duplicate(self):
+        ingest, _, dedupe, sessions, router = make_ingest()
+        dedupe.put_first.side_effect = [False, DedupeError("dynamo down")]
+        dedupe.take_quarantined.return_value = True
+        summary = ingest.handle_event({"Records": [{"ses": {"mail": ses_mail()}}]})
+        assert summary["drop"] == 1
+        sessions.open_session.assert_not_called()
+        router.reinject.assert_not_called()
+
+    def test_mark_quarantine_raise_is_logged_not_raised(self, caplog):
+        ingest, _, dedupe, sessions, _ = make_ingest()
+        sessions.open_session.side_effect = SessionError("dynamo down")
+        dedupe.delete.side_effect = RuntimeError("delete boom")
+        dedupe.mark_quarantine.side_effect = RuntimeError("dynamo down")
+        with caplog.at_level(logging.INFO):
+            summary = ingest.handle_event({"Records": [{"ses": {"mail": ses_mail()}}]})
+        assert summary["retry"] == 1
+        assert "dynamo down" not in caplog.text
 
     def test_no_pii_in_structured_logs(self, caplog):
         ingest, *_ = make_ingest()

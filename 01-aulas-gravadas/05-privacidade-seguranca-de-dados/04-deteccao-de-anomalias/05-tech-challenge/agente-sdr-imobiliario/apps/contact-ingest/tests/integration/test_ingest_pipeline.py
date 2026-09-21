@@ -67,18 +67,32 @@ def ses_event(*records):
 
 
 class MemoryDedupe:
-    def __init__(self):
-        self._seen = set()
+    def __init__(self, delete_fails=False):
+        self._seen = {}
+        self._delete_fails = delete_fails
 
     def put_first(self, message_id, source=None):
         if message_id in self._seen:
             return False
-        self._seen.add(message_id)
+        self._seen[message_id] = {"status": "INGESTED", "source": source}
         return True
 
     def delete(self, message_id):
-        self._seen.discard(message_id)
+        if self._delete_fails:
+            return False
+        self._seen.pop(message_id, None)
         return True
+
+    def mark_quarantine(self, message_id, reason):
+        self._seen[message_id] = {"status": "QUARANTINE", "reason": reason}
+        return True
+
+    def take_quarantined(self, message_id):
+        item = self._seen.get(message_id)
+        if item is not None and item.get("status") == "QUARANTINE":
+            self._seen.pop(message_id, None)
+            return True
+        return False
 
 
 class MemorySessions:
@@ -184,6 +198,22 @@ class TestIngestPipeline:
         assert "98888-7777" not in caplog.text
         assert '"event": "contact_ingested"' in caplog.text
 
+    def test_rollback_failure_quarantine_releases_on_reprocess(self):
+        dedupe = MemoryDedupe(delete_fails=True)
+        sessions = MemorySessions()
+        router = FakeRouter(fail_first=True)
+        ingest = ContactIngest(
+            parser=HeuristicEmailParser(), dedupe=dedupe, sessions=sessions, router=router
+        )
+        record = ses_record(message_id="m1", content=raw_content(PORTAL_BODY))
+        summary = ingest.handle_event(ses_event(record, dict(record)))
+        assert summary["retry"] == 1
+        assert summary["ok"] == 1
+        # 1ª tentativa: rollback falhou → marca QUARANTINE; reprocesso libera e ingeriu
+        assert dedupe._seen["m1"]["status"] == "INGESTED"
+        assert len(router.calls) == 2
+        assert len(sessions.sessions) == 2
+
 
 class TestHandlerWiring:
     def _patch_aws(self, monkeypatch, post_side_effect=None, post_status=200):
@@ -217,3 +247,9 @@ class TestHandlerWiring:
         record = ses_record(source="", mail_overrides={"commonHeaders": {"subject": "Ola"}})
         summary = handler(ses_event(record))
         assert summary["drop"] == 1
+
+    def test_handler_missing_internal_secret_fails_fast(self, monkeypatch):
+        self._patch_aws(monkeypatch)
+        monkeypatch.delenv("INTERNAL_SECRET_TOKEN", raising=False)
+        with pytest.raises(RuntimeError, match="INTERNAL_SECRET_TOKEN"):
+            handler(ses_event(ses_record(content=raw_content(PORTAL_BODY))))

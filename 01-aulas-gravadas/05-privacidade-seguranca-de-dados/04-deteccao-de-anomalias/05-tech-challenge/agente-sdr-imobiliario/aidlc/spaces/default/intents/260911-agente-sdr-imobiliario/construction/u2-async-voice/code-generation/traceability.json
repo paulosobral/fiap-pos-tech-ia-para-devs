@@ -13,14 +13,39 @@
     "Contract 5"
   ],
   "coverage": [
-    { "id": "FR1.2", "status": "OK", "target": "apps/voice-adapter/service/transcriber.py" },
-    { "id": "FR1.3", "status": "OK", "target": "apps/voice-adapter/service/voice_adapter.py" },
+    {
+      "id": "FR1.2",
+      "status": "OK",
+      "target": "apps/voice-adapter/service/transcriber.py",
+      "justification": "Reverificado após R-01: transcrição (faster-whisper PT-BR via ffmpeg) + re-injeção real no endpoint POST /internal/inbound-text da U1 (HttpRouterGateway), autenticado com X-Internal-Secret == env INTERNAL_SECRET_TOKEN (obrigatória no wiring via _env)."
+    },
+    {
+      "id": "FR1.3",
+      "status": "OK",
+      "target": "apps/voice-adapter/service/voice_adapter.py",
+      "justification": "Reverificado após R-01/R-02: o transcript mascarado entra no fluxo da U1 como mensagem inbound do lead — sessão resolvida pelo acesso real da tabela (GSI telegram-user-index + chave composta LEAD#/CONV#), validada pelo SessionLookup antes do processamento."
+    },
     { "id": "NFR2.1", "status": "OK", "target": "apps/voice-adapter/service/pii.py" },
     { "id": "NFR2.2", "status": "OK", "target": "apps/voice-adapter/service/pii.py" },
-    { "id": "NFR2.5", "status": "OK", "target": "apps/voice-adapter/infra/session_store.py" },
+    {
+      "id": "NFR2.5",
+      "status": "N/A",
+      "target": "apps/conversation-router/service/entities.py",
+      "justification": "Retenção/TTL de 90 dias é responsabilidade de ESCRITA da U1 (Conversation.ttl em entities.py, gravado a cada save); o SessionLookup da U2 é somente leitura e não contém (nem deve conter) lógica de TTL. Ajustado de OK para N/A na rodada de fix (R-05)."
+    },
     { "id": "NFR4.1", "status": "OK", "target": "apps/voice-adapter/handler.py" },
     { "id": "NFR5.1", "status": "OK", "target": "apps/voice-adapter/service/voice_adapter.py" },
-    { "id": "Contract 3", "status": "OK", "target": "apps/voice-adapter/service/voice_adapter.py" },
-    { "id": "Contract 5", "status": "OK", "target": "apps/voice-adapter/infra/session_store.py" }
+    {
+      "id": "Contract 3",
+      "status": "OK",
+      "target": "apps/voice-adapter/service/voice_adapter.py",
+      "justification": "Reverificado após R-01: schema do Contract 3 validado (campos obrigatórios + telegram_user_id int), semântica partial-batch (retry → batchItemFailures → redrive/DLQ; drop explícito) e falhas de ambiente propagadas como TranscriptionError (R-06) em vez de engolidas."
+    },
+    {
+      "id": "Contract 5",
+      "status": "OK",
+      "target": "apps/voice-adapter/infra/session_store.py",
+      "justification": "Reverificado após R-02: leitura somente leitura espelhando o acesso real da U1 — GSI telegram-user-index (telegram_user_id = :uid, valor N) + get_item na chave composta LEAD#<lead_id>/CONV#<session_id>. Nenhuma GSI inventada (a GSI session-index não existe e foi removida)."
+    }
   ]
 }
