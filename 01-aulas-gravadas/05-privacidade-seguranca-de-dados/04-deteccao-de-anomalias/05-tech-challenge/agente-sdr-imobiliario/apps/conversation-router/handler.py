@@ -125,6 +125,8 @@ class ConversationRouter:
 
     def handle(self, event: dict[str, Any]) -> dict[str, Any]:
         path = self._path_of(event)
+        if path == "/health":
+            return {"statusCode": 200, "body": json.dumps({"status": "ok"})}
         if path == _INTERNAL_INBOUND_PATH:
             return self.handle_internal_inbound_text(event)
         if path == _INTERNAL_CRM_STATUS_PATH:

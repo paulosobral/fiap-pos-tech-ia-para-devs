@@ -31,3 +31,4 @@
 ## O que este estágio NÃO provisiona
 
 - Este estágio é **validação de design/pré-condições** — o provisionamento real (`terraform apply`) é executado pelo **`deployment-execution`** (decisão registrada no gate do ci-pipeline). Nenhum `terraform apply` é rodado aqui.
+<!-- Re-saved após Consolidated Summary Confirmation (2026-09-21) -->

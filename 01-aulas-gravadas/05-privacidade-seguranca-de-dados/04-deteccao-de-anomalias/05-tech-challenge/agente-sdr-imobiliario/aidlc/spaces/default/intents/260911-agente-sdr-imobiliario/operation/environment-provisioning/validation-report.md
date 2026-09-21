@@ -32,3 +32,4 @@
 ## Achados
 
 - **Nenhum bloqueante.** Notas: (a) `us-east-1` é proposta — confirmada na Q1; (b) backend Terraform local (sem lock) — single-operator assumido (cd-config tradeoff); (c) `faster-whisper`/ASR pesado no deploy real é risco conhecido (layer/snapshot), owner `deployment-execution`.
+<!-- Re-saved após Consolidated Summary Confirmation (2026-09-21) -->
