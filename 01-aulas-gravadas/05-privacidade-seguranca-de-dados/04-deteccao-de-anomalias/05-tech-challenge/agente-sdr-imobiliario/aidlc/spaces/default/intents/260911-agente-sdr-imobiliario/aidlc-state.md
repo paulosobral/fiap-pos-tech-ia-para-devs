@@ -7,7 +7,7 @@
 - **Scope**: feature
 - **Start Date**: 2026-09-11T01:30:39Z
 - **State Version**: 8
-- **Active Agent**: aidlc-architect-agent
+- **Active Agent**: aidlc-developer-agent
 - **Worktree Path**:
 - **Bolt Refs**:
 - **Practices Affirmed Timestamp**: 2026-09-16T01:31:11Z
@@ -29,7 +29,7 @@
 ## Execution Plan Summary
 - **Total Stages**: 32
 - **Completed**: 10
-- **In Progress**: nfr-design
+- **In Progress**: code-generation
 
 ## Runtime State
 - **Revision Count**: 7
@@ -75,9 +75,9 @@
 Per unit: [TBD]
 - [S] functional-design — EXECUTE
 - [S] nfr-requirements — EXECUTE
-- [-] nfr-design — EXECUTE
-- [ ] infrastructure-design — EXECUTE
-- [ ] code-generation — EXECUTE
+- [S] nfr-design — EXECUTE
+- [S] infrastructure-design — EXECUTE
+- [-] code-generation — EXECUTE
 - [ ] build-and-test — EXECUTE
 - [ ] ci-pipeline — EXECUTE
 
@@ -92,12 +92,12 @@ Per unit: [TBD]
 
 ## Current Status
 - **Lifecycle Phase**: CONSTRUCTION
-- **Current Stage**: nfr-design
-- **Next Stage**: infrastructure-design
+- **Current Stage**: code-generation
+- **Next Stage**: build-and-test
 - **Status**: Running
-- **Last Updated**: 2026-09-21T00:06:39Z
+- **Last Updated**: 2026-09-21T00:07:53Z
 
 ## Session Resume Point
 - **Last Completed Stage**: practices-discovery
-- **Next Action**: Execute NFR Design
+- **Next Action**: Execute Code Generation
 - **Pending Artifacts**: none

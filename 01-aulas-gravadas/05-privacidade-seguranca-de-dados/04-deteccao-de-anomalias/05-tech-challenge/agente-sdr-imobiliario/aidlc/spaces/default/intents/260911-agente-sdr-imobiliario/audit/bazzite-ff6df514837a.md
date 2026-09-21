@@ -4745,3 +4745,63 @@
 **Source Baseline**: sha256:e9a139e636701995bd51c6b06d660126c791a297adc36a21bbce1c9a5553877e
 
 ---
+
+## Stage Skip
+**Timestamp**: 2026-09-21T00:07:40Z
+**Event**: STAGE_SKIPPED
+**Stage**: nfr-design
+**Reason**: Skipped by jump to infrastructure-design (forward)
+**Skip Kind**: jump
+
+---
+
+## Stage Jump
+**Timestamp**: 2026-09-21T00:07:40Z
+**Event**: STAGE_JUMPED
+**Direction**: FORWARD
+**Source**: nfr-design
+**Target**: infrastructure-design
+**Scope**: feature
+**Details**: FORWARD jump from nfr-design to infrastructure-design (3.4). Scope: feature.
+**Source Baseline**: sha256:e9a139e636701995bd51c6b06d660126c791a297adc36a21bbce1c9a5553877e
+
+---
+
+## Stage Start
+**Timestamp**: 2026-09-21T00:07:40Z
+**Event**: STAGE_STARTED
+**Stage**: infrastructure-design
+**Agent**: aidlc-aws-platform-agent
+**Source Baseline**: sha256:e9a139e636701995bd51c6b06d660126c791a297adc36a21bbce1c9a5553877e
+
+---
+
+## Stage Skip
+**Timestamp**: 2026-09-21T00:07:53Z
+**Event**: STAGE_SKIPPED
+**Stage**: infrastructure-design
+**Reason**: Skipped by jump to code-generation (forward)
+**Skip Kind**: jump
+
+---
+
+## Stage Jump
+**Timestamp**: 2026-09-21T00:07:53Z
+**Event**: STAGE_JUMPED
+**Direction**: FORWARD
+**Source**: infrastructure-design
+**Target**: code-generation
+**Scope**: feature
+**Details**: FORWARD jump from infrastructure-design to code-generation (3.5). Scope: feature.
+**Source Baseline**: sha256:e9a139e636701995bd51c6b06d660126c791a297adc36a21bbce1c9a5553877e
+
+---
+
+## Stage Start
+**Timestamp**: 2026-09-21T00:07:53Z
+**Event**: STAGE_STARTED
+**Stage**: code-generation
+**Agent**: aidlc-developer-agent
+**Source Baseline**: sha256:e9a139e636701995bd51c6b06d660126c791a297adc36a21bbce1c9a5553877e
+
+---
