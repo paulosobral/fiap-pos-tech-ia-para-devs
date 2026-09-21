@@ -1,0 +1,15 @@
+[project]
+name = "agente-sdr-imobiliario"
+version = "0.1.0"
+description = "Agente SDR Imobiliário B2B — W Levitt (POC)"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+pythonpath = ["apps/conversation-router"]
+testpaths = ["apps/conversation-router/tests"]
+
+[tool.coverage.run]
+source = ["apps/conversation-router"]
+
+[tool.coverage.report]
+fail_under = 80

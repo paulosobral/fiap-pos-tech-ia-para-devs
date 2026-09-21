@@ -1,0 +1,32 @@
+{
+  "stage": "code-generation",
+  "unit": "u1-core-conversation",
+  "version": 2,
+  "note": "v2: layout realinhado ao PRD §7.4 (apps/conversation-router) por decisão do humano; v1 usava src/sdr (removido)",
+  "writes": [
+    { "path": "pyproject.toml" },
+    { "path": "requirements-dev.txt" },
+    { "path": "apps/conversation-router/" },
+    { "path": "apps/conversation-router/__init__.py" },
+    { "path": "apps/conversation-router/handler.py" },
+    { "path": "apps/conversation-router/requirements.txt" },
+    { "path": "apps/conversation-router/service/__init__.py" },
+    { "path": "apps/conversation-router/service/entities.py" },
+    { "path": "apps/conversation-router/service/security_layer.py" },
+    { "path": "apps/conversation-router/service/flow/__init__.py" },
+    { "path": "apps/conversation-router/service/flow/lead_qualifier.py" },
+    { "path": "apps/conversation-router/service/flow/sales_flow.py" },
+    { "path": "apps/conversation-router/infra/__init__.py" },
+    { "path": "apps/conversation-router/infra/session_store.py" },
+    { "path": "apps/conversation-router/tests/__init__.py" },
+    { "path": "apps/conversation-router/tests/unit/__init__.py" },
+    { "path": "apps/conversation-router/tests/unit/test_entities.py" },
+    { "path": "apps/conversation-router/tests/unit/test_session_store.py" },
+    { "path": "apps/conversation-router/tests/unit/test_pii_masker.py" },
+    { "path": "apps/conversation-router/tests/unit/test_guardrails.py" },
+    { "path": "apps/conversation-router/tests/unit/test_lead_qualifier.py" },
+    { "path": "apps/conversation-router/tests/unit/test_sales_flow.py" },
+    { "path": "apps/conversation-router/tests/integration/__init__.py" },
+    { "path": "apps/conversation-router/tests/integration/test_conversation_router.py" }
+  ]
+}
