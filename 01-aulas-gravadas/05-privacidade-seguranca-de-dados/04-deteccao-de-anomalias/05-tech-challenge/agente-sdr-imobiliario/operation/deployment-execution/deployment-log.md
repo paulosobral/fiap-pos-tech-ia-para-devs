@@ -33,7 +33,7 @@
 - DynamoDB ×5 (sdr-sessions c/ GSI lead-index + TTL, sdr-pii, sdr-alerts, sdr-ingest-dedupe, sdr-followup-state).
 - SQS ×6 (voice/crm/ingest queues + 3 DLQs maxReceiveCount 3) + 3 event source mappings (ids 0f153c99…, a7f5e9b7…, 8bd25fd1…).
 - EventBridge ×2 (anomaly rate(1 minute), followup rate(1 day)).
-- KMS key `pii` + alias; Secrets Manager `sdr/sdr-telegram-bot-token` (vazia até o humano preencher) e `sdr/sdr-internal-secret-token` (random_password 32).
+- KMS key `pii` + alias; Secrets Manager `sdr/tg-bot-token` (vazia até o humano preencher) e `sdr/dashboard-api-token` (random_password 32).
 - ECR `sdr-dashboard-ui` + imagem `poc-20260921185026`; ECS cluster `sdr` + task def 256/512 + service desired_count 0; autoscaling scheduled 09:00–17:00 BRT (0→1→0); SG ingress 80; log group 7d.
 - State terraform local (`infra/terraform.tfstate`) — backend local (pós-POC: S3).
 

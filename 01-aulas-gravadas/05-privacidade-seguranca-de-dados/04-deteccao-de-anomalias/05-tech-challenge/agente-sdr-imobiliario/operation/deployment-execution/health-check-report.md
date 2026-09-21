@@ -16,7 +16,7 @@
 | followup (u6) | ✅ agendado | EventBridge rate(1 day) |
 | **voice-adapter (u2)** | ⚠️ **DEGRADADO** | POC empacota sem faster-whisper/ffmpeg/ctranslate2 (limite 50MB do zip direto); mensagens de voz falham → DLQ `sdr-voice-dlq`. Evolução pós-POC: layer + Amazon Transcribe |
 | **dashboard-ui (ECS)** | 🟦 escala 0 fora da janela | desired_count 0 (09:00–17:00 BRT escala 0→1→0); IP público efêmero por task; validar via Console ECS |
-| **bot Telegram** | 🔒 inativo até ativação | secret `sdr/sdr-telegram-bot-token` vazia; para ativar: definir token no Secrets Manager (ou `-var=telegram_bot_token=...`) e re-apply |
+| **bot Telegram** | 🔒 inativo até ativação | secret `sdr/tg-bot-token` vazia; para ativar: definir token no Secrets Manager (ou `-var=telegram_bot_token=...`) e re-apply |
 
 ## Endpoints verificados
 

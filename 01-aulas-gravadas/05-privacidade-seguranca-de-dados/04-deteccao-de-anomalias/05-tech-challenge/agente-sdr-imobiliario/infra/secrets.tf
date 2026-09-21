@@ -36,7 +36,8 @@ resource "aws_kms_alias" "pii" {
 }
 
 resource "aws_secretsmanager_secret" "telegram_bot_token" {
-  name = "sdr/${var.name_prefix}-telegram-bot-token"
+  name                    = "sdr/tg-bot-token"
+  recovery_window_in_days = 0
 }
 resource "aws_secretsmanager_secret_version" "telegram_bot_token" {
   count         = var.telegram_bot_token == "" ? 0 : 1
@@ -45,7 +46,8 @@ resource "aws_secretsmanager_secret_version" "telegram_bot_token" {
 }
 
 resource "aws_secretsmanager_secret" "internal_secret_token" {
-  name = "sdr/${var.name_prefix}-internal-secret-token"
+  name                    = "sdr/dashboard-api-token"
+  recovery_window_in_days = 0
 }
 resource "aws_secretsmanager_secret_version" "internal_secret_token" {
   secret_id     = aws_secretsmanager_secret.internal_secret_token.id

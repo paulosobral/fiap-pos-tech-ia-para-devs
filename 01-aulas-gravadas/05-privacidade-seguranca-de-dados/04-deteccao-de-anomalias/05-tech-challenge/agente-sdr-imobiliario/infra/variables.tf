@@ -42,7 +42,7 @@ variable "anomaly_schedule" {
 }
 
 variable "followup_schedule" {
-  description = "Frequência do follow-up agendado (u6)"
+  description = "Frequência do follow-up agendado (u6) — cron com hora fixa UTC DENTRO da janela de silêncio 8-18 BRT (12:00 UTC = 09:00 BRT). No dev do rate(1 day), o tick cai fora da janela e o follow-up nunca sai."
   type        = string
-  default     = "rate(1 day)"
+  default     = "cron(0 12 * * ? *)"
 }

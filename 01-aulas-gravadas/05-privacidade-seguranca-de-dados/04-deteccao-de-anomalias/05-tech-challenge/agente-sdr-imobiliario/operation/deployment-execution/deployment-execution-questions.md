@@ -16,7 +16,7 @@ Perguntas geradas do trabalho de deployment-execution para consolidação com os
 
 **Evidência:** deployment-log.md §3; decisa do humano (opção B — Fargate mini sem ALB).
 
-## Q4 — Bot Telegram fica inativo até o humano preencher a secret `sdr/sdr-telegram-bot-token` e re-aplicar (não embutimos token no código/state)?
+## Q4 — Bot Telegram fica inativo até o humano preencher a secret `sdr/tg-bot-token` e re-aplicar (não embutimos token no código/state)?
 
 **Evidência:** health-check-report.md; secret_version condicional (`count = token != ""`).
 

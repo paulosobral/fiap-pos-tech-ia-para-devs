@@ -12,6 +12,6 @@ Verificação manual pós-pipeline (curl): `/health` 200, `/api/kpis` com header
 
 ## Observações
 
-- O POC **não valida o valor** do Bearer em /api/kpis (presença apenas). Evolução pós-POC: validar contra `sdr/sdr-internal-secret-token` (Secrets Manager) ou Cognito.
+- O POC **não valida o valor** do Bearer em /api/kpis (presença apenas). Evolução pós-POC: validar contra `sdr/dashboard-api-token` (Secrets Manager) ou Cognito.
 - O dashboard (ECS) não é coberto pelo smoke do pipeline — roda com desired_count fora da janela (09:00–17:00 BRT) e IP público efêmero. Validação manual na janela: Console ECS > cluster `sdr` > service > task > IP público :80.
 - O webhook de produção com Telegram real exige o token em Secrets Manager + re-apply (ver health-check-report).

@@ -19,7 +19,7 @@ module "lambda_followup" {
     TELEGRAM_BOT_TOKEN    = var.telegram_bot_token
     SESSIONS_TABLE        = aws_dynamodb_table.sessions.name
     FOLLOWUP_TABLE        = aws_dynamodb_table.followup.name
-    FOLLOWUP_CADENCE_DAYS = "7"
+    FOLLOWUP_CADENCE_DAYS = "2,5,9"
   }
 }
 

@@ -134,5 +134,5 @@ echo
 echo "Deploy concluído."
 echo "API:            $API_URL"
 echo "Dashboard:      task do ECS sdr-dashboard-ui (IP público no Console > ECS > cluster sdr > service; escala 09:00-17:00 BRT)"
-echo "Token Telegram: substitua em Secrets Manager (sdr/sdr-telegram-bot-token) e re-aplique p/ ativar o bot"
+echo "Token Telegram: substitua em Secrets Manager (sdr/tg-bot-token) e re-aplique p/ ativar o bot"
 echo "Teardown:       ./stop.sh"
