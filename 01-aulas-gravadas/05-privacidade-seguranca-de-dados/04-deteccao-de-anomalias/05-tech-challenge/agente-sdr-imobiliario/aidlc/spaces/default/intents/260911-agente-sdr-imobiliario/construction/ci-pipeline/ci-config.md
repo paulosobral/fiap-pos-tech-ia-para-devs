@@ -63,3 +63,6 @@ done
 
 ## Artifact repositories
 - **Nenhum** (afirmado): POC Python/Node; o bundle nasce do `start.sh` no destino. `ECR/CodeArtifact/S3` não aplicáveis.
+
+<!-- Re-saved após Consolidated Summary Confirmation (2026-09-21, authorization d00a00b3) -->
+

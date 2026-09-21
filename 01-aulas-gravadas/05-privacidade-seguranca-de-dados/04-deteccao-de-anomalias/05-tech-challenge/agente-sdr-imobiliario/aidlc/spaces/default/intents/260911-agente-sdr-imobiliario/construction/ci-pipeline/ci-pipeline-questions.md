@@ -32,3 +32,16 @@ Proposta respeitando `project.md` (cobertura NÃO bloqueante no hackathon) + con
 - C. ECR/container
 
 [Answer]: A
+
+---
+
+## Consolidated Summary Confirmation
+
+Summary consolidado do estágio CI Pipeline:
+1. Sem CI externo (GitHub só repositório); esteira local `start.sh`/`stop.sh` conforme PRD
+2. Pipeline: deps → `compileall` → 8 comandos pytest (624/0, cobertura 95.29–100%) → build `dist/<app>.zip` por Lambda (deps compiladas python3.11) → `terraform apply`
+3. Gates bloqueantes: build, testes 100%, segurança estática, smoke UI; cobertura informativa
+4. IaC: um `.tf` por serviço com módulos HashiCorp (lambda, apigateway-v2, dynamodb-table, sqs+DLQ, ecs p/ Streamlit); implementação no `deployment-execution`
+5. Boundary Construction→Operation: PASS (7/7 units, 48/48 findings resolvidos, gates alinhados)
+
+[Answer]: Looks correct

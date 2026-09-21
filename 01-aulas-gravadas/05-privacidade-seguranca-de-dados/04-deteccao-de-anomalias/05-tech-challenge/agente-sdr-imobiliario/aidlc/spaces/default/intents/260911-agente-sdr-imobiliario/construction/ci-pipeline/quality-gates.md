@@ -23,3 +23,6 @@ Gates executados pela esteira local (`start.sh`, ver `ci-config.md`) antes do de
 
 ## Verificação de boundary (Step 5 do estágio)
 Os gates **reforçam exatamente os comandos de build/teste registrados pelo Build and Test** (`construction/build-and-test/test-results.md`): mesmos 8 comandos pytest + `compileall` + fail-under idêntico. Nenhuma meta foi enfraquecida (regra do estágio: gates não podem reduzir metas — cobertura não-bloqueante é regra afirmada **pelo humano**, não enfraquecimento).
+
+<!-- Re-saved após Consolidated Summary Confirmation (2026-09-21, authorization d00a00b3) -->
+
