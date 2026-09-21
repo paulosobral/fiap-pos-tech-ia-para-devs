@@ -4685,3 +4685,63 @@
 **Source Baseline**: sha256:e9a139e636701995bd51c6b06d660126c791a297adc36a21bbce1c9a5553877e
 
 ---
+
+## Stage Skip
+**Timestamp**: 2026-09-21T00:06:26Z
+**Event**: STAGE_SKIPPED
+**Stage**: functional-design
+**Reason**: Skipped by jump to nfr-requirements (forward)
+**Skip Kind**: jump
+
+---
+
+## Stage Jump
+**Timestamp**: 2026-09-21T00:06:26Z
+**Event**: STAGE_JUMPED
+**Direction**: FORWARD
+**Source**: functional-design
+**Target**: nfr-requirements
+**Scope**: feature
+**Details**: FORWARD jump from functional-design to nfr-requirements (3.2). Scope: feature.
+**Source Baseline**: sha256:e9a139e636701995bd51c6b06d660126c791a297adc36a21bbce1c9a5553877e
+
+---
+
+## Stage Start
+**Timestamp**: 2026-09-21T00:06:26Z
+**Event**: STAGE_STARTED
+**Stage**: nfr-requirements
+**Agent**: aidlc-architect-agent
+**Source Baseline**: sha256:e9a139e636701995bd51c6b06d660126c791a297adc36a21bbce1c9a5553877e
+
+---
+
+## Stage Skip
+**Timestamp**: 2026-09-21T00:06:39Z
+**Event**: STAGE_SKIPPED
+**Stage**: nfr-requirements
+**Reason**: Skipped by jump to nfr-design (forward)
+**Skip Kind**: jump
+
+---
+
+## Stage Jump
+**Timestamp**: 2026-09-21T00:06:39Z
+**Event**: STAGE_JUMPED
+**Direction**: FORWARD
+**Source**: nfr-requirements
+**Target**: nfr-design
+**Scope**: feature
+**Details**: FORWARD jump from nfr-requirements to nfr-design (3.3). Scope: feature.
+**Source Baseline**: sha256:e9a139e636701995bd51c6b06d660126c791a297adc36a21bbce1c9a5553877e
+
+---
+
+## Stage Start
+**Timestamp**: 2026-09-21T00:06:39Z
+**Event**: STAGE_STARTED
+**Stage**: nfr-design
+**Agent**: aidlc-architect-agent
+**Source Baseline**: sha256:e9a139e636701995bd51c6b06d660126c791a297adc36a21bbce1c9a5553877e
+
+---
