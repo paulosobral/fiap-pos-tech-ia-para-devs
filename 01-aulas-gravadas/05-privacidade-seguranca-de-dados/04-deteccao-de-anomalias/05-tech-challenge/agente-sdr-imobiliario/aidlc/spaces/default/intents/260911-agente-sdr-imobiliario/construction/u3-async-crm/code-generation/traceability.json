@@ -1,0 +1,26 @@
+{
+  "stage": "code-generation",
+  "unit": "u3-async-crm",
+  "upstream_ids": [
+    "FR11.1",
+    "FR11.2",
+    "FR11.3",
+    "FR7.3",
+    "NFR2.1",
+    "NFR4.1",
+    "NFR5.1",
+    "Contract 4",
+    "Contract 5"
+  ],
+  "coverage": [
+    { "id": "FR11.1", "status": "OK", "target": "apps/crm-adapter/service/crm_gateway.py" },
+    { "id": "FR11.2", "status": "OK", "target": "apps/crm-adapter/service/crm_gateway.py" },
+    { "id": "FR11.3", "status": "OK", "target": "apps/crm-adapter/service/status_sync.py" },
+    { "id": "FR7.3", "status": "OK", "target": "apps/crm-adapter/service/status_sync.py" },
+    { "id": "NFR2.1", "status": "OK", "target": "apps/crm-adapter/service/crm_adapter.py" },
+    { "id": "NFR4.1", "status": "OK", "target": "apps/crm-adapter/handler.py" },
+    { "id": "NFR5.1", "status": "OK", "target": "apps/crm-adapter/service/crm_adapter.py" },
+    { "id": "Contract 4", "status": "OK", "target": "apps/crm-adapter/service/crm_adapter.py" },
+    { "id": "Contract 5", "status": "OK", "target": "apps/crm-adapter/infra/session_store.py" }
+  ]
+}

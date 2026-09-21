@@ -1,0 +1,18 @@
+{
+  "stage": "code-generation",
+  "unit": "u7-dashboard",
+  "upstream_ids": ["FR7", "FR7.1", "FR7.2", "FR7.3", "FR7.4", "FR9.3", "FR10.1", "FR10.2", "NFR5.1", "NFR2.1", "NFR4.1"],
+  "coverage": [
+    { "id": "FR7", "status": "OK", "target": "apps/dashboard-ui/app.py" },
+    { "id": "FR7.1", "status": "OK", "target": "apps/dashboard-ui/app.py" },
+    { "id": "FR7.2", "status": "OK", "target": "apps/dashboard-api/service/kpis.py" },
+    { "id": "FR7.3", "status": "OK", "target": "apps/dashboard-api/service/kpi_calc.py" },
+    { "id": "FR7.4", "status": "OK", "target": "apps/dashboard-api/infra/alert_store.py" },
+    { "id": "FR9.3", "status": "OK", "target": "apps/dashboard-api/infra/alert_store.py" },
+    { "id": "FR10.1", "status": "OK", "target": "apps/dashboard-api/service/kpi_calc.py" },
+    { "id": "FR10.2", "status": "OK", "target": "apps/dashboard-api/service/kpi_calc.py" },
+    { "id": "NFR5.1", "status": "OK", "target": "apps/dashboard-api/service/kpis.py" },
+    { "id": "NFR2.1", "status": "OK", "target": "apps/dashboard-api/tests/integration/test_kpis_pipeline.py" },
+    { "id": "NFR4.1", "status": "OK", "target": "apps/dashboard-api/handler.py" }
+  ]
+}

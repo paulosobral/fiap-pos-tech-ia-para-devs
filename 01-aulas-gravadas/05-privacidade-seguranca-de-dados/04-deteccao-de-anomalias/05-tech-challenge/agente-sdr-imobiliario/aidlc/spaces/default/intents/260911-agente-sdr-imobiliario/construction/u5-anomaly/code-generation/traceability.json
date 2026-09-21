@@ -1,0 +1,15 @@
+{
+  "stage": "code-generation",
+  "unit": "u5-anomaly",
+  "upstream_ids": ["FR9", "FR9.1", "FR9.2", "FR9.3", "FR9.4", "NFR5.1", "NFR2.1", "NFR4.1"],
+  "coverage": [
+    { "id": "FR9", "status": "OK", "target": "apps/anomaly-detector/service/anomaly_detector.py" },
+    { "id": "FR9.1", "status": "OK", "target": "apps/anomaly-detector/service/feature_extractor.py" },
+    { "id": "FR9.2", "status": "OK", "target": "apps/anomaly-detector/service/scorer.py" },
+    { "id": "FR9.3", "status": "OK", "target": "apps/anomaly-detector/infra/alert_store.py" },
+    { "id": "FR9.4", "status": "OK", "target": "apps/anomaly-detector/service/scheduler_gate.py" },
+    { "id": "NFR5.1", "status": "OK", "target": "apps/anomaly-detector/service/anomaly_detector.py" },
+    { "id": "NFR2.1", "status": "OK", "target": "apps/anomaly-detector/tests/integration/test_anomaly_pipeline.py" },
+    { "id": "NFR4.1", "status": "OK", "target": "apps/anomaly-detector/handler.py" }
+  ]
+}

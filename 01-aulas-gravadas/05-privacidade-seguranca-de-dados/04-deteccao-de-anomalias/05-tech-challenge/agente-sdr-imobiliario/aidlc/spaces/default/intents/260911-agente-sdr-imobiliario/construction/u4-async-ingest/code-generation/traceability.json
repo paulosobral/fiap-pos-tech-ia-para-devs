@@ -1,0 +1,14 @@
+{
+  "stage": "code-generation",
+  "unit": "u4-async-ingest",
+  "upstream_ids": ["FR12", "FR12.1", "FR12.2", "FR12.3", "NFR4.1", "NFR5.1", "NFR2.1"],
+  "coverage": [
+    { "id": "FR12", "status": "OK", "target": "apps/contact-ingest/infra/dedupe_store.py" },
+    { "id": "FR12.1", "status": "OK", "target": "apps/contact-ingest/handler.py" },
+    { "id": "FR12.2", "status": "OK", "target": "apps/contact-ingest/service/email_parser.py" },
+    { "id": "FR12.3", "status": "OK", "target": "apps/contact-ingest/service/contact_ingest.py" },
+    { "id": "NFR4.1", "status": "OK", "target": "apps/contact-ingest/service/contact_ingest.py" },
+    { "id": "NFR5.1", "status": "OK", "target": "apps/contact-ingest/service/contact_ingest.py" },
+    { "id": "NFR2.1", "status": "OK", "target": "apps/contact-ingest/tests/integration/test_ingest_pipeline.py" }
+  ]
+}

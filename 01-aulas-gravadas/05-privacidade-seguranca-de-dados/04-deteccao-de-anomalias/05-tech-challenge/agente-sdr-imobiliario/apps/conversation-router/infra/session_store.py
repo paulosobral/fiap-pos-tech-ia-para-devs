@@ -33,7 +33,8 @@ class SessionStore:
         if not lead_id:
             return None, None
         lead_item = self._client.get_item(
-            TableName=self._table, Key={"PK": {"S": f"LEAD#{lead_id}"}}
+            TableName=self._table,
+            Key={"PK": {"S": f"LEAD#{lead_id}"}, "SK": {"S": "PROFILE"}},
         ).get("Item")
         if not lead_item:
             return None, None

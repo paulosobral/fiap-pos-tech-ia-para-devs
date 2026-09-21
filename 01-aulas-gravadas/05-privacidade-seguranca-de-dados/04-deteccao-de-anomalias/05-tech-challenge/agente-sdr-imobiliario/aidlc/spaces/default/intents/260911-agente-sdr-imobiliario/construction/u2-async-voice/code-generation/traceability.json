@@ -1,0 +1,26 @@
+{
+  "stage": "code-generation",
+  "unit": "u2-async-voice",
+  "upstream_ids": [
+    "FR1.2",
+    "FR1.3",
+    "NFR2.1",
+    "NFR2.2",
+    "NFR2.5",
+    "NFR4.1",
+    "NFR5.1",
+    "Contract 3",
+    "Contract 5"
+  ],
+  "coverage": [
+    { "id": "FR1.2", "status": "OK", "target": "apps/voice-adapter/service/transcriber.py" },
+    { "id": "FR1.3", "status": "OK", "target": "apps/voice-adapter/service/voice_adapter.py" },
+    { "id": "NFR2.1", "status": "OK", "target": "apps/voice-adapter/service/pii.py" },
+    { "id": "NFR2.2", "status": "OK", "target": "apps/voice-adapter/service/pii.py" },
+    { "id": "NFR2.5", "status": "OK", "target": "apps/voice-adapter/infra/session_store.py" },
+    { "id": "NFR4.1", "status": "OK", "target": "apps/voice-adapter/handler.py" },
+    { "id": "NFR5.1", "status": "OK", "target": "apps/voice-adapter/service/voice_adapter.py" },
+    { "id": "Contract 3", "status": "OK", "target": "apps/voice-adapter/service/voice_adapter.py" },
+    { "id": "Contract 5", "status": "OK", "target": "apps/voice-adapter/infra/session_store.py" }
+  ]
+}

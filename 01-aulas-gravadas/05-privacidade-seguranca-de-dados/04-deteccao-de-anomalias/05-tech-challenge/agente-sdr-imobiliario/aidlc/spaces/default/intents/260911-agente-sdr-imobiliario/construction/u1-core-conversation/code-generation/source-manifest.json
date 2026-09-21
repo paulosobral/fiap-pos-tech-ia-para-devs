@@ -1,8 +1,7 @@
 {
   "stage": "code-generation",
   "unit": "u1-core-conversation",
-  "version": 2,
-  "note": "v2: layout realinhado ao PRD §7.4 (apps/conversation-router) por decisão do humano; v1 usava src/sdr (removido)",
+  "version": 1,
   "writes": [
     { "path": "pyproject.toml" },
     { "path": "requirements-dev.txt" },
@@ -27,6 +26,7 @@
     { "path": "apps/conversation-router/tests/unit/test_lead_qualifier.py" },
     { "path": "apps/conversation-router/tests/unit/test_sales_flow.py" },
     { "path": "apps/conversation-router/tests/integration/__init__.py" },
+    { "path": "apps/conversation-router/tests/integration/fixtures.py" },
     { "path": "apps/conversation-router/tests/integration/test_conversation_router.py" }
   ]
 }

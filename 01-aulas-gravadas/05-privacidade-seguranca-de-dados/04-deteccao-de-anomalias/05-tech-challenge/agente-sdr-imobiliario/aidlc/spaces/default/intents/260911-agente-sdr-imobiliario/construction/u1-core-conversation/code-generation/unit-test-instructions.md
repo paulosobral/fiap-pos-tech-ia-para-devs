@@ -10,7 +10,7 @@
 ## Comando desta unidade (escopo exato)
 
 ```bash
-python -m pytest apps/conversation-router/tests/unit/test_pii_masker.py apps/conversation-router/tests/unit/test_guardrails.py apps/conversation-router/tests/unit/test_lead_qualifier.py apps/conversation-router/tests/unit/test_session_store.py apps/conversation-router/tests/unit/test_sales_flow.py apps/conversation-router/tests/unit/test_entities.py apps/conversation-router/tests/integration/test_conversation_router.py --cov=apps/conversation-router --cov-report=term-missing --cov-fail-under=80
+.venv/bin/python -m pytest apps/conversation-router/tests/unit/test_pii_masker.py apps/conversation-router/tests/unit/test_guardrails.py apps/conversation-router/tests/unit/test_lead_qualifier.py apps/conversation-router/tests/unit/test_session_store.py apps/conversation-router/tests/unit/test_sales_flow.py apps/conversation-router/tests/unit/test_entities.py apps/conversation-router/tests/integration/test_conversation_router.py --cov=apps/conversation-router --cov-report=term-missing --cov-fail-under=80 -q
 ```
 
 Comando proibido aqui (seria executado no Build and Test): `pytest` sem filtro de unidade.
@@ -21,17 +21,17 @@ Comando proibido aqui (seria executado no Build and Test): `pytest` sem filtro d
 
 ## Contagem por componente (standard: 5-8)
 
-- `test_pii_masker.py` — 8 testes
+- `test_pii_masker.py` — 11 testes
 - `test_guardrails.py` — 5 testes
-- `test_lead_qualifier.py` — 8 testes
-- `test_entities.py` — 8 testes
-- `test_session_store.py` — 4 testes
-- `test_sales_flow.py` — 8 testes
-- `test_conversation_router.py` — 9 testes
+- `test_lead_qualifier.py` — 10 testes
+- `test_entities.py` — 9 testes
+- `test_session_store.py` — 5 testes
+- `test_sales_flow.py` — 14 testes
+- `test_conversation_router.py` — 14 testes (integração)
 
 ## Mocking/stubbing
 
-- `boto3`: `moto`-free — doubles simples via `unittest.mock.MagicMock` (Cliente DynamoDB e SQS stubados).
+- `boto3`: `moto`-free — doubles simples via `unittest.mock.MagicMock` (Cliente DynamoDB e SQS stubados); doubles reutilizáveis em `tests/integration/fixtures.py`.
 - LLM (OpenRouter/LiteLLM): stub de função (`llm_classify_intent` injetável).
 - Telegram/SQS: handlers retornam dicts; clientes injetados por parâmetro (injeção de dependência, sem singletons).
 

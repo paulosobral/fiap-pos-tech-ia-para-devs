@@ -1,66 +1,10 @@
 import json
+import sys
+import types
 from unittest.mock import MagicMock
 
-import pytest
-
-from service.flow.lead_qualifier import LeadQualifier
-from service.flow.sales_flow import SalesFlow
-from handler import ConversationRouter
-from service.security_layer import SecurityLayer
-from infra.session_store import SessionStore
-
-
-class FakeDynamo:
-    def __init__(self):
-        self.items = {}
-
-    def query(self, TableName, IndexName=None, **kw):
-        if IndexName == "lead-index":
-            return {"Items": [item for item in self.items.values() if item["SK"]["S"].startswith("CONV#")]}
-        return {"Items": [item for item in self.items.values() if item["SK"]["S"] == "PROFILE"]}
-
-    def get_item(self, TableName, Key):
-        pk = Key["PK"]["S"]
-        for item in self.items.values():
-            if item["PK"]["S"] == pk and item["SK"]["S"] == "PROFILE":
-                return {"Item": item}
-        return {}
-
-    def put_item(self, TableName, Item):
-        key = Item["PK"]["S"] + "#" + Item["SK"]["S"]
-        self.items[key] = Item
-
-
-def make_router(secret="tok"):
-    store = SessionStore(FakeDynamo(), "t")
-    security = SecurityLayer()
-    flow = SalesFlow(lead_qualifier=LeadQualifier())
-    sqs = MagicMock()
-    telegram = MagicMock()
-    return (
-        ConversationRouter(
-            store=store,
-            security_layer=security,
-            sales_flow=flow,
-            sqs_client=sqs,
-            telegram_client=telegram,
-            voice_queue_url="https://sqs/voice",
-            crm_queue_url="https://sqs/crm",
-            secret_token=secret,
-        ),
-        sqs,
-        telegram,
-    )
-
-
-def update(text, user_id=42, chat_id=7, voice=None):
-    message = {"message_id": 1, "from": {"id": user_id}, "chat": {"id": chat_id}, "text": text}
-    if voice:
-        message["voice"] = voice
-    return {
-        "headers": {"X-Telegram-Bot-Api-Secret-Token": "tok"},
-        "body": json.dumps({"update_id": 1, "message": message}),
-    }
+import handler as handler_module
+from tests.integration.fixtures import FakeDynamo, make_router, telegram_update as update
 
 
 class TestConversationRouter:
@@ -119,3 +63,72 @@ class TestConversationRouter:
         router.handle(update("continuar"))
         calls = sqs.send_message.call_args_list
         assert any(json.loads(c.kwargs["MessageBody"]).get("lead_id") for c in calls)
+
+    def test_production_handler_sends_telegram_reply(self, monkeypatch):
+        monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "bot-token")
+        monkeypatch.setenv("TELEGRAM_SECRET_TOKEN", "tok")
+        monkeypatch.delenv("PII_KMS_KEY_ID", raising=False)
+        fake_dynamo = FakeDynamo()
+        fake_sqs = MagicMock()
+
+        def fake_boto3_client(name, **kw):
+            if name == "dynamodb":
+                return fake_dynamo
+            if name == "sqs":
+                return fake_sqs
+            raise AssertionError(name)
+
+        fake_boto3 = types.ModuleType("boto3")
+        fake_boto3.client = fake_boto3_client
+        telegram = MagicMock()
+        monkeypatch.setitem(sys.modules, "boto3", fake_boto3)
+        monkeypatch.setattr(handler_module, "TelegramApi", lambda token: telegram)
+        result = handler_module.handler(update("olá"))
+        assert result["statusCode"] == 200
+        telegram.send_message.assert_called_once()
+
+    def test_lead_info_extracted_end_to_end_without_seed(self):
+        router, _, _ = make_router()
+        router.handle(update("/start"))
+        router.handle(update("sim"))
+        router.handle(update("quero alugar uma sala"))
+        router.handle(
+            update(
+                "sala de 100 m² na região de Pinheiros, orçamento R$ 60 mil, "
+                "prazo de 2 meses, 20 pessoas, sou o decisor"
+            )
+        )
+        _, conversation = router.store.get_by_telegram_user(42)
+        lead_info = conversation.context["lead_info"]
+        assert lead_info["area"] == "100 m²"
+        assert lead_info["region"] == "Pinheiros"
+        assert lead_info["budget"] == "R$ 60 mil"
+        assert lead_info["deadline"].endswith("2 meses")
+        assert lead_info["people_count"] == 20
+        assert lead_info["decision_maker"] == "yes"
+
+    def test_refusal_persists_consent_recorded_false(self):
+        router, _, _ = make_router()
+        router.handle(update("/start"))
+        router.handle(update("não"))
+        _, conversation = router.store.get_by_telegram_user(42)
+        assert conversation.consent_recorded is False
+        assert conversation.current_state == "followup"
+
+    def test_crm_lead_data_populated_from_pii_registry(self):
+        router, sqs, _ = make_router(with_pii=True)
+        router.handle(update("Meu e-mail é joao@empresa.com, telefone +55 11 91234-5678"))
+        router.flow.invoke = lambda s: {**s, "lead_qualified": True, "score": 90, "current_state": "handoff", "response": "ok"}
+        router.handle(update("continuar"))
+        crm_bodies = [json.loads(c.kwargs["MessageBody"]) for c in sqs.send_message.call_args_list]
+        lead_data = [b["lead_data"] for b in crm_bodies if "lead_data" in b]
+        assert lead_data[0]["email"] == "joao@empresa.com"
+        assert lead_data[0]["phone"] == "+55 11 91234-5678"
+
+    def test_route_persisted_on_lead(self):
+        router, _, _ = make_router()
+        router.handle(update("olá"))
+        router.flow.invoke = lambda s: {**s, "lead_qualified": True, "score": 90, "current_state": "recommendation", "route": "diretor", "response": "ok"}
+        router.handle(update("continuar"))
+        lead, _ = router.store.get_by_telegram_user(42)
+        assert lead.route == "diretor"

@@ -1,0 +1,31 @@
+{
+  "stage": "code-generation",
+  "unit": "u4-async-ingest",
+  "version": 1,
+  "writes": [
+    { "path": "apps/contact-ingest/handler.py" },
+    { "path": "apps/contact-ingest/requirements.txt" },
+    { "path": "apps/contact-ingest/service/" },
+    { "path": "apps/contact-ingest/service/__init__.py" },
+    { "path": "apps/contact-ingest/service/contact_ingest.py" },
+    { "path": "apps/contact-ingest/service/email_parser.py" },
+    { "path": "apps/contact-ingest/service/router_gateway.py" },
+    { "path": "apps/contact-ingest/infra/" },
+    { "path": "apps/contact-ingest/infra/__init__.py" },
+    { "path": "apps/contact-ingest/infra/dedupe_store.py" },
+    { "path": "apps/contact-ingest/infra/session_store.py" },
+    { "path": "apps/contact-ingest/tests/" },
+    { "path": "apps/contact-ingest/tests/__init__.py" },
+    { "path": "apps/contact-ingest/tests/conftest.py" },
+    { "path": "apps/contact-ingest/tests/unit/" },
+    { "path": "apps/contact-ingest/tests/unit/__init__.py" },
+    { "path": "apps/contact-ingest/tests/unit/test_contact_ingest.py" },
+    { "path": "apps/contact-ingest/tests/unit/test_email_parser.py" },
+    { "path": "apps/contact-ingest/tests/unit/test_dedupe_store.py" },
+    { "path": "apps/contact-ingest/tests/unit/test_session_store.py" },
+    { "path": "apps/contact-ingest/tests/unit/test_router_gateway.py" },
+    { "path": "apps/contact-ingest/tests/integration/" },
+    { "path": "apps/contact-ingest/tests/integration/__init__.py" },
+    { "path": "apps/contact-ingest/tests/integration/test_ingest_pipeline.py" }
+  ]
+}

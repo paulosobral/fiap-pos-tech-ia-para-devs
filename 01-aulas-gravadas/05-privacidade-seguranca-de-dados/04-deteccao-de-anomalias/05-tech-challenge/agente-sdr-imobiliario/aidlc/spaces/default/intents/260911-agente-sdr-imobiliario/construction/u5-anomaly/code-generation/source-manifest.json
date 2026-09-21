@@ -1,0 +1,33 @@
+{
+  "stage": "code-generation",
+  "unit": "u5-anomaly",
+  "version": 1,
+  "writes": [
+    { "path": "apps/anomaly-detector/handler.py" },
+    { "path": "apps/anomaly-detector/requirements.txt" },
+    { "path": "apps/anomaly-detector/service/" },
+    { "path": "apps/anomaly-detector/service/__init__.py" },
+    { "path": "apps/anomaly-detector/service/anomaly_detector.py" },
+    { "path": "apps/anomaly-detector/service/feature_extractor.py" },
+    { "path": "apps/anomaly-detector/service/scorer.py" },
+    { "path": "apps/anomaly-detector/service/scheduler_gate.py" },
+    { "path": "apps/anomaly-detector/infra/" },
+    { "path": "apps/anomaly-detector/infra/__init__.py" },
+    { "path": "apps/anomaly-detector/infra/alert_store.py" },
+    { "path": "apps/anomaly-detector/infra/conversation_store.py" },
+    { "path": "apps/anomaly-detector/tests/" },
+    { "path": "apps/anomaly-detector/tests/__init__.py" },
+    { "path": "apps/anomaly-detector/tests/conftest.py" },
+    { "path": "apps/anomaly-detector/tests/unit/" },
+    { "path": "apps/anomaly-detector/tests/unit/__init__.py" },
+    { "path": "apps/anomaly-detector/tests/unit/test_anomaly_detector.py" },
+    { "path": "apps/anomaly-detector/tests/unit/test_feature_extractor.py" },
+    { "path": "apps/anomaly-detector/tests/unit/test_scorer.py" },
+    { "path": "apps/anomaly-detector/tests/unit/test_conversation_store.py" },
+    { "path": "apps/anomaly-detector/tests/unit/test_alert_store.py" },
+    { "path": "apps/anomaly-detector/tests/unit/test_scheduler_gate.py" },
+    { "path": "apps/anomaly-detector/tests/integration/" },
+    { "path": "apps/anomaly-detector/tests/integration/__init__.py" },
+    { "path": "apps/anomaly-detector/tests/integration/test_anomaly_pipeline.py" }
+  ]
+}
