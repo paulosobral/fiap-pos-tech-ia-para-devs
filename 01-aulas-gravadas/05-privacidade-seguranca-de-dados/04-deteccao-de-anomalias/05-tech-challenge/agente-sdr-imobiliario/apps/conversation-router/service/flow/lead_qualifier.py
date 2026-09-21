@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 SCORE_THRESHOLD = 70
@@ -66,20 +67,38 @@ class LeadQualifier:
             return 30
         return 10
 
+    def _budget_value(self, budget: str) -> float | None:
+        # pt-BR: "mil"/"k" = ×1000, "milhão" = ×1e6; pontos em \d{1,3}(\.\d{3})+ são separador de milhar.
+        raw = str(budget).lower()
+        multiplier = 1.0
+        if re.search(r"milh", raw):
+            multiplier = 1_000_000
+        elif re.search(r"(\d\s*k\b|\bk\b|\bmil\b)", raw):
+            multiplier = 1_000
+        digits = re.sub(r"[^\d.,]", "", raw)
+        if not digits:
+            return None
+        if "," in digits and "." in digits:
+            digits = digits.replace(".", "").replace(",", ".")
+        elif "," in digits:
+            digits = digits.replace(",", ".")
+        elif re.fullmatch(r"\d{1,3}(\.\d{3})+", digits):
+            digits = digits.replace(".", "")
+        try:
+            return float(digits) * multiplier
+        except ValueError:
+            return None
+
     def _budget_score(self, budget: str | None) -> int:
         if not budget:
             return 0
-        import re
-
-        match = re.search(r"(\d+)", str(budget).replace(".", "").replace(",", ""))
-        if match and int(match.group(1)) >= 50:
+        value = self._budget_value(budget)
+        if value is not None and value >= 50_000:
             return 30
         return 15
 
     @staticmethod
     def _deadline_months(deadline: str) -> float | None:
-        import re
-
         match = re.search(r"(\d+)\s*(mês|meses|month)", str(deadline).lower())
         if match:
             return float(match.group(1))

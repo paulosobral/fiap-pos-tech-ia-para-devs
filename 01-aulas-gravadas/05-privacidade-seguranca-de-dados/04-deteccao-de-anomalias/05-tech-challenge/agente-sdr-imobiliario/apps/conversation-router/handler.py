@@ -7,12 +7,27 @@ from typing import Any
 
 from service.flow.lead_qualifier import LeadQualifier
 from service.flow.sales_flow import SalesFlow
-from service.security_layer import FALLBACK_MESSAGE, SecurityLayer
+from service.security_layer import FALLBACK_MESSAGE, KmsPiiRegistry, SecurityLayer
 from service.entities import utc_now_iso
 from infra.session_store import SessionStore
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+
+
+class TelegramApi:
+    """Cliente mínimo da Bot API do Telegram para envio de respostas."""
+
+    def __init__(self, token: str, timeout: int = 10) -> None:
+        self._url = f"https://api.telegram.org/bot{token}/sendMessage"
+        self._timeout = timeout
+
+    def send_message(self, chat_id: Any, text: str) -> None:
+        import urllib.parse
+        import urllib.request
+
+        data = urllib.parse.urlencode({"chat_id": chat_id, "text": text}).encode()
+        urllib.request.urlopen(urllib.request.Request(self._url, data=data), timeout=self._timeout)
 
 
 class ConversationRouter:
@@ -26,6 +41,7 @@ class ConversationRouter:
         voice_queue_url: str | None = None,
         crm_queue_url: str | None = None,
         secret_token: str | None = None,
+        pii_store: Any | None = None,
     ) -> None:
         self.store = store
         self.security = security_layer
@@ -35,6 +51,7 @@ class ConversationRouter:
         self.voice_queue_url = voice_queue_url
         self.crm_queue_url = crm_queue_url
         self.secret_token = secret_token
+        self.pii_store = pii_store
 
     def validate_secret(self, headers: dict[str, str] | None, expected: str | None = None) -> bool:
         expected = expected or self.secret_token or os.environ.get("TELEGRAM_SECRET_TOKEN")
@@ -67,12 +84,7 @@ class ConversationRouter:
         if telegram_user_id is None:
             return {"statusCode": 400, "body": json.dumps({"error": "invalid payload"})}
 
-        lead, conversation, created = self.store.get_or_create(telegram_user_id)
-        if created and text.strip().lower() != "/start":
-            pass
-
-        if text.strip().lower() == "/start" and not conversation.consent_recorded:
-            conversation.consent_recorded = True
+        lead, conversation, _ = self.store.get_or_create(telegram_user_id)
 
         violation, reason = self.security.guard(text)
         if violation:
@@ -96,10 +108,14 @@ class ConversationRouter:
             flow_state = self.flow.invoke(flow_state)
             response = flow_state.get("response", "")
             state = flow_state.get("current_state", conversation.current_state)
+            # Consentimento só é gravado a partir da decisão do lead no fluxo (LGPD R6).
+            conversation.consent_recorded = flow_state.get("consent_recorded", conversation.consent_recorded)
             lead.intent = flow_state.get("intent", lead.intent)
             score = flow_state.get("score")
             if score is not None:
                 lead.score = score
+            if flow_state.get("route"):
+                lead.route = flow_state["route"]
             if flow_state.get("lead_qualified"):
                 lead.status = "qualified"
                 self._enqueue_crm(lead, conversation)
@@ -136,6 +152,9 @@ class ConversationRouter:
     def _enqueue_crm(self, lead: Any, conversation: Any) -> None:
         if not self.sqs or not self.crm_queue_url:
             return
+        contact: dict[str, list[str]] = {}
+        if self.pii_store is not None:
+            contact = self.pii_store.load(conversation.session_id)
         self.sqs.send_message(
             QueueUrl=self.crm_queue_url,
             MessageBody=json.dumps(
@@ -144,8 +163,8 @@ class ConversationRouter:
                     "lead_id": lead.lead_id,
                     "lead_data": {
                         "name": lead.decision_maker,
-                        "email": None,
-                        "phone": None,
+                        "email": (contact.get("EMAIL") or [None])[0],
+                        "phone": (contact.get("TELEFONE") or [None])[0],
                         "score": lead.score,
                         "urgency": lead.urgency,
                         "intent": lead.intent,
@@ -163,13 +182,31 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
     dynamodb = boto3.client("dynamodb")
     sqs = boto3.client("sqs")
     store = SessionStore(dynamodb, os.environ.get("SESSIONS_TABLE", "sdr-sessions"))
-    security = SecurityLayer()
-    flow = SalesFlow(lead_qualifier=LeadQualifier())
+
+    # Token/valores injetados no deploy via Secrets Manager (placeholders de env); sem token, sem envio.
+    telegram = None
+    if token := os.environ.get("TELEGRAM_BOT_TOKEN"):
+        telegram = TelegramApi(token)
+
+    pii_store = None
+    if key_id := os.environ.get("PII_KMS_KEY_ID"):
+        pii_store = KmsPiiRegistry(
+            dynamodb, os.environ.get("PII_TABLE", "sdr-pii"), boto3.client("kms"), key_id
+        )
+
+    security = SecurityLayer(pii_store=pii_store)
+    flow = SalesFlow(
+        lead_qualifier=LeadQualifier(),
+        specialist_rotation=[s.strip() for s in os.environ.get("SPECIALIST_ROTATION", "").split(",") if s.strip()],
+        specialist_fallback=os.environ.get("SPECIALIST_FALLBACK", "diretor"),
+    )
     router = ConversationRouter(
         store=store,
         security_layer=security,
         sales_flow=flow,
         sqs_client=sqs,
+        telegram_client=telegram,
+        pii_store=pii_store,
         voice_queue_url=os.environ.get("VOICE_QUEUE_URL"),
         crm_queue_url=os.environ.get("CRM_QUEUE_URL"),
     )

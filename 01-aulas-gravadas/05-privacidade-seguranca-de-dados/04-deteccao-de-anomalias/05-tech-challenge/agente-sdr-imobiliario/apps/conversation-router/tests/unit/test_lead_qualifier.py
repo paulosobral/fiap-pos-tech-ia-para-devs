@@ -41,6 +41,17 @@ class TestLeadQualifier:
         result = self.q.calculate_score({**self.full_info()})
         assert "prazo curto" in result["factors"]
 
+    def test_budget_low_value_scores_less_than_threshold(self):
+        result = self.q.calculate_score({**self.full_info(), "budget": "R$ 60"})
+        assert "orçamento definido e alto" not in result["factors"]
+        assert result["score"] == 85
+
+    def test_budget_unit_variants_normalized_to_high(self):
+        for budget in ("R$ 50k", "50 mil", "60.000", "1,2 milhão", "50000"):
+            result = self.q.calculate_score({**self.full_info(), "budget": budget})
+            assert "orçamento definido e alto" in result["factors"], budget
+            assert result["score"] == 100
+
     def test_route_rotation_up_to_500(self):
         rotation = ["ana", "bruno"]
         assert self.q.route(400, rotation, "diretor") == "ana"

@@ -33,6 +33,7 @@ class Lead:
         deadline: str | None = None,
         people_count: int | None = None,
         decision_maker: str | None = None,
+        route: str | None = None,
         created_at: str | None = None,
         updated_at: str | None = None,
     ) -> None:
@@ -48,6 +49,7 @@ class Lead:
         self.deadline = deadline
         self.people_count = people_count
         self.decision_maker = decision_maker
+        self.route = route
         self.created_at = created_at or utc_now_iso()
         self.updated_at = updated_at or utc_now_iso()
 
@@ -69,6 +71,7 @@ class Lead:
             "deadline",
             "people_count",
             "decision_maker",
+            "route",
         ):
             value = getattr(self, attr)
             if value is not None:
@@ -90,6 +93,7 @@ class Lead:
             deadline=item.get("deadline"),
             people_count=item.get("people_count"),
             decision_maker=item.get("decision_maker"),
+            route=item.get("route"),
             created_at=item.get("created_at"),
             updated_at=item.get("updated_at"),
         )

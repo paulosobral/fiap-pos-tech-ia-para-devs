@@ -17,6 +17,15 @@ class TestPiiMasker:
         assert "João Silva" not in out
         assert "[NOME]" in out
 
+    def test_masks_single_known_first_name(self):
+        out = self.layer.mask("Fale com o Pedro sobre o imóvel")
+        assert "Pedro" not in out
+        assert "[NOME]" in out
+
+    def test_common_words_not_masked_as_name(self):
+        out = self.layer.mask("Podemos enviar a proposta amanhã")
+        assert out == "Podemos enviar a proposta amanhã"
+
     def test_masks_phone(self):
         out = self.layer.mask("Ligue no +55 11 91234-5678")
         assert "91234-5678" not in out
@@ -41,6 +50,11 @@ class TestPiiMasker:
     def test_output_clean_passes(self):
         leak, _ = self.layer.check_output_leak("Segue sua lista de imóveis.")
         assert leak is False
+
+    def test_output_leak_blocks_first_name(self):
+        leak, label = self.layer.check_output_leak("Olá João, segue a proposta.")
+        assert leak is True
+        assert label == "NOME"
 
     def test_unmask_restores(self):
         masked = self.layer.mask("Meu nome é João Silva")
