@@ -5332,3 +5332,162 @@
 **Unit Source Fingerprint**: sha256:0c7fe650777e5b3c561dae35384780c8cb212c8a72929c052700bfe402c40072
 
 ---
+
+## Error Logged
+**Timestamp**: 2026-09-21T14:01:15Z
+**Event**: ERROR_LOGGED
+**Tool**: aidlc-log
+**Command**: aidlc-log review --stage code-generation --reviewer aidlc-architecture-reviewer-agent --iteration 2 --unit u1-core-conversation --verdict NOT-READY
+**Error**: Refusing REVIEW_COMPLETED for "code-generation": construction/u1-core-conversation/code-generation/code-generation-plan.md#R-05: invalid finding status "PARTIAL".
+
+---
+
+## Error Logged
+**Timestamp**: 2026-09-21T14:01:47Z
+**Event**: ERROR_LOGGED
+**Tool**: aidlc-log
+**Command**: aidlc-log review --stage code-generation --reviewer aidlc-architecture-reviewer-agent --iteration 2 --unit u1-core-conversation --verdict NOT-READY
+**Error**: Refusing REVIEW_COMPLETED for "code-generation": construction/u1-core-conversation/code-generation/code-generation-plan.md#R-01: invalid finding status "ao)?` não casa \"hão\" — só o plural \"milhões\"; erro de ×1000 no `_budget_value`). Evidência empírica (extração direta + fluxo e2e handler→flow→store): com dados completos e prazo de 6 meses, score 65 (< 70) onde o correto é 80 → lead de alto valor NÃO qualifica, CRM não é acionado e o budget corrompido fica persistido em `context[\"lead_info\"]` (consumidores u2+/handoff leem esse campo). O qualifier isolado trata certo (`calculate_score(\"R$ 1.500.000\")=80`); plural \"milhões\" e \"R$ 60 mil\" funcionam — e é só esse caso feliz que os testes cobrem (nenhum teste de extração em escala milhão).".
+
+---
+
+## Review Completed
+**Timestamp**: 2026-09-21T14:02:07Z
+**Event**: REVIEW_COMPLETED
+**Stage**: code-generation
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u1-core-conversation
+**Iteration**: 2
+**Verdict**: NOT-READY
+**Request Fingerprint**: sha256:a0a5b76acdb18ada83e870c05d23be1db16a396ea41072755e65df78dda8b52a
+**Artifact Fingerprint**: sha256:a0a5b76acdb18ada83e870c05d23be1db16a396ea41072755e65df78dda8b52a
+**Request Id**: review:3c418bb3fcd3563e23d17f5e93f8d4de
+**Request Source Fingerprint**: a16b572a15543c5811f856051c87ad6c79b97956f9f62cb67acc0e775d35c3d5
+**Source Fingerprint**: a16b572a15543c5811f856051c87ad6c79b97956f9f62cb67acc0e775d35c3d5
+**Unit Source Fingerprint**: sha256:0c7fe650777e5b3c561dae35384780c8cb212c8a72929c052700bfe402c40072
+**Review Record**: .aidlc-reviews/code-generation/units/u1-core-conversation/45d170221e303cc2/2.json
+**Review Record Digest**: sha256:50625c6a79f87e91878bf0b8be83238911ab33bfd22f4dc556854f9b55e16dcd
+
+---
+
+## Error Logged
+**Timestamp**: 2026-09-21T14:02:21Z
+**Event**: ERROR_LOGGED
+**Tool**: aidlc-log
+**Command**: aidlc-log review --stage code-generation --reviewer aidlc-architecture-reviewer-agent --iteration 1 --unit u2-async-voice
+**Error**: Cannot start another review for "code-generation" because iteration 1 is still waiting for a verdict. Record that verdict, or repeat the same iteration with --retry-pending if the reviewer did not run.\n{"kind":"ask","ask_type":"guard-recovery","response_route":"execute-remedy","question":"The next action for \"code-generation\" would be refused. Choose one authority-preserving recovery action.","stage":"code-generation","unit":"u2-async-voice","reason_codes":["REVIEW_VERDICT_PENDING"],"remedies":[{"op":"request-changes","action":"Ask \"What should change?\" for stage \"code-generation\" and end the turn. After the human answers, submit Request Changes with their exact text unchanged as the report reason; that unlocks revision and a fresh review.","requiresHuman":true,"executableNow":true}]}
+
+---
+
+## Error Logged
+**Timestamp**: 2026-09-21T14:11:53Z
+**Event**: ERROR_LOGGED
+**Tool**: aidlc-log
+**Command**: aidlc-log review --help
+**Error**: --help expects a value, got end of arguments.
+
+---
+
+## Error Logged
+**Timestamp**: 2026-09-21T14:11:55Z
+**Event**: ERROR_LOGGED
+**Tool**: aidlc-log
+**Command**: aidlc-log review
+**Error**: Missing --stage <slug>
+
+---
+
+## Review Completed
+**Timestamp**: 2026-09-21T14:22:36Z
+**Event**: REVIEW_COMPLETED
+**Stage**: code-generation
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u2-async-voice
+**Iteration**: 1
+**Verdict**: NOT-READY
+**Request Fingerprint**: sha256:7b3a15fb736c667b9931f6f8939872011e339ce0cb1b65d48d5fc724420f0d72
+**Artifact Fingerprint**: sha256:7b3a15fb736c667b9931f6f8939872011e339ce0cb1b65d48d5fc724420f0d72
+**Request Id**: review:d9d4c1e7386e929643b8a09eaf00e9f8
+**Request Source Fingerprint**: 2124709f1cd224b4051a9a6f0f2f26fe4f1bc5ea9093750d421956f5db4d04b1
+**Source Fingerprint**: 2124709f1cd224b4051a9a6f0f2f26fe4f1bc5ea9093750d421956f5db4d04b1
+**Unit Source Fingerprint**: sha256:2decdcbfb8f89b4c958ad679b16d7afed871a9d83ec7f06e7188ecf1cc152241
+**Review Record**: .aidlc-reviews/code-generation/units/u2-async-voice/45d170221e303cc2/1.json
+**Review Record Digest**: sha256:972b3581f3189aa989720f4612bce28a87ff2a88d85a1953568933509f019f2a
+
+---
+
+## Review Completed
+**Timestamp**: 2026-09-21T14:29:30Z
+**Event**: REVIEW_COMPLETED
+**Stage**: code-generation
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u3-async-crm
+**Iteration**: 1
+**Verdict**: NOT-READY
+**Request Fingerprint**: sha256:bf112e6d7964d0a6523e7481bf46718d9933f542d975a550b0ea8e4bbd1d15e0
+**Artifact Fingerprint**: sha256:bf112e6d7964d0a6523e7481bf46718d9933f542d975a550b0ea8e4bbd1d15e0
+**Request Id**: review:b7fdaacd2977cc9cf7bc7c32786c345c
+**Request Source Fingerprint**: 2124709f1cd224b4051a9a6f0f2f26fe4f1bc5ea9093750d421956f5db4d04b1
+**Source Fingerprint**: 2124709f1cd224b4051a9a6f0f2f26fe4f1bc5ea9093750d421956f5db4d04b1
+**Unit Source Fingerprint**: sha256:ab71ccc1781e5ec10c441cc1542f47f090a9e5990166e54928c566755f43be28
+**Review Record**: .aidlc-reviews/code-generation/units/u3-async-crm/45d170221e303cc2/1.json
+**Review Record Digest**: sha256:79d58b2295b8b946b5416300ac3d47d4551d4ab6af6892a10b7045a5ce229c5d
+
+---
+
+## Review Completed
+**Timestamp**: 2026-09-21T14:36:24Z
+**Event**: REVIEW_COMPLETED
+**Stage**: code-generation
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u4-async-ingest
+**Iteration**: 1
+**Verdict**: NOT-READY
+**Request Fingerprint**: sha256:879157ed6519fe62ce988aac8920f939a77d6c5ddbac8fa9c30ee66cbacd17d0
+**Artifact Fingerprint**: sha256:879157ed6519fe62ce988aac8920f939a77d6c5ddbac8fa9c30ee66cbacd17d0
+**Request Id**: review:9234a2b3a4fa58b02efcbb7b95cfb3b4
+**Request Source Fingerprint**: 2124709f1cd224b4051a9a6f0f2f26fe4f1bc5ea9093750d421956f5db4d04b1
+**Source Fingerprint**: 2124709f1cd224b4051a9a6f0f2f26fe4f1bc5ea9093750d421956f5db4d04b1
+**Unit Source Fingerprint**: sha256:acac3cb82a92dbd06a85a0cd9a48e54607c4d059949cc8731d8e17eb946eb9fb
+**Review Record**: .aidlc-reviews/code-generation/units/u4-async-ingest/45d170221e303cc2/1.json
+**Review Record Digest**: sha256:d4f07b85726a2ed1e78be7f0933e12ce3f9a7552281383c01c9949b3b917571f
+
+---
+
+## Review Completed
+**Timestamp**: 2026-09-21T14:44:38Z
+**Event**: REVIEW_COMPLETED
+**Stage**: code-generation
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u5-anomaly
+**Iteration**: 1
+**Verdict**: NOT-READY
+**Request Fingerprint**: sha256:4f58ce091cfe0120559f2bb09739ee8c802eb25eff5198b9c999539a72e694c2
+**Artifact Fingerprint**: sha256:4f58ce091cfe0120559f2bb09739ee8c802eb25eff5198b9c999539a72e694c2
+**Request Id**: review:62180cc77fecb500f5d3f72dfe8bc59b
+**Request Source Fingerprint**: 2124709f1cd224b4051a9a6f0f2f26fe4f1bc5ea9093750d421956f5db4d04b1
+**Source Fingerprint**: 2124709f1cd224b4051a9a6f0f2f26fe4f1bc5ea9093750d421956f5db4d04b1
+**Unit Source Fingerprint**: sha256:29fa9989e9382bd9079768cd0a8cd0026af47565f1735f98d17b6be1a3f7c645
+**Review Record**: .aidlc-reviews/code-generation/units/u5-anomaly/45d170221e303cc2/1.json
+**Review Record Digest**: sha256:8d7b693ab35eb4cf230087a676efec17522e4cd8cf745148529d4e29f7ca498f
+
+---
+
+## Review Completed
+**Timestamp**: 2026-09-21T14:50:17Z
+**Event**: REVIEW_COMPLETED
+**Stage**: code-generation
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u6-followup
+**Iteration**: 1
+**Verdict**: NOT-READY
+**Request Fingerprint**: sha256:8ba83ee7fb003dcd23f8f414a4ab5391978983258924d8b79f0e329319147279
+**Artifact Fingerprint**: sha256:8ba83ee7fb003dcd23f8f414a4ab5391978983258924d8b79f0e329319147279
+**Request Id**: review:17a1e2f50aea32979ec1bc6344f65213
+**Request Source Fingerprint**: 2124709f1cd224b4051a9a6f0f2f26fe4f1bc5ea9093750d421956f5db4d04b1
+**Source Fingerprint**: 2124709f1cd224b4051a9a6f0f2f26fe4f1bc5ea9093750d421956f5db4d04b1
+**Unit Source Fingerprint**: sha256:d8dfb33e63ceb674968dff194c5f0a28c7434c38b5d00e2fc4d85f4fbd18fd14
+**Review Record**: .aidlc-reviews/code-generation/units/u6-followup/45d170221e303cc2/1.json
+**Review Record Digest**: sha256:2f281cbfc4df332e20d505f5526ba24f11daf87b8126ec717e4428f50d8b8e91
+
+---

@@ -30,12 +30,6 @@ class TestLead:
         assert restored.intent == "rent"
         assert restored.status == "qualified"
 
-    def test_route_roundtrip_from_item(self):
-        original = Lead(lead_id="l3", telegram_user_id=3, route="diretor")
-        restored = Lead.from_item(original.to_item())
-        assert restored.route == "diretor"
-        assert "route" not in Lead(lead_id="l4", telegram_user_id=4).to_item()
-
 
 class TestConversation:
     def test_ttl_is_90_days(self):

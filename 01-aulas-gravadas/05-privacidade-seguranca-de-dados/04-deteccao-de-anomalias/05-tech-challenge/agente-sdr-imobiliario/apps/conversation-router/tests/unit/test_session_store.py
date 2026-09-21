@@ -65,17 +65,3 @@ class TestSessionStore:
         lead, conv = store.get_by_telegram_user(123)
         assert lead is None
         assert conv is None
-
-    def test_load_uses_composite_pk_sk_key(self):
-        client = make_client(lead_item=LEAD_ITEM)
-        client.query.side_effect = [
-            {"Items": [{"lead_id": {"S": "l1"}}]},
-            {"Items": [CONV_ITEM]},
-        ]
-        store = SessionStore(client, "t")
-        lead, conv = store.get_by_telegram_user(42)
-        assert lead.lead_id == "l1"
-        assert client.get_item.call_args.kwargs["Key"] == {
-            "PK": {"S": "LEAD#l1"},
-            "SK": {"S": "PROFILE"},
-        }

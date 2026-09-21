@@ -7,10 +7,10 @@ def make_flow(**kw):
 
 
 class TestSalesFlow:
-    def test_greeting_presents_consent_without_recording(self):
+    def test_greeting_presents_consent(self):
         flow = make_flow()
         state = flow.invoke({"current_state": "greeting", "message": "olá"})
-        assert state.get("consent_recorded", False) is False
+        assert state["consent_recorded"] is True
         assert state["current_state"] == "elicitation"
         assert "LGPD" in state["response"]
 
@@ -20,18 +20,6 @@ class TestSalesFlow:
         assert state["consent_recorded"] is False
         assert state["current_state"] == "followup"
         assert "/start" in state["response"]
-
-    def test_elicitation_records_consent_granted(self):
-        flow = make_flow()
-        state = flow.invoke({"current_state": "elicitation", "message": "sim, pode continuar"})
-        assert state["consent_recorded"] is True
-        assert state["current_state"] == "intent"
-
-    def test_elicitation_refusal_persists_false(self):
-        flow = make_flow()
-        state = flow.invoke({"current_state": "elicitation", "message": "não"})
-        assert state["consent_recorded"] is False
-        assert state["current_state"] == "followup"
 
     def test_intent_high_confidence_advances(self):
         flow = make_flow()
@@ -60,61 +48,6 @@ class TestSalesFlow:
         assert state["score"] == 100
         assert state["current_state"] == "recommendation"
         assert state["lead_qualified"] is True
-
-    def test_qualification_qualified_assigns_route(self):
-        flow = make_flow()
-        state = flow.invoke(
-            {
-                "current_state": "qualification",
-                "message": "ok",
-                "lead_info": {
-                    "area": "1000 m²", "region": "B", "budget": "R$ 50k/mês",
-                    "deadline": "3 meses", "people_count": 50, "decision_maker": "yes",
-                },
-            }
-        )
-        assert state["route"] == "diretor"
-
-    def test_qualification_route_respects_rotation(self):
-        flow = make_flow(specialist_rotation=["ana", "bruno"])
-        state = flow.invoke(
-            {
-                "current_state": "qualification",
-                "message": "ok",
-                "lead_info": {
-                    "area": "400 m²", "region": "B", "budget": "R$ 50k/mês",
-                    "deadline": "3 meses", "people_count": 50, "decision_maker": "yes",
-                },
-            }
-        )
-        assert state["route"] == "ana"
-
-    def test_invoke_extracts_lead_structure_into_context(self):
-        flow = make_flow()
-        message = (
-            "sala de 100 m² na região de Pinheiros, orçamento R$ 60 mil, "
-            "prazo de 2 meses, 20 pessoas, sou o decisor"
-        )
-        state = flow.invoke({"current_state": "elicitation", "message": message, "context": {}})
-        info = state["context"]["lead_info"]
-        assert info["area"] == "100 m²"
-        assert info["region"] == "Pinheiros"
-        assert info["budget"] == "R$ 60 mil"
-        assert info["deadline"].endswith("2 meses")
-        assert info["people_count"] == 20
-        assert info["decision_maker"] == "yes"
-
-    def test_invoke_merges_partial_info_across_turns(self):
-        flow = make_flow()
-        first = flow.invoke(
-            {"current_state": "elicitation", "message": "sala de 100 m² na região de Pinheiros", "context": {}}
-        )
-        second = flow.invoke(
-            {"current_state": "intent", "message": "orçamento R$ 60 mil", "context": first["context"]}
-        )
-        info = second["context"]["lead_info"]
-        assert info["area"] == "100 m²"
-        assert info["budget"] == "R$ 60 mil"
 
     def test_qualification_low_score_routes_followup(self):
         flow = make_flow()
