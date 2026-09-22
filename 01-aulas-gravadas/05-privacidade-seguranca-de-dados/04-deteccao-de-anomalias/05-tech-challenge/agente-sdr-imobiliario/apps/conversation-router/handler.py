@@ -36,6 +36,26 @@ def _env(name: str) -> str:
     return value
 
 
+def _llm_api_key() -> str | None:
+    """Chave OpenRouter: env override (dev/testes) → Secrets Manager (`LLM_API_SECRET_ID`).
+
+    None = sem IA; o fluxo cai no classificador por regex.
+    """
+    if key := os.environ.get("LLM_API_KEY"):
+        return key
+    secret_id = os.environ.get("LLM_API_SECRET_ID")
+    if not secret_id:
+        return None
+    try:
+        import boto3
+
+        value = boto3.client("secretsmanager").get_secret_value(SecretId=secret_id)
+        return value.get("SecretString") or None
+    except Exception:
+        logger.warning("Falha ao ler a chave LLM no Secrets Manager (%s); IA desativada", secret_id, exc_info=True)
+        return None
+
+
 def _crm_lead_name(contact: dict[str, list[str]], lead: Any) -> str:
     """Nome do handoff (Contrato 4): NOME do registro de PII; sem NOME, representação
     segura do decisor — nunca a flag "yes"/"no" de `decision_maker`."""
@@ -397,9 +417,10 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
     security = SecurityLayer(pii_store=pii_store)
 
     # LLM (OpenRouter) + RAG (catálogo sintético) — o coração do PRD (FR-02/FR-11).
-    # Sem LLM_API_KEY configurada, cai no classificador por regex (comportamento POC igual ao anterior).
+    # Sem chave (env ou secret sdr/llm-api-key), cai no classificador por regex (comportamento POC igual ao anterior).
+    llm_key = _llm_api_key() if _HAS_LLM else None
     llm_classifier = None
-    if _HAS_LLM and (llm_key := os.environ.get("LLM_API_KEY")):
+    if llm_key:
         def llm_classify(message: str) -> tuple[str, float]:
             try:
                 return _llm_classify_intent(message, api_key=llm_key, model=os.environ.get("LLM_MODEL"))
@@ -410,7 +431,7 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
         llm_classifier = llm_classify
 
     llm_reply = None
-    if _HAS_LLM and (llm_key := os.environ.get("LLM_API_KEY")):
+    if llm_key:
         def llm_reply(
             message: str, canned: str, lead_info: dict[str, Any], properties: list[dict[str, Any]]
         ) -> str:

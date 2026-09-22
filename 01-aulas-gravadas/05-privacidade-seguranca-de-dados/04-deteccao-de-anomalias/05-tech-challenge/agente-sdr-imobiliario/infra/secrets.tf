@@ -45,6 +45,16 @@ resource "aws_secretsmanager_secret_version" "telegram_bot_token" {
   secret_string = var.telegram_bot_token
 }
 
+resource "aws_secretsmanager_secret" "llm_api_key" {
+  name                    = "sdr/llm-api-key"
+  recovery_window_in_days = 0
+}
+resource "aws_secretsmanager_secret_version" "llm_api_key" {
+  count         = var.llm_api_key == "" ? 0 : 1
+  secret_id     = aws_secretsmanager_secret.llm_api_key.id
+  secret_string = var.llm_api_key
+}
+
 resource "aws_secretsmanager_secret" "internal_secret_token" {
   name                    = "sdr/dashboard-api-token"
   recovery_window_in_days = 0

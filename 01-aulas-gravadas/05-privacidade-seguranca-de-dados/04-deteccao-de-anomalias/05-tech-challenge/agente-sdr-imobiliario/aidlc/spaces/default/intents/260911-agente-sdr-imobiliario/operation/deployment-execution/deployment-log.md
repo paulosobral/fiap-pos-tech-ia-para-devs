@@ -25,6 +25,7 @@
 5. **Event source mapping "role does not have permissions to call ReceiveMessage"** → módulo `terraform-aws-modules/lambda/aws ~> 7.0`: `attach_policies = true` exige `number_of_policies` (default 0 não attacha). Adicionado `number_of_policies = 1` nos 7 módulos.
 6. **ECS RegisterTaskDefinition "Container.image should not be null or empty"** → default de `dashboard_ui_image` passa a ser imagem pública `public.ecr.aws/docker/library/python:3.11-slim` (permite o apply1 antes do push ECR); start.sh substitui no apply2.
 7. **Smoke 401 em /api/kpis** → handler do dashboard-api exige presença de `Authorization: Bearer` (POC não valida valor); smoke atualizado para enviar o header.
+8. **LLM_API_KEY migrada para Secrets Manager** → nova secret `sdr/llm-api-key` (`recovery_window_in_days = 0`, versão condicional como a do token do Telegram). Env `LLM_API_KEY` da Lambda substituída por `LLM_API_SECRET_ID` (ARN); handler resolve env override (dev/testes) → `get_secret_value`; IAM `secretsmanager:GetSecretValue` inclui o ARN. Sem versão na secret = fallback regex (IA desativada).
 
 ## 3. Recursos provisionados (conta 144842881551, us-east-1)
 

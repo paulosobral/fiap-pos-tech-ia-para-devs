@@ -18,7 +18,7 @@ module "lambda_conversation_router" {
   environment_variables = {
     TELEGRAM_BOT_TOKEN    = var.telegram_bot_token
     INTERNAL_SECRET_TOKEN = aws_secretsmanager_secret_version.internal_secret_token.secret_string
-    LLM_API_KEY           = var.llm_api_key
+    LLM_API_SECRET_ID     = aws_secretsmanager_secret.llm_api_key.arn
     PII_KMS_KEY_ID        = aws_kms_key.pii.key_id
     SESSIONS_TABLE        = aws_dynamodb_table.sessions.name
     PII_TABLE             = aws_dynamodb_table.pii.name

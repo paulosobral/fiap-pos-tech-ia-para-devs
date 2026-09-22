@@ -18,7 +18,7 @@ variable "telegram_bot_token" {
 }
 
 variable "llm_api_key" {
-  description = "Chave OpenRouter p/ o LLM do conversation-router (FR-02). Vazio = classificador por regex (POC sem IA)."
+  description = "Chave OpenRouter p/ o LLM do conversation-router (FR-02). Terraform grava na secret sdr/llm-api-key e a Lambda lê via Secrets Manager. Vazio = secret fica sem versão e o fluxo cai no classificador por regex (POC sem IA)."
   type        = string
   default     = ""
   sensitive   = true

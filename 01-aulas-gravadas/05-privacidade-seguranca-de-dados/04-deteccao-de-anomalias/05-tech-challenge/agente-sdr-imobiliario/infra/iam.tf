@@ -39,6 +39,7 @@ resource "aws_iam_policy" "sdr_lambda" {
         Resource = [
           aws_secretsmanager_secret.telegram_bot_token.arn,
           aws_secretsmanager_secret.internal_secret_token.arn,
+          aws_secretsmanager_secret.llm_api_key.arn,
         ]
       },
       {

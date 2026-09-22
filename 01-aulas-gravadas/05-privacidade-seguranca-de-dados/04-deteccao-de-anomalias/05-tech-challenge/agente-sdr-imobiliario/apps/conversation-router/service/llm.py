@@ -5,8 +5,10 @@ Fallback: se litellm não estiver instalado (ex.: testes locais sem deps), usa u
 puro como transporte — mantém o mesmo contrato e os meslos prompts.
 
 Config (env, injetadas no deploy):
-  LLM_API_KEY   chave do OpenRouter (Secrets Manager). Vazia/ausente = módulo
-                indisponível: o fluxo cai no classificador por regex.
+  LLM_API_KEY       chave do OpenRouter (override de dev/testes). Produção: o handler
+                    resolve via Secrets Manager (sdr/llm-api-key, env LLM_API_SECRET_ID).
+                    Nenhuma das duas = módulo indisponível: o fluxo cai no classificador
+                    por regex.
   LLM_MODEL     modelo (default 'anthropic/claude-3.5-haiku').
   LLM_TIMEOUT   timeout da chamada em segundos (default 8).
 """

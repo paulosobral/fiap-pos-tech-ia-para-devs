@@ -1,6 +1,6 @@
 # Environment Inventory — Agente SDR Imobiliário (POC)
 
-> Consumes: `operation/deployment-pipeline/cd-config.md` (pipeline local, módulos HashiCorp), NFR9.1–9.4 (IaC por serviço, DLQ, autoscaling), NFR5.x (segredos/LGPD), design u1–u7 (`TELEGRAM_BOT_TOKEN`, `PII_KMS_KEY_ID`, `INTERNAL_SECRET_TOKEN` via Secrets Manager).
+> Consumes: `operation/deployment-pipeline/cd-config.md` (pipeline local, módulos HashiCorp), NFR9.1–9.4 (IaC por serviço, DLQ, autoscaling), NFR5.x (segredos/LGPD), design u1–u7 (`TELEGRAM_BOT_TOKEN`, `LLM_API_KEY`, `PII_KMS_KEY_ID`, `INTERNAL_SECRET_TOKEN` via Secrets Manager).
 
 ## Ambiente-alvo
 
@@ -21,7 +21,7 @@
 | SQS filas async + DLQ | filas u2/u3/u4 + 3 DLQs (NFR4.1) | `terraform-aws-modules/sqs/aws` | deployment-execution |
 | EventBridge scheduler | regra de anomalias/u6 (NFR8.1) | `aws_eventbridge_*` nativo | deployment-execution |
 | ECS Fargate (dashboard-ui Streamlit) | 1 task `t3.micro`, subnet pública da VPC default | `terraform-aws-modules/ecs/aws` | deployment-execution |
-| Secrets Manager | `TELEGRAM_BOT_TOKEN`, `INTERNAL_SECRET_TOKEN` (SecureString) | `aws_secretsmanager_*` nativo | deployment-execution |
+| Secrets Manager | `TELEGRAM_BOT_TOKEN`, `LLM_API_KEY`, `INTERNAL_SECRET_TOKEN` (SecureString) | `aws_secretsmanager_*` nativo | deployment-execution |
 | KMS (PII, `PII_KMS_KEY_ID`) | 1 chave simétrica | `aws_kms_*` nativo | deployment-execution |
 
 ## Redes
