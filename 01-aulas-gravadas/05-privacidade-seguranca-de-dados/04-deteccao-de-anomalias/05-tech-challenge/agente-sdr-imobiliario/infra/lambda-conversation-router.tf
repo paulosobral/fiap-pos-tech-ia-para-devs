@@ -25,6 +25,7 @@ module "lambda_conversation_router" {
     ALERTS_TABLE          = aws_dynamodb_table.alerts.name
     VOICE_QUEUE_URL       = aws_sqs_queue.voice.id
     CRM_QUEUE_URL         = aws_sqs_queue.crm.id
+    CATALOG_BUCKET        = aws_s3_bucket.catalogs.bucket
     SPECIALIST_ROTATION   = "Adriana, Bruno, Carla"
     SPECIALIST_FALLBACK   = "diretor"
   }

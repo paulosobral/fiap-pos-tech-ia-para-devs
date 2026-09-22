@@ -49,6 +49,17 @@ resource "aws_iam_policy" "sdr_lambda" {
         ]
         Resource = "arn:aws:logs:${var.region}:*:*"
       },
+      {
+        Sid    = "S3Catalogs"
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject", "s3:ListBucket"
+        ]
+        Resource = [
+          aws_s3_bucket.catalogs.arn,
+          "${aws_s3_bucket.catalogs.arn}/*"
+        ]
+      },
     ]
   })
 }

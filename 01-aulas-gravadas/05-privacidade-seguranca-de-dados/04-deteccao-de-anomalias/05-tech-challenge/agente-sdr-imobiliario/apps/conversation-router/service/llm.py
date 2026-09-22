@@ -1,9 +1,8 @@
-"""Cliente LLM (OpenRouter) — classificação de intenção do lead.
+"""Cliente LLM via LiteLLM (OpenRouter → Claude 3.5 Haiku) — FR-02/§8.1 do PRD.
 
-Sem dependência externa (stdlib urllib) de propósito: o POC empacota as Lambdas
-com zip direto (limite 50MB) e o runtime python3.11 não traz `requests`. A troca
-de provedor (OpenRouter -> Bedrock) segue o contrato LiteLLM do PRD: este módulo
-é o único ponto que fala com o provider.
+Usa LiteLLM como cliente abstraído (LLM_PROVIDER=openrouter|bedrock) conforme PRD §8.1.
+Fallback: se litellm não estiver instalado (ex.: testes locais sem deps), usa urllib
+puro como transporte — mantém o mesmo contrato e os meslos prompts.
 
 Config (env, injetadas no deploy):
   LLM_API_KEY   chave do OpenRouter (Secrets Manager). Vazia/ausente = módulo
@@ -17,12 +16,10 @@ from __future__ import annotations
 import json
 import logging
 import os
-import urllib.request
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 DEFAULT_MODEL = "anthropic/claude-3.5-haiku"
 VALID_INTENTS = ("purchase", "rent", "investment", "unknown")
 
@@ -55,30 +52,64 @@ _REPLY_SYSTEM_PROMPT = (
     "disponibilidade não citada."
 )
 
+# --- LiteLLM (cliente abstraído conforme PRD §8.1) ---------------------------
 
-def classify_intent(
-    message: str,
+try:
+    import litellm
+
+    litellm.telemetry = False  # NF-02/§8.8: telemetria desligada
+    _HAS_LITELLM = True
+except ImportError:  # pragma: no cover — fallback para testes sem deps
+    litellm = None  # type: ignore[assignment]
+    _HAS_LITELLM = False
+
+
+def _completion(
+    messages: list[dict[str, str]],
     api_key: str,
-    model: str | None = None,
-    url: str = OPENROUTER_URL,
-    timeout: float | None = None,
-) -> tuple[str, float]:
-    """Retorna (intent, confidence) via OpenRouter. Levanta exceção em falha —
-    o chamador decide o fallback (regex)."""
-    model = model or os.environ.get("LLM_MODEL") or DEFAULT_MODEL
-    timeout = timeout or float(os.environ.get("LLM_TIMEOUT", "8"))
+    model: str,
+    max_tokens: int,
+    temperature: float,
+    response_format: dict[str, str] | None = None,
+) -> str:
+    """Chama LiteLLM (openrouter) ou fallback urllib se litellm ausente."""
+    if _HAS_LITELLM:
+        kwargs: dict[str, Any] = {
+            "model": f"openrouter/{model}",
+            "messages": messages,
+            "api_key": api_key,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "timeout": float(os.environ.get("LLM_TIMEOUT", "8")),
+        }
+        if response_format:
+            kwargs["response_format"] = response_format
+        resp = litellm.completion(**kwargs)
+        return resp["choices"][0]["message"]["content"]
+    # Fallback urllib (testes locais sem litellm instalado)
+    return _urllib_completion(messages, api_key, model, max_tokens, temperature, response_format)
+
+
+def _urllib_completion(
+    messages: list[dict[str, str]],
+    api_key: str,
+    model: str,
+    max_tokens: int,
+    temperature: float,
+    response_format: dict[str, str] | None,
+) -> str:
+    import urllib.request
+
     payload: dict[str, Any] = {
         "model": model,
-        "messages": [
-            {"role": "system", "content": _SYSTEM_PROMPT},
-            {"role": "user", "content": message},
-        ],
-        "max_tokens": 40,
-        "temperature": 0,
-        "response_format": {"type": "json_object"},
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
     }
+    if response_format:
+        payload["response_format"] = response_format
     req = urllib.request.Request(
-        url,
+        "https://openrouter.ai/api/v1/chat/completions",
         data=json.dumps(payload).encode(),
         headers={
             "Authorization": f"Bearer {api_key}",
@@ -87,9 +118,36 @@ def classify_intent(
         },
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    with urllib.request.urlopen(req, timeout=float(os.environ.get("LLM_TIMEOUT", "8"))) as resp:
         body = json.loads(resp.read().decode())
-    raw = (body.get("choices") or [{}])[0].get("message", {}).get("content", "")
+    return (body.get("choices") or [{}])[0].get("message", {}).get("content", "")
+
+
+# --- API pública -------------------------------------------------------------
+
+def classify_intent(
+    message: str,
+    api_key: str,
+    model: str | None = None,
+    url: str = "",  # mantido por compat; litellm ignora
+    timeout: float | None = None,
+) -> tuple[str, float]:
+    """Retorna (intent, confidence) via LiteLLM/OpenRouter. Levanta exceção em falha —
+    o chamador decide o fallback (regex)."""
+    model = model or os.environ.get("LLM_MODEL") or DEFAULT_MODEL
+    if timeout:
+        os.environ["LLM_TIMEOUT"] = str(timeout)
+    raw = _completion(
+        messages=[
+            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "user", "content": message},
+        ],
+        api_key=api_key,
+        model=model,
+        max_tokens=40,
+        temperature=0,
+        response_format={"type": "json_object"},
+    )
     intent, confidence = _parse(raw)
     if intent is None or confidence is None:
         raise ValueError("Resposta LLM sem intenção válida")
@@ -121,7 +179,7 @@ def generate_reply(
     properties: list[dict[str, Any]],
     api_key: str,
     model: str | None = None,
-    url: str = OPENROUTER_URL,
+    url: str = "",
     timeout: float | None = None,
 ) -> str:
     """Reescreve a resposta oficial do fluxo em texto natural humanizado (FR-02).
@@ -132,7 +190,8 @@ def generate_reply(
     resposta oficial (fallback determinístico).
     """
     model = model or os.environ.get("LLM_MODEL") or DEFAULT_MODEL
-    timeout = timeout or float(os.environ.get("LLM_TIMEOUT", "8"))
+    if timeout:
+        os.environ["LLM_TIMEOUT"] = str(timeout)
     lead = json.dumps(lead_info, ensure_ascii=False, default=str)[:800]
     props = json.dumps(
         [
@@ -150,28 +209,16 @@ def generate_reply(
         f"IMÓVEIS RECOMENDADOS (SÓ estes podem ser citados):\n{props or '(nenhum)'}\n\n"
         f"ÚLTIMA MENSAGEM DO LEAD:\n{message[:500]}"
     )
-    payload: dict[str, Any] = {
-        "model": model,
-        "messages": [
+    raw = _completion(
+        messages=[
             {"role": "system", "content": _REPLY_SYSTEM_PROMPT},
             {"role": "user", "content": user_block},
         ],
-        "max_tokens": 280,
-        "temperature": 0.6,
-    }
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(payload).encode(),
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "X-Title": "agente-sdr-imobiliario-poc",
-        },
-        method="POST",
+        api_key=api_key,
+        model=model,
+        max_tokens=280,
+        temperature=0.6,
     )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        body = json.loads(resp.read().decode())
-    raw = (body.get("choices") or [{}])[0].get("message", {}).get("content", "")
     if not raw or not raw.strip():
         raise ValueError("Resposta LLM vazia")
     logger.info("LLM reply gerado (%d chars)", len(raw))

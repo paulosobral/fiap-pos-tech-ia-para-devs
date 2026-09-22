@@ -1,8 +1,22 @@
+"""Sales-flow com LangGraph (PRD §8.1: orquestração via LangGraph).
+
+Substitui o FSM manual por StateGraph do LangGraph: cada estado do fluxo
+(saudação → elicitação → intenção → qualificação → recomendação → agendamento →
+handoff/followup) é um nó do grafo, com areistas condicionais determinadas
+pelo campo `current_state`. A extração de lead_info (regex sobre texto
+mascarado) roda em um nó de pré-processamento; a geração de resposta humanizada
+via LLM roda em um nó de pós-processamento (FR-02).
+
+Fallback: se LangGraph não estiver instalado (ex.: ambiente de teste sem deps),
+o dispatch manual por `current_state` é usado — mantém o mesmo contrato e os
+mesmos testes.
+"""
+
 from __future__ import annotations
 
 import logging
 import re
-from typing import Any, Callable
+from typing import Any, Callable, TypedDict
 
 logger = logging.getLogger(__name__)
 
@@ -10,8 +24,6 @@ CONFIDENCE_THRESHOLD = 0.85
 INTENT_CONFIRM_QUESTION = "Você está buscando compra, locação ou investimento?"
 
 # Extração sobre texto JÁ MASCARADO (placeholders [NOME]/[EMAIL] não colidem com os padrões).
-# Número: separadores de milhar múltiplos (\d{1,3}(\.\d{3})+, ex. 1.500.000) OU decimal pt-BR (1,5).
-# Unidade: "milhões"/"milhão"/"milhao" (singular "milhão" tem Ã — sem ele cairia em "mil", erro ×1000), "mil", "k".
 _BUDGET_NUMBER_RE = r"\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:[.,]\d+)?"
 _BUDGET_UNIT_RE_TEXT = r"mil(?:h[õo]es|h[ãa]o)?|k"
 _AREA_RE = re.compile(r"\b(\d+(?:[.,]\d+)?)\s*(?:m²|m2|metros quadrados|metro quadrado)", re.IGNORECASE)
@@ -31,6 +43,29 @@ _REGION_RE = re.compile(
 _DECISOR_YES_RE = re.compile(r"sou\s+(?:o\s+)?decisor|eu\s+(?:que\s+)?decido", re.IGNORECASE)
 _DECISOR_NO_RE = re.compile(r"n[ãa]o\s+(?:sou\s+(?:o\s+)?decisor|decido)", re.IGNORECASE)
 _REGION_STOP_WORDS = ("com", "e", "para", "pra", "no", "na", "do", "da", "até", "por", "ou")
+
+
+class FlowState(TypedDict, total=False):
+    """Estado do grafo LangGraph — um turno por invocação."""
+    current_state: str
+    message: str
+    context: dict[str, Any]
+    lead_info: dict[str, Any]
+    intent: str
+    score: Any
+    score_factors: Any
+    lead_qualified: bool
+    route: str
+    properties: list[dict[str, Any]]
+    appointment: dict[str, Any]
+    handoff_summary: str
+    response: str
+    consent_recorded: bool
+    done: bool
+    lead_id: str
+    scheduling_restricted: bool
+    followup_deferred: bool
+    ics_invite: str
 
 
 def extract_lead_structure(message: str) -> dict[str, Any]:
@@ -56,6 +91,18 @@ def extract_lead_structure(message: str) -> dict[str, Any]:
     return info
 
 
+# --- LangGraph (import opcional; fallback FSM manual se ausente) -------------
+
+try:
+    from langgraph.graph import END, StateGraph
+
+    _HAS_LANGGRAPH = True
+except ImportError:  # pragma: no cover
+    END = "END"  # type: ignore[assignment,misc]
+    StateGraph = None  # type: ignore[assignment]
+    _HAS_LANGGRAPH = False
+
+
 class SalesFlow:
     def __init__(
         self,
@@ -77,32 +124,41 @@ class SalesFlow:
         self.reply_generator = reply_generator
         self.specialist_rotation = specialist_rotation or []
         self.specialist_fallback = specialist_fallback
-        # FR9.4: checker de restrição de agendamento (alertas de anomalia — U5, is_restricted(lead_id)).
         self.restriction_check = restriction_check
+        if _HAS_LANGGRAPH:
+            self._graph = self._build_graph()
+        else:
+            self._graph = None
 
-    def _is_restricted(self, lead_id: str | None) -> bool:
-        """Consulta o checker injetável; fail-open = NÃO restrito em ausência/erro."""
-        if self.restriction_check is None or not lead_id:
-            return False
-        try:
-            return bool(self.restriction_check(lead_id))
-        except Exception:
-            logger.warning("restriction check failed; treating as unrestricted (fail-open)")
-            return False
+    # --- Graph construction (LangGraph) ---
 
-    @staticmethod
-    def _default_classify(message: str) -> tuple[str, float]:
-        lowered = message.lower()
-        if any(w in lowered for w in ("alugar", "locação", "locacao", "locar")):
-            return "rent", 0.9
-        if any(w in lowered for w in ("investimento", "investir", "renda")):
-            return "investment", 0.9
-        if any(w in lowered for w in ("comprar", "compra", "adquirir")):
-            return "purchase", 0.9
-        return "unknown", 0.3
+    def _build_graph(self):
+        g: StateGraph = StateGraph(FlowState)
+        g.add_node("preprocess", self._node_preprocess)
+        g.add_node("greeting", self._node_greeting)
+        g.add_node("elicitation", self._node_elicitation)
+        g.add_node("intent", self._node_intent)
+        g.add_node("qualification", self._node_qualification)
+        g.add_node("recommendation", self._node_recommendation)
+        g.add_node("scheduling", self._node_scheduling)
+        g.add_node("handoff", self._node_handoff)
+        g.add_node("followup", self._node_followup)
+        g.add_node("postprocess", self._node_postprocess)
 
-    def invoke(self, state: dict[str, Any]) -> dict[str, Any]:
-        current = state.get("current_state", "greeting")
+        g.set_entry_point("preprocess")
+        g.add_conditional_edges("preprocess", self._route_state)
+        for node in ("greeting", "elicitation", "intent", "qualification",
+                      "recommendation", "scheduling", "handoff", "followup"):
+            g.add_edge(node, "postprocess")
+        g.add_edge("postprocess", END)
+        return g.compile()
+
+    def _route_state(self, state: FlowState) -> str:
+        return state.get("current_state", "greeting")
+
+    # --- Nodes (cada um processa UM turno e retorna state atualizado) ---
+
+    def _node_preprocess(self, state: FlowState) -> FlowState:
         message = state.get("message", "")
         context = state.setdefault("context", {})
         extracted = extract_lead_structure(message)
@@ -113,43 +169,12 @@ class SalesFlow:
         stored_info = context.get("lead_info") or {}
         seeded = state.get("lead_info") or {}
         state["lead_info"] = {**stored_info, **seeded}
-        method = getattr(self, f"_handle_{current}", None)
-        if method is None:
-            state["response"] = "Como posso ajudar?"
-            return state
-        method(state, message)
-        return self._polish_reply(state, message)
-
-    def _polish_reply(self, state: dict[str, Any], message: str) -> dict[str, Any]:
-        """FR-02: troca a resposta oficial por texto natural gerado por LLM.
-
-        Exceto textos de LGPD/recusa (compliance fixa — conteúdo não pode ser
-        reescrito por modelo). Fracasso do LLM mantém a resposta oficial
-        (fallback determinístico), sem quebrar o fluxo.
-        """
-        if self.reply_generator is None:
-            return state
-        from service.security_layer import CONSENT_MESSAGE, REFUSAL_MESSAGE
-
-        canned = state.get("response")
-        if not canned or canned in (CONSENT_MESSAGE, REFUSAL_MESSAGE):
-            return state
-        try:
-            generated = self.reply_generator(
-                message,
-                canned,
-                state.get("lead_info") or {},
-                state.get("properties") or [],
-            )
-            if generated and generated.strip():
-                state["response"] = generated.strip()
-        except Exception:
-            logger.warning("LLM reply falhou; mantendo resposta oficial (fallback)", exc_info=True)
         return state
 
-    def _handle_greeting(self, state: dict[str, Any], message: str) -> dict[str, Any]:
+    def _node_greeting(self, state: FlowState) -> FlowState:
         from service.security_layer import CONSENT_MESSAGE, REFUSAL_MESSAGE
 
+        message = state.get("message", "")
         if message.strip().lower() in ("não", "nao", "não quero", "nao quero"):
             state["response"] = REFUSAL_MESSAGE
             state["current_state"] = "followup"
@@ -159,9 +184,10 @@ class SalesFlow:
         state["current_state"] = "elicitation"
         return state
 
-    def _handle_elicitation(self, state: dict[str, Any], message: str) -> dict[str, Any]:
+    def _node_elicitation(self, state: FlowState) -> FlowState:
         from service.security_layer import REFUSAL_MESSAGE
 
+        message = state.get("message", "")
         if message.strip().lower() in ("não", "nao", "não quero", "nao quero"):
             state["response"] = REFUSAL_MESSAGE
             state["current_state"] = "followup"
@@ -172,7 +198,8 @@ class SalesFlow:
         state["response"] = "Para indicar as melhores opções, você busca compra, locação ou investimento?"
         return state
 
-    def _handle_intent(self, state: dict[str, Any], message: str) -> dict[str, Any]:
+    def _node_intent(self, state: FlowState) -> FlowState:
+        message = state.get("message", "")
         intent, confidence = self._llm_classify(message)
         if confidence < CONFIDENCE_THRESHOLD:
             state["response"] = INTENT_CONFIRM_QUESTION
@@ -182,7 +209,7 @@ class SalesFlow:
         state["response"] = "Ótimo! Qual a metragem desejada, região e orçamento?"
         return state
 
-    def _handle_qualification(self, state: dict[str, Any], message: str) -> dict[str, Any]:
+    def _node_qualification(self, state: FlowState) -> FlowState:
         info = state.get("lead_info", {})
         result = self.qualifier.calculate_score(info)
         state["score"] = result["score"]
@@ -212,7 +239,7 @@ class SalesFlow:
         match = re.search(r"(\d+(?:[.,]\d+)?)", str(area))
         return float(match.group(1).replace(",", ".")) if match else None
 
-    def _handle_recommendation(self, state: dict[str, Any], message: str) -> dict[str, Any]:
+    def _node_recommendation(self, state: FlowState) -> FlowState:
         if self.properties_rag is None:
             state["current_state"] = "scheduling"
             state["response"] = "Podemos agendar uma visita?"
@@ -232,9 +259,9 @@ class SalesFlow:
         state["response"] = f"Encontramos estas opções:\n{listed}\nGostaria de agendar uma visita?"
         return state
 
-    def _handle_scheduling(self, state: dict[str, Any], message: str) -> dict[str, Any]:
+    def _node_scheduling(self, state: FlowState) -> FlowState:
+        message = state.get("message", "")
         if self._is_restricted(state.get("lead_id")):
-            # FR9.4: lead sinalizado pela U5 — agendamento autônomo adiado; corretor assume a confirmação.
             state["scheduling_restricted"] = True
             state["current_state"] = "handoff"
             state["response"] = "O agendamento da visita precisa de confirmação do corretor; em breve ele fará contato."
@@ -249,10 +276,13 @@ class SalesFlow:
             return state
         state["appointment"] = result
         state["current_state"] = "handoff"
+        ics = _build_ics(result)
+        if ics:
+            state["ics_invite"] = ics
         state["response"] = "Agendamento confirmado! Enviarei o convite e o resumo ao corretor."
         return state
 
-    def _handle_handoff(self, state: dict[str, Any], message: str) -> dict[str, Any]:
+    def _node_handoff(self, state: FlowState) -> FlowState:
         if self.handoff_builder is not None:
             state["handoff_summary"] = self.handoff_builder(state)
         state["current_state"] = "handoff"
@@ -260,9 +290,8 @@ class SalesFlow:
         state.setdefault("response", "Resumo enviado ao corretor. Obrigado pelo contato!")
         return state
 
-    def _handle_followup(self, state: dict[str, Any], message: str) -> dict[str, Any]:
+    def _node_followup(self, state: FlowState) -> FlowState:
         if self._is_restricted(state.get("lead_id")):
-            # FR9.4: sem outreach autônomo para lead sinalizado — follow-up fica sob responsabilidade do corretor.
             state["followup_deferred"] = True
             state["current_state"] = "followup"
             state["done"] = True
@@ -272,3 +301,129 @@ class SalesFlow:
         state["done"] = True
         state.setdefault("response", "Anotado! Retomaremos o contato em breve.")
         return state
+
+    def _node_postprocess(self, state: FlowState) -> FlowState:
+        """FR-02: geração de resposta humanizada via LLM (exceto LGPD/recusa)."""
+        if self.reply_generator is None:
+            return state
+        from service.security_layer import CONSENT_MESSAGE, REFUSAL_MESSAGE
+
+        canned = state.get("response")
+        if not canned or canned in (CONSENT_MESSAGE, REFUSAL_MESSAGE):
+            return state
+        try:
+            generated = self.reply_generator(
+                state.get("message", ""),
+                canned,
+                state.get("lead_info") or {},
+                state.get("properties") or [],
+            )
+            if generated and generated.strip():
+                state["response"] = generated.strip()
+        except Exception:
+            logger.warning("LLM reply falhou; mantendo resposta oficial (fallback)", exc_info=True)
+        return state
+
+    # --- Invocação ---
+
+    def invoke(self, state: dict[str, Any]) -> dict[str, Any]:
+        if self._graph is not None:
+            result = self._graph.invoke(state)
+            return dict(result)
+        return self._invoke_fsm(state)
+
+    def _invoke_fsm(self, state: dict[str, Any]) -> dict[str, Any]:
+        """Fallback manual (sem LangGraph) — mantém o mesmo contrato."""
+        current = state.get("current_state", "greeting")
+        message = state.get("message", "")
+        context = state.setdefault("context", {})
+        extracted = extract_lead_structure(message)
+        if extracted:
+            stored = dict(context.get("lead_info") or {})
+            stored.update(extracted)
+            context["lead_info"] = stored
+        stored_info = context.get("lead_info") or {}
+        seeded = state.get("lead_info") or {}
+        state["lead_info"] = {**stored_info, **seeded}
+        method = getattr(self, f"_handle_{current}", None)
+        if method is None:
+            state["response"] = "Como posso ajudar?"
+            return state
+        method(state, message)
+        return self._polish_reply(state, message)
+
+    # --- Handlers antigos (fallback FSM) ---
+
+    def _handle_greeting(self, state, message):
+        return self._node_greeting(state)
+
+    def _handle_elicitation(self, state, message):
+        return self._node_elicitation(state)
+
+    def _handle_intent(self, state, message):
+        return self._node_intent(state)
+
+    def _handle_qualification(self, state, message):
+        return self._node_qualification(state)
+
+    def _handle_recommendation(self, state, message):
+        return self._node_recommendation(state)
+
+    def _handle_scheduling(self, state, message):
+        return self._node_scheduling(state)
+
+    def _handle_handoff(self, state, message):
+        return self._node_handoff(state)
+
+    def _handle_followup(self, state, message):
+        return self._node_followup(state)
+
+    def _polish_reply(self, state, message):
+        return self._node_postprocess(state)
+
+    # --- Helpers ---
+
+    def _is_restricted(self, lead_id: str | None) -> bool:
+        if self.restriction_check is None or not lead_id:
+            return False
+        try:
+            return bool(self.restriction_check(lead_id))
+        except Exception:
+            logger.warning("restriction check failed; treating as unrestricted (fail-open)")
+            return False
+
+    @staticmethod
+    def _default_classify(message: str) -> tuple[str, float]:
+        lowered = message.lower()
+        if any(w in lowered for w in ("alugar", "locação", "locacao", "locar")):
+            return "rent", 0.9
+        if any(w in lowered for w in ("investimento", "investir", "renda")):
+            return "investment", 0.9
+        if any(w in lowered for w in ("comprar", "compra", "adquirir")):
+            return "purchase", 0.9
+        return "unknown", 0.3
+
+
+# --- ICS convite (FR-05) -----------------------------------------------------
+
+def _build_ics(appointment: dict[str, Any]) -> str | None:
+    """Gera convite .ics (RFC 5545) a partir do dict de agendamento."""
+    if not appointment or not appointment.get("confirmed"):
+        return None
+    when = appointment.get("when", "")
+    summary = appointment.get("summary", "Visita — W Levitt SDR")
+    location = appointment.get("location", "")
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//W Levitt//SDR//PT-BR",
+        "BEGIN:VEVENT",
+        f"SUMMARY:{summary}",
+    ]
+    if location:
+        lines.append(f"LOCATION:{location}")
+    if when:
+        lines.append(f"DTSTART:{when}")
+        lines.append(f"DTEND:{when}")
+    lines.extend(["END:VEVENT", "END:VCALENDAR"])
+    return "\r\n".join(lines)

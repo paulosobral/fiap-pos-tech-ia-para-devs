@@ -34,7 +34,8 @@ mkdir -p dist dist/archive
 # Catálogo sintético de imóveis (FR-11): gerado no build, data/ é gitignored
 mkdir -p apps/conversation-router/data
 "$PY" scripts/seed_properties.py > apps/conversation-router/data/properties.json
-echo "RAG seed: $(python3 -c 'import json;print(len(json.load(open("apps/conversation-router/data/properties.json"))["properties"]))') imóveis sintéticos"
+"$PY" scripts/seed_clients.py > apps/conversation-router/data/clients.json
+echo "RAG seed: $(python3 -c 'import json;print(len(json.load(open("apps/conversation-router/data/properties.json"))["properties"]))') imóveis + $(python3 -c 'import json;print(len(json.load(open("apps/conversation-router/data/clients.json"))["clients"]))') clientes sintéticos"
 for a in conversation-router voice-adapter crm-adapter contact-ingest anomaly-detector followup dashboard-api; do
   if [ -f "dist/$a.zip" ]; then
     cp "dist/$a.zip" "dist/archive/$a-$(date +%Y%m%d%H%M%S).zip"
