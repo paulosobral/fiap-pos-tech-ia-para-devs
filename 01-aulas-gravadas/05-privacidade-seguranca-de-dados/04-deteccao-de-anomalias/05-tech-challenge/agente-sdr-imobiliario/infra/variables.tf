@@ -37,15 +37,33 @@ variable "dashboard_schedule_start" {
 }
 
 variable "dashboard_schedule_end" {
-  description = "Cron (UTC) escala o ECS p/ 0 tasks (fora da janela). Default 20:00 UTC = 17:00 BRT"
+  description = "Cron (UTC) escala o ECS p/ 0 tasks (fora da janela). Default 21:00 UTC = 18:00 BRT"
   type        = string
-  default     = "cron(0 20 * * ? *)"
+  default     = "cron(0 21 * * ? *)"
 }
 
 variable "anomaly_schedule" {
   description = "Frequência do varrimento de anomalias (u5)"
   type        = string
   default     = "rate(1 minute)"
+}
+
+variable "voice_adapter_image" {
+  description = "URI da imagem ECR do voice-adapter (build: podman build & push antes do apply). Default = python p/ permitir o 1º apply; o start.sh faz o apply2 com a imagem ECR."
+  type        = string
+  default     = "public.ecr.aws/docker/library/python:3.11-slim"
+}
+
+variable "voice_schedule_start" {
+  description = "Cron (UTC) escala o ECS voice-adapter p/ 1 task. Default 12:00 UTC = 09:00 BRT"
+  type        = string
+  default     = "cron(0 12 * * ? *)"
+}
+
+variable "voice_schedule_end" {
+  description = "Cron (UTC) escala o ECS voice-adapter p/ 0 tasks. Default 21:00 UTC = 18:00 BRT"
+  type        = string
+  default     = "cron(0 21 * * ? *)"
 }
 
 variable "followup_schedule" {

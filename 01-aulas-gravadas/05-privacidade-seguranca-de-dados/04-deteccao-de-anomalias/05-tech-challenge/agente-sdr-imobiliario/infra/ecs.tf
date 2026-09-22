@@ -185,3 +185,210 @@ resource "aws_iam_role_policy" "ecs_execution" {
 output "dashboard_ui_ip" {
   value = "IP da task: ver 'aws ecs describe-tasks' ou o log do start.sh (sem ALB — acesso direto)"
 }
+
+# ============================================================
+# Voice Adapter — ECS Fargate (whisper real, não cabe em Lambda)
+# ============================================================
+
+resource "aws_ecr_repository" "voice_adapter" {
+  name                 = "sdr-voice-adapter"
+  image_tag_mutability = "MUTABLE"
+  force_delete         = true
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+}
+
+output "voice_ecr_repo" {
+  value = aws_ecr_repository.voice_adapter.repository_url
+}
+
+resource "aws_cloudwatch_log_group" "voice_adapter" {
+  name              = "/ecs/sdr-voice-adapter"
+  retention_in_days = 7
+}
+
+resource "aws_security_group" "voice_adapter" {
+  name        = "sdr-voice-adapter"
+  description = "Voice adapter worker — sem ingress (consome SQS)"
+  vpc_id      = data.aws_vpc.default.id
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_ecs_task_definition" "voice_adapter" {
+  family                   = "sdr-voice-adapter"
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = "1024"
+  memory                   = "4096"
+  execution_role_arn       = aws_iam_role.ecs_execution.arn
+  task_role_arn            = aws_iam_role.voice_adapter_task.arn
+
+  container_definitions = jsonencode([
+    {
+      name      = "voice-adapter"
+      image     = var.voice_adapter_image
+      essential = true
+      environment = [
+        { name = "VOICE_QUEUE_URL",      value = aws_sqs_queue.voice.url },
+        { name = "TELEGRAM_BOT_TOKEN",    value = var.telegram_bot_token },
+        { name = "INTERNAL_SECRET_TOKEN", value = random_password.internal_secret.result },
+        { name = "ROUTER_BASE_URL",      value = aws_apigatewayv2_api.http.api_endpoint },
+        { name = "SESSIONS_TABLE",       value = aws_dynamodb_table.sessions.name },
+        { name = "AWS_REGION",           value = var.region },
+        { name = "WORKER_POLL_INTERVAL", value = "5" },
+        { name = "WORKER_MAX_MESSAGES",   value = "5" },
+        { name = "WHISPER_MODEL_SIZE",    value = "small" },
+      ]
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = "/ecs/sdr-voice-adapter"
+          "awslogs-region"        = var.region
+          "awslogs-stream-prefix" = "voice-adapter"
+        }
+      }
+    }
+  ])
+}
+
+resource "aws_ecs_service" "voice_adapter" {
+  name            = "sdr-voice-adapter"
+  cluster         = aws_ecs_cluster.sdr.id
+  task_definition = aws_ecs_task_definition.voice_adapter.arn
+  desired_count   = 0
+  launch_type     = "FARGATE"
+
+  network_configuration {
+    subnets          = data.aws_subnets.default_public.ids
+    security_groups  = [aws_security_group.voice_adapter.id]
+    assign_public_ip = true
+  }
+}
+
+# Scale-to-zero fora da janela comercial (09:00-18:00 BRT)
+resource "aws_appautoscaling_target" "voice_adapter" {
+  service_namespace  = "ecs"
+  resource_id        = "service/${aws_ecs_cluster.sdr.name}/${aws_ecs_service.voice_adapter.name}"
+  scalable_dimension = "ecs:service:DesiredCount"
+  min_capacity       = 0
+  max_capacity       = 1
+}
+
+resource "aws_appautoscaling_scheduled_action" "voice_scale_out" {
+  name               = "sdr-voice-start"
+  service_namespace  = "ecs"
+  resource_id        = aws_appautoscaling_target.voice_adapter.resource_id
+  scalable_dimension = aws_appautoscaling_target.voice_adapter.scalable_dimension
+  schedule           = var.voice_schedule_start
+  timezone           = "UTC"
+  scalable_target_action {
+    min_capacity = 1
+    max_capacity = 1
+  }
+}
+
+resource "aws_appautoscaling_scheduled_action" "voice_scale_in" {
+  name               = "sdr-voice-stop"
+  service_namespace  = "ecs"
+  resource_id        = aws_appautoscaling_target.voice_adapter.resource_id
+  scalable_dimension = aws_appautoscaling_target.voice_adapter.scalable_dimension
+  schedule           = var.voice_schedule_end
+  timezone           = "UTC"
+  scalable_target_action {
+    min_capacity = 0
+    max_capacity = 0
+  }
+}
+
+# IAM role da task (permite ler SQS, DynamoDB, KMS, Secrets)
+resource "aws_iam_role" "voice_adapter_task" {
+  name = "sdr-voice-adapter-task"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "ecs-tasks.amazonaws.com" }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "voice_adapter_task" {
+  name = "sdr-voice-adapter-task"
+  role = aws_iam_role.voice_adapter_task.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "SQS"
+        Effect = "Allow"
+        Action = [
+          "sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes",
+          "sqs:GetQueueUrl", "sqs:ChangeMessageVisibility"
+        ]
+        Resource = aws_sqs_queue.voice.arn
+      },
+      {
+        Sid    = "DynamoDB"
+        Effect = "Allow"
+        Action = [
+          "dynamodb:GetItem", "dynamodb:Query"
+        ]
+        Resource = [
+          "arn:aws:dynamodb:${var.region}:*:table/sdr-*",
+          "arn:aws:dynamodb:${var.region}:*:table/sdr-*/index/*",
+        ]
+      },
+      {
+        Sid      = "KMS"
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt", "kms:GenerateDataKey"]
+        Resource = aws_kms_key.pii.arn
+      },
+      {
+        Sid    = "SecretsManager"
+        Effect = "Allow"
+        Action = ["secretsmanager:GetSecretValue"]
+        Resource = [
+          aws_secretsmanager_secret.telegram_bot_token.arn,
+        ]
+      },
+      {
+        Sid    = "CloudWatchLogs"
+        Effect = "Allow"
+        Action = ["logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = "${aws_cloudwatch_log_group.voice_adapter.arn}:*"
+      },
+    ]
+  })
+}
+
+# Permissão de ECR para a role de execução puxar a imagem do voice-adapter
+resource "aws_iam_role_policy" "ecs_execution_voice" {
+  name = "sdr-ecs-execution-voice"
+  role = aws_iam_role.ecs_execution.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "ECRVoice"
+        Effect   = "Allow"
+        Action   = ["ecr:GetDownloadUrlForLayer", "ecr:BatchGetImage", "ecr:BatchCheckLayerAvailability"]
+        Resource = aws_ecr_repository.voice_adapter.arn
+      },
+      {
+        Sid      = "LogsVoice"
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = "${aws_cloudwatch_log_group.voice_adapter.arn}:*"
+      },
+    ]
+  })
+}

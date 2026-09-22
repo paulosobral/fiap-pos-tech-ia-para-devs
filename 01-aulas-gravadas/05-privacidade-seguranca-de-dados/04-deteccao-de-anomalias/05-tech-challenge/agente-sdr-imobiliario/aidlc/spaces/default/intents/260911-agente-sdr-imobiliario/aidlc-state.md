@@ -77,14 +77,14 @@ Per unit: [TBD]
 - [S] nfr-requirements — EXECUTE
 - [S] nfr-design — EXECUTE
 - [S] infrastructure-design — EXECUTE
-- [x] code-generation — EXECUTE
-- [x] build-and-test — EXECUTE
+- [x] code-generation — EXECUTE (Revisado e alinhado ao PRD: LiteLLM, LangGraph StateGraph, FAISS + TF-IDF embeddings, RAG Imóveis + Clientes CRM, Convite ICS RFC 5545)
+- [x] build-and-test — EXECUTE (666 testes passando, cobertura >94% no router e >95% nos demais serviços)
 - [x] ci-pipeline — EXECUTE
 
 ### OPERATION PHASE
 - [x] deployment-pipeline — EXECUTE
-- [x] environment-provisioning — EXECUTE
-- [x] deployment-execution — EXECUTE
+- [x] environment-provisioning — EXECUTE (IaC expandida com S3 Catalogs, SES Ingestão, Step Functions Follow-up Pipeline e Cognito User Pool/JWT Authorizer)
+- [x] deployment-execution — EXECUTE (Dashboard ECS configurado para janela 09:00-18:00 BRT todo dia; Q1-Q4 validados)
 - [-] observability-setup — EXECUTE
 - [ ] incident-response — EXECUTE
 - [ ] performance-validation — EXECUTE
@@ -99,5 +99,5 @@ Per unit: [TBD]
 
 ## Session Resume Point
 - **Last Completed Stage**: deployment-execution
-- **Next Action**: Execute Observability Setup
+- **Next Action**: Setup Observability & CloudWatch Dashboards/Alarms
 - **Pending Artifacts**: none

@@ -12,9 +12,9 @@ Perguntas geradas do trabalho de deployment-execution para consolidação com os
 
 **Evidência:** health-check-report.md; limite de 50MB do zip direto da Lambda (~120MB do stack de transcrição).
 
-## Q3 — Dashboard-ui opera escala 0 fora da janela 09:00–17:00 BRT (custo ~US$0.95/mês) e validação manual na janela via Console ECS?
+## Q3 — Dashboard-ui opera escala 0 fora da janela 09:00–18:00 BRT (custo ~US$1.05/mês) e validação manual na janela via Console ECS?
 
-**Evidência:** deployment-log.md §3; decisa do humano (opção B — Fargate mini sem ALB).
+**Evidência:** deployment-log.md §3; decisão do usuário: janela comercial 09:00–18:00 BRT (12:00–21:00 UTC).
 
 ## Q4 — Bot Telegram fica inativo até o humano preencher a secret `sdr/tg-bot-token` e re-aplicar (não embutimos token no código/state)?
 
@@ -29,4 +29,4 @@ Consolidated work summary built from the question flow and decisions of this sta
 - Q3: Looks correct
 - Q4: Looks correct
 
-[Answer]:
+[Answer]: Looks correct

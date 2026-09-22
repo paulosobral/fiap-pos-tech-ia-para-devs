@@ -1,9 +1,14 @@
+# voice-adapter agora roda em ECS Fargate (whisper real não cabe em Lambda zip).
+# A fila SQS sdr-voice-queue é consumida pelo worker ECS (service/sqs_worker.py).
+# A Lambda voice-adapter permanece para testes/unitários, mas o processamento
+# de áudio em produção é feito pelo container ECS com faster-whisper.
+
 module "lambda_voice_adapter" {
   source  = "terraform-aws-modules/lambda/aws"
   version = "~> 7.0"
 
   function_name          = "sdr-voice-adapter"
-  description            = "u2 - transcricao de voz (whisper) e envio ao router"
+  description            = "u2 - transcricao de voz (whisper) — deprecated em producao, uso via ECS"
   handler                = "handler.handler"
   runtime                = "python3.11"
   create_package         = false
@@ -22,17 +27,4 @@ module "lambda_voice_adapter" {
     ROUTER_BASE_URL       = aws_apigatewayv2_api.http.api_endpoint
     SESSIONS_TABLE        = aws_dynamodb_table.sessions.name
   }
-}
-
-resource "aws_lambda_event_source_mapping" "voice_from_sqs" {
-  event_source_arn = aws_sqs_queue.voice.arn
-  function_name    = module.lambda_voice_adapter.lambda_function_arn
-  batch_size       = 5
-}
-
-resource "aws_lambda_permission" "voice_sqs" {
-  action        = "lambda:InvokeFunction"
-  function_name = module.lambda_voice_adapter.lambda_function_name
-  principal     = "sqs.amazonaws.com"
-  source_arn    = aws_sqs_queue.voice.arn
 }
