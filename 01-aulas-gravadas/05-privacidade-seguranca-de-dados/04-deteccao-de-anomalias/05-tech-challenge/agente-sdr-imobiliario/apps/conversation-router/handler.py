@@ -15,6 +15,15 @@ from service.security_layer import FALLBACK_MESSAGE, KmsPiiRegistry, SecurityLay
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+try:
+    from service.llm import classify_intent as _llm_classify_intent
+    from service.llm import generate_reply as _llm_generate_reply
+    from service.properties_catalog import search_properties as _search_properties
+
+    _HAS_LLM = True
+except ImportError:  # pragma: no cover - módulos ausentes só em env sem os arquivos
+    _HAS_LLM = False
+
 _INTERNAL_INBOUND_PATH = "/internal/inbound-text"
 _INTERNAL_CRM_STATUS_PATH = "/internal/crm-status"
 
@@ -386,8 +395,39 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
         )
 
     security = SecurityLayer(pii_store=pii_store)
+
+    # LLM (OpenRouter) + RAG (catálogo sintético) — o coração do PRD (FR-02/FR-11).
+    # Sem LLM_API_KEY configurada, cai no classificador por regex (comportamento POC igual ao anterior).
+    llm_classifier = None
+    if _HAS_LLM and (llm_key := os.environ.get("LLM_API_KEY")):
+        def llm_classify(message: str) -> tuple[str, float]:
+            try:
+                return _llm_classify_intent(message, api_key=llm_key, model=os.environ.get("LLM_MODEL"))
+            except Exception:
+                logger.warning("LLM classify falhou; usando regex como fallback", exc_info=True)
+                return SalesFlow._default_classify(message)
+
+        llm_classifier = llm_classify
+
+    llm_reply = None
+    if _HAS_LLM and (llm_key := os.environ.get("LLM_API_KEY")):
+        def llm_reply(
+            message: str, canned: str, lead_info: dict[str, Any], properties: list[dict[str, Any]]
+        ) -> str:
+            try:
+                return _llm_generate_reply(
+                    message, canned, lead_info, properties,
+                    api_key=llm_key, model=os.environ.get("LLM_MODEL"),
+                )
+            except Exception:
+                logger.warning("LLM reply falhou; usando resposta oficial como fallback", exc_info=True)
+                return canned
+
     flow = SalesFlow(
         lead_qualifier=LeadQualifier(),
+        llm_classify_intent=llm_classifier,
+        reply_generator=llm_reply,
+        properties_rag=_search_properties if _HAS_LLM else None,
         specialist_rotation=[s.strip() for s in os.environ.get("SPECIALIST_ROTATION", "").split(",") if s.strip()],
         specialist_fallback=os.environ.get("SPECIALIST_FALLBACK", "diretor"),
         restriction_check=DynamoRestrictionCheck(dynamodb, os.environ.get("ALERTS_TABLE", "sdr-alerts")),

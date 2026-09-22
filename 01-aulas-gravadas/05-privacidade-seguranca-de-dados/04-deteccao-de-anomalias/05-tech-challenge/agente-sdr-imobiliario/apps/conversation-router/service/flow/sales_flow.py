@@ -64,6 +64,7 @@ class SalesFlow:
         scheduler: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
         handoff_builder: Callable[[dict[str, Any]], str] | None = None,
         llm_classify_intent: Callable[[str], tuple[str, float]] | None = None,
+        reply_generator: Callable[[str, str, dict[str, Any], list[dict[str, Any]]], str] | None = None,
         specialist_rotation: list[str] | None = None,
         specialist_fallback: str = "diretor",
         restriction_check: Callable[[str], bool] | None = None,
@@ -73,6 +74,7 @@ class SalesFlow:
         self.scheduler = scheduler
         self.handoff_builder = handoff_builder
         self._llm_classify = llm_classify_intent or self._default_classify
+        self.reply_generator = reply_generator
         self.specialist_rotation = specialist_rotation or []
         self.specialist_fallback = specialist_fallback
         # FR9.4: checker de restrição de agendamento (alertas de anomalia — U5, is_restricted(lead_id)).
@@ -115,7 +117,35 @@ class SalesFlow:
         if method is None:
             state["response"] = "Como posso ajudar?"
             return state
-        return method(state, message)
+        method(state, message)
+        return self._polish_reply(state, message)
+
+    def _polish_reply(self, state: dict[str, Any], message: str) -> dict[str, Any]:
+        """FR-02: troca a resposta oficial por texto natural gerado por LLM.
+
+        Exceto textos de LGPD/recusa (compliance fixa — conteúdo não pode ser
+        reescrito por modelo). Fracasso do LLM mantém a resposta oficial
+        (fallback determinístico), sem quebrar o fluxo.
+        """
+        if self.reply_generator is None:
+            return state
+        from service.security_layer import CONSENT_MESSAGE, REFUSAL_MESSAGE
+
+        canned = state.get("response")
+        if not canned or canned in (CONSENT_MESSAGE, REFUSAL_MESSAGE):
+            return state
+        try:
+            generated = self.reply_generator(
+                message,
+                canned,
+                state.get("lead_info") or {},
+                state.get("properties") or [],
+            )
+            if generated and generated.strip():
+                state["response"] = generated.strip()
+        except Exception:
+            logger.warning("LLM reply falhou; mantendo resposta oficial (fallback)", exc_info=True)
+        return state
 
     def _handle_greeting(self, state: dict[str, Any], message: str) -> dict[str, Any]:
         from service.security_layer import CONSENT_MESSAGE, REFUSAL_MESSAGE
@@ -196,7 +226,7 @@ class SalesFlow:
         state["properties"] = properties[:3]
         state["current_state"] = "scheduling"
         listed = "\n".join(
-            f"{i + 1}. {p.get('title', 'Imóvel')} — {p.get('region', '')}, {p.get('area_m2', '')} m²"
+            f"{i + 1}. {p.get('title', 'Imóvel')} — {p.get('region', '')}, {p.get('area_util', '')} m²"
             for i, p in enumerate(state["properties"])
         )
         state["response"] = f"Encontramos estas opções:\n{listed}\nGostaria de agendar uma visita?"

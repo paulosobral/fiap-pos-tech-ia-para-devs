@@ -17,6 +17,13 @@ variable "telegram_bot_token" {
   sensitive   = true
 }
 
+variable "llm_api_key" {
+  description = "Chave OpenRouter p/ o LLM do conversation-router (FR-02). Vazio = classificador por regex (POC sem IA)."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "dashboard_ui_image" {
   description = "URI da imagem ECR do dashboard-ui (build: podman build & push antes do apply). Default = pública python p/ permitir o 1º apply; o start.sh faz o apply2 com a imagem ECR."
   type        = string

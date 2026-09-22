@@ -31,6 +31,10 @@ echo "Gates OK"
 
 echo "== [4/6] Build dist/*.zip (7 Lambdas; dashboard-ui = container via ECR)"
 mkdir -p dist dist/archive
+# Catálogo sintético de imóveis (FR-11): gerado no build, data/ é gitignored
+mkdir -p apps/conversation-router/data
+"$PY" scripts/seed_properties.py > apps/conversation-router/data/properties.json
+echo "RAG seed: $(python3 -c 'import json;print(len(json.load(open("apps/conversation-router/data/properties.json"))["properties"]))') imóveis sintéticos"
 for a in conversation-router voice-adapter crm-adapter contact-ingest anomaly-detector followup dashboard-api; do
   if [ -f "dist/$a.zip" ]; then
     cp "dist/$a.zip" "dist/archive/$a-$(date +%Y%m%d%H%M%S).zip"
@@ -65,6 +69,7 @@ fi
 
 # apply 1: cria o ECR e a infra base (a task do dashboard-ui ainda sem imagem)
 if ! terraform apply -auto-approve -input=false -var="telegram_bot_token=${TELEGRAM_BOT_TOKEN:-}" \
+     -var="llm_api_key=${LLM_API_KEY:-}" \
      >/tmp/td-apply1.log 2>&1; then
   echo "FALHA: terraform apply (base)"; tail -40 /tmp/td-apply1.log; exit 1
 fi
@@ -84,6 +89,7 @@ echo "imagem publicada: $tag"
 # apply 2: aponta a task definition para a imagem (scale-out manual p/ smoke)
 if ! terraform apply -auto-approve -input=false \
      -var="telegram_bot_token=${TELEGRAM_BOT_TOKEN:-}" \
+     -var="llm_api_key=${LLM_API_KEY:-}" \
      -var="dashboard_ui_image=$tag" \
      >/tmp/td-apply2.log 2>&1; then
   echo "FALHA: terraform apply (imagem)"; tail -40 /tmp/td-apply2.log; exit 1
@@ -135,4 +141,5 @@ echo "Deploy concluído."
 echo "API:            $API_URL"
 echo "Dashboard:      task do ECS sdr-dashboard-ui (IP público no Console > ECS > cluster sdr > service; escala 09:00-17:00 BRT)"
 echo "Token Telegram: substitua em Secrets Manager (sdr/tg-bot-token) e re-aplique p/ ativar o bot"
+echo "LLM (OpenRouter): defina LLM_API_KEY em secrets.local.env e re-aplique p/ ativar a IA (RAG+classificação)"
 echo "Teardown:       ./stop.sh"

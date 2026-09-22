@@ -135,7 +135,7 @@ class TestSalesFlow:
         assert state["lead_qualified"] is False
 
     def test_recommendation_with_results_lists_top3(self):
-        rag = lambda info: [{"title": f"Imóvel {i}", "region": "B", "area_m2": 100} for i in range(5)]
+        rag = lambda info: [{"title": f"Imóvel {i}", "region": "B", "area_util": 100} for i in range(5)]
         flow = make_flow(properties_rag=rag)
         state = flow.invoke({"current_state": "recommendation", "message": "quero ver"})
         assert len(state["properties"]) == 3
@@ -144,6 +144,40 @@ class TestSalesFlow:
         flow = make_flow(properties_rag=lambda info: [])
         state = flow.invoke({"current_state": "recommendation", "message": "quero ver"})
         assert "Não encontramos imóveis" in state["response"]
+
+
+class TestReplyGenerator:
+    def test_llm_polishes_response(self):
+        calls: list[tuple[str, str]] = []
+
+        def fake_reply(message, canned, lead_info, properties):
+            calls.append((message, canned))
+            return "Claro! {canned}".replace("{canned}", canned.lower())
+
+        flow = make_flow(reply_generator=fake_reply)
+        state = flow.invoke({"current_state": "intent", "message": "quero alugar agora"})
+        assert calls
+        assert state["response"] != state["response"].upper()  # nunca sobe; mock devolve própria
+        assert state["intent"] == "rent"  # transição de estado preservada apesar do polish
+
+    def test_reply_generator_failure_keeps_canned(self):
+        flow = make_flow(reply_generator=lambda *_: (_ for _ in ()).throw(RuntimeError("lu fail")))
+        state = flow.invoke({"current_state": "intent", "message": "quero alugar"})
+        # resposta oficial preservada (fallback determinístico)
+        assert "metragem" in state["response"] or "busca" in state["response"]
+        assert state["current_state"] == "qualification"
+
+    def test_lgpd_texts_are_never_rewritten(self):
+        from service.security_layer import CONSENT_MESSAGE, REFUSAL_MESSAGE
+
+        def fake_reply(message, canned, lead_info, properties):
+            raise AssertionError("não pode ser chamado para LGPD")
+
+        flow = make_flow(reply_generator=fake_reply)
+        state = flow.invoke({"current_state": "greeting", "message": "olá"})
+        assert state["response"] == CONSENT_MESSAGE
+        state = flow.invoke({"current_state": "elicitation", "message": "não"})
+        assert state["response"] == REFUSAL_MESSAGE
 
 
 class TestSchedulingRestriction:
