@@ -68,36 +68,49 @@ if ! terraform init -upgrade -input=false >/tmp/td-init.log 2>&1; then
   echo "FALHA: terraform init"; tail -20 /tmp/td-init.log; exit 1
 fi
 
-# apply 1: cria o ECR e a infra base (a task do dashboard-ui ainda sem imagem)
+# apply 1: cria o ECR e a infra base (as tasks ainda sem imagem)
 if ! terraform apply -auto-approve -input=false -var="telegram_bot_token=${TELEGRAM_BOT_TOKEN:-}" \
      -var="llm_api_key=${LLM_API_KEY:-}" \
      >/tmp/td-apply1.log 2>&1; then
   echo "FALHA: terraform apply (base)"; tail -40 /tmp/td-apply1.log; exit 1
 fi
-ECR_URI="$(terraform output -raw dashboard_ecr_repo)"
-echo "ECR: $ECR_URI"
+DASH_ECR_URI="$(terraform output -raw dashboard_ecr_repo)"
+VOICE_ECR_URI="$(terraform output -raw voice_ecr_repo)"
+echo "ECR dashboard: $DASH_ECR_URI"
+echo "ECR voice: $VOICE_ECR_URI"
+REGION="$(terraform output -raw region)"
 
 # build + push da imagem do dashboard-ui (podman, sem docker)
-tag="$ECR_URI:poc-$(date +%Y%m%d%H%M%S)"
+dash_tag="$DASH_ECR_URI:poc-$(date +%Y%m%d%H%M%S)"
 echo "== [5b/6] build imagem dashboard-ui (podman)"
-podman build -q -t "$tag" -f ../apps/dashboard-ui/Dockerfile ../apps/dashboard-ui/ >/tmp/td-podman.log 2>&1 || {
-  echo "FALHA: podman build"; tail -20 /tmp/td-podman.log; exit 1; }
-aws ecr get-login-password --region "$(terraform output -raw region)" \
-  | podman login --username AWS --password-stdin "$(echo "$ECR_URI" | cut -d/ -f1)" >/dev/null 2>&1
-podman push -q "$tag" >>/tmp/td-podman.log 2>&1 || { echo "FALHA: push ECR"; tail -10 /tmp/td-podman.log; exit 1; }
-echo "imagem publicada: $tag"
+podman build -q -t "$dash_tag" -f ../apps/dashboard-ui/Dockerfile ../apps/dashboard-ui/ >/tmp/td-podman.log 2>&1 || {
+  echo "FALHA: podman build dashboard-ui"; tail -20 /tmp/td-podman.log; exit 1; }
+aws ecr get-login-password --region "$REGION" \
+  | podman login --username AWS --password-stdin "$(echo "$DASH_ECR_URI" | cut -d/ -f1)" >/dev/null 2>&1
+podman push -q "$dash_tag" >>/tmp/td-podman.log 2>&1 || { echo "FALHA: push ECR dashboard-ui"; tail -10 /tmp/td-podman.log; exit 1; }
+echo "imagem publicada: $dash_tag"
 
-# apply 2: aponta a task definition para a imagem (scale-out manual p/ smoke)
+# build + push da imagem do voice-adapter (faster-whisper real — ECS Fargate)
+voice_tag="$VOICE_ECR_URI:poc-$(date +%Y%m%d%H%M%S)"
+echo "== [5c/6] build imagem voice-adapter (podman, faster-whisper + ffmpeg)"
+podman build -q -t "$voice_tag" -f ../apps/voice-adapter/Dockerfile ../apps/voice-adapter/ >/tmp/td-podman-voice.log 2>&1 || {
+  echo "FALHA: podman build voice-adapter"; tail -20 /tmp/td-podman-voice.log; exit 1; }
+aws ecr get-login-password --region "$REGION" \
+  | podman login --username AWS --password-stdin "$(echo "$VOICE_ECR_URI" | cut -d/ -f1)" >/dev/null 2>&1
+podman push -q "$voice_tag" >>/tmp/td-podman-voice.log 2>&1 || { echo "FALHA: push ECR voice-adapter"; tail -10 /tmp/td-podman-voice.log; exit 1; }
+echo "imagem publicada: $voice_tag"
+
+# apply 2: aponta as task definitions para as imagens (scale-out manual p/ smoke)
 if ! terraform apply -auto-approve -input=false \
      -var="telegram_bot_token=${TELEGRAM_BOT_TOKEN:-}" \
      -var="llm_api_key=${LLM_API_KEY:-}" \
-     -var="dashboard_ui_image=$tag" \
+     -var="dashboard_ui_image=$dash_tag" \
+     -var="voice_adapter_image=$voice_tag" \
      >/tmp/td-apply2.log 2>&1; then
-  echo "FALHA: terraform apply (imagem)"; tail -40 /tmp/td-apply2.log; exit 1
+  echo "FALHA: terraform apply (imagens)"; tail -40 /tmp/td-apply2.log; exit 1
 fi
 
 API_URL="$(terraform output -raw api_url)"
-REGION="$(terraform output -raw region)"
 cd ..
 
 echo "== [6/6] Smoke checks"
@@ -140,7 +153,8 @@ PYEOF
 echo
 echo "Deploy concluído."
 echo "API:            $API_URL"
-echo "Dashboard:      task do ECS sdr-dashboard-ui (IP público no Console > ECS > cluster sdr > service; escala 09:00-17:00 BRT)"
+echo "Dashboard:      task do ECS sdr-dashboard-ui (IP público no Console > ECS > cluster sdr > service; escala 09:00-18:00 BRT)"
+echo "Voice adapter:  task do ECS sdr-voice-adapter (faster-whisper; escala 09:00-18:00 BRT; consome sdr-voice-queue)"
 echo "Token Telegram: substitua em Secrets Manager (sdr/tg-bot-token) e re-aplique p/ ativar o bot"
 echo "LLM (OpenRouter): defina LLM_API_KEY em secrets.local.env e re-aplique p/ ativar a IA (RAG+classificação)"
 echo "Teardown:       ./stop.sh"

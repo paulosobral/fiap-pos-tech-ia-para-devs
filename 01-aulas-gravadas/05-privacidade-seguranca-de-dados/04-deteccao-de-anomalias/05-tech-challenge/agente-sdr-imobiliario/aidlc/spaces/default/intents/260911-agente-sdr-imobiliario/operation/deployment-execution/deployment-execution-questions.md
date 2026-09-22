@@ -8,9 +8,11 @@ Perguntas geradas do trabalho de deployment-execution para consolidação com os
 
 **Evidência:** smoke-test-results.md; start.sh fase [6/6] exit 0.
 
-## Q2 — Voice-adapter permanece DEGRADADO no POC (pacote sem faster-whisper; voz vai para DLQ) e a evolução (layer/Transcribe) fica para pós-POC?
+## Q2 — Voice-adapter roda em ECS Fargate (faster-whisper real, ~520MB) consumindo a fila SQS via worker long-polling, com escala 09:00–18:00 BRT (mesma janela do dashboard)?
 
-**Evidência:** health-check-report.md; limite de 50MB do zip direto da Lambda (~120MB do stack de transcrição).
+**Resolução:** SIM. `faster-whisper` + `ctranslate2` + `ffmpeg` (~520MB) não cabem no limite de Lambda (250MB máximo somando layers/zip). O `voice-adapter` agora é um **worker ECS Fargate** (`service/sqs_worker.py`) que faz long-polling da `sdr-voice-queue`, transcreve com modelo `small` e reinjeta texto no router via `POST /internal/inbound-text`. A Lambda `sdr-voice-adapter` permanece declarada sem event source mapping (deprecated; fallback manual). Imagem ECR `sdr-voice-adapter` buildada/pushada no `start.sh` fase [5c/6].
+
+**Evidência:** infra/ecs.tf (ECR + task def + service + autoscaling programático), infra/variables.tf (`voice_schedule_start/end` = `cron(0 12/21 * * ? *)` = 09:00–18:00 BRT), apps/voice-adapter/service/sqs_worker.py, apps/voice-adapter/Dockerfile.
 
 ## Q3 — Dashboard-ui opera escala 0 fora da janela 09:00–18:00 BRT (custo ~US$1.05/mês) e validação manual na janela via Console ECS?
 

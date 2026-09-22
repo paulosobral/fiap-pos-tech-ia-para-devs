@@ -236,15 +236,15 @@ resource "aws_ecs_task_definition" "voice_adapter" {
       image     = var.voice_adapter_image
       essential = true
       environment = [
-        { name = "VOICE_QUEUE_URL",      value = aws_sqs_queue.voice.url },
-        { name = "TELEGRAM_BOT_TOKEN",    value = var.telegram_bot_token },
+        { name = "VOICE_QUEUE_URL", value = aws_sqs_queue.voice.url },
+        { name = "TELEGRAM_BOT_TOKEN", value = var.telegram_bot_token },
         { name = "INTERNAL_SECRET_TOKEN", value = random_password.internal_secret.result },
-        { name = "ROUTER_BASE_URL",      value = aws_apigatewayv2_api.http.api_endpoint },
-        { name = "SESSIONS_TABLE",       value = aws_dynamodb_table.sessions.name },
-        { name = "AWS_REGION",           value = var.region },
+        { name = "ROUTER_BASE_URL", value = aws_apigatewayv2_api.http.api_endpoint },
+        { name = "SESSIONS_TABLE", value = aws_dynamodb_table.sessions.name },
+        { name = "AWS_REGION", value = var.region },
         { name = "WORKER_POLL_INTERVAL", value = "5" },
-        { name = "WORKER_MAX_MESSAGES",   value = "5" },
-        { name = "WHISPER_MODEL_SIZE",    value = "small" },
+        { name = "WORKER_MAX_MESSAGES", value = "5" },
+        { name = "WHISPER_MODEL_SIZE", value = "small" },
       ]
       logConfiguration = {
         logDriver = "awslogs"
@@ -361,9 +361,9 @@ resource "aws_iam_role_policy" "voice_adapter_task" {
         ]
       },
       {
-        Sid    = "CloudWatchLogs"
-        Effect = "Allow"
-        Action = ["logs:CreateLogStream", "logs:PutLogEvents"]
+        Sid      = "CloudWatchLogs"
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]
         Resource = "${aws_cloudwatch_log_group.voice_adapter.arn}:*"
       },
     ]

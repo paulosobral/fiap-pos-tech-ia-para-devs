@@ -97,6 +97,16 @@ Per unit: [TBD]
 - **Status**: Running
 - **Last Updated**: 2026-09-22
 
+## Voice Adapter — Decisão de Arquitetura (Q2 resolvida)
+
+O `voice-adapter` NÃO cabe em Lambda direto:
+- `faster-whisper` + `ctranslate2` + `ffmpeg` + `onnxruntime` → ~520MB descompactado (limite absoluto Lambda = 250MB).
+- Solução adotada no POC: **ECS Fargate worker** (mesmo padrão do dashboard-ui), consome a fila `sdr-voice-queue` via long-polling (`service/sqs_worker.py`).
+- Escala programática 09:00–18:00 BRT (Attachment A: `voice_schedule_start`/`end`).
+- A Lambda `sdr-voice-adapter` permanece declarada mas **sem event source mapping SQS** (deprecated; transcreve só em fallback via reprocessamento manual).
+- Task role ECS com permissões mínimas: SQS (voice), DynamoDB (sessões), KMS (PII), Secrets Manager (token), CloudWatch Logs.
+- Imagem ECR `sdr-voice-adapter`; build/push via podman no `start.sh` fase [5c/6].
+
 ## Session Resume Point
 - **Last Completed Stage**: deployment-execution
 - **Next Action**: Setup Observability & CloudWatch Dashboards/Alarms
