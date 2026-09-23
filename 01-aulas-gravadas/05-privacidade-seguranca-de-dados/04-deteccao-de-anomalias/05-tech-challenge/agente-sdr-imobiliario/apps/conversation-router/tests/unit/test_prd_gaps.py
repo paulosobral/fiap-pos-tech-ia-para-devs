@@ -35,6 +35,7 @@ def test_sales_flow_ics_generated_on_scheduling():
         "message": "terça às 14h",
         "lead_info": {"intent": "rent", "region": "Faria Lima"},
         "shown_properties_count": 3,
+        "visit_interest": True,
     })
     assert res["current_state"] == "handoff"
     assert "ics_invite" in res

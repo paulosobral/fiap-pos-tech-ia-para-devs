@@ -265,7 +265,7 @@ class TestSchedulingRestriction:
     def test_restricted_scheduling_defers_action(self):
         scheduler = self.scheduler()
         flow = make_flow(scheduler=scheduler, restriction_check=lambda lead_id: lead_id == "L1")
-        state = flow.invoke({"current_state": "scheduling", "message": "amanhã 10h", "lead_id": "L1"})
+        state = flow.invoke({"current_state": "scheduling", "message": "amanhã 10h", "lead_id": "L1", "visit_interest": True})
         scheduler.assert_not_called()
         assert state["scheduling_restricted"] is True
         assert state["current_state"] == "handoff"
@@ -274,7 +274,7 @@ class TestSchedulingRestriction:
     def test_unrestricted_scheduling_calls_scheduler(self):
         scheduler = self.scheduler()
         flow = make_flow(scheduler=scheduler, restriction_check=lambda lead_id: False)
-        state = flow.invoke({"current_state": "scheduling", "message": "amanhã 10h", "lead_id": "L1"})
+        state = flow.invoke({"current_state": "scheduling", "message": "amanhã 10h", "lead_id": "L1", "visit_interest": True})
         scheduler.assert_called_once()
         assert state["appointment"]["confirmed"] is True
         assert "scheduling_restricted" not in state
@@ -282,14 +282,14 @@ class TestSchedulingRestriction:
     def test_scheduling_without_checker_runs_normally(self):
         scheduler = self.scheduler()
         flow = make_flow(scheduler=scheduler)
-        state = flow.invoke({"current_state": "scheduling", "message": "amanhã 10h", "lead_id": "L1"})
+        state = flow.invoke({"current_state": "scheduling", "message": "amanhã 10h", "lead_id": "L1", "visit_interest": True})
         scheduler.assert_called_once()
         assert state["current_state"] == "handoff"
 
     def test_restriction_check_failure_is_fail_open(self):
         scheduler = self.scheduler()
         flow = make_flow(scheduler=scheduler, restriction_check=lambda lead_id: (_ for _ in ()).throw(RuntimeError("boom")))
-        state = flow.invoke({"current_state": "scheduling", "message": "amanhã 10h", "lead_id": "L1"})
+        state = flow.invoke({"current_state": "scheduling", "message": "amanhã 10h", "lead_id": "L1", "visit_interest": True})
         scheduler.assert_called_once()
         assert "scheduling_restricted" not in state
 
@@ -311,6 +311,64 @@ class TestSchedulingRestriction:
             "current_state": "scheduling",
             "message": "amanhã 10h",
             "shown_properties_count": 3,
+            "visit_interest": True,
+        })
+        scheduler.assert_called_once()
+        assert state["current_state"] == "handoff"
+
+
+class TestReadyForSchedulingGate:
+    def scheduler(self):
+        return MagicMock(return_value={"confirmed": True, "when": "amanhã 10h"})
+
+    def test_gate_blocks_without_signal(self):
+        scheduler = self.scheduler()
+        flow = make_flow(scheduler=scheduler)
+        state = flow.invoke({
+            "current_state": "scheduling",
+            "message": "amanhã 10h",
+            "lead_id": "L1",
+            "shown_properties_count": 3,
+        })
+        scheduler.assert_not_called()
+        assert state["current_state"] == "recommendation"
+        assert "antes de agendar" in state["response"].lower()
+
+    def test_gate_allows_visit_interest(self):
+        scheduler = self.scheduler()
+        flow = make_flow(scheduler=scheduler)
+        state = flow.invoke({
+            "current_state": "scheduling",
+            "message": "amanhã 10h",
+            "lead_id": "L1",
+            "shown_properties_count": 3,
+            "visit_interest": True,
+        })
+        scheduler.assert_called_once()
+        assert state["current_state"] == "handoff"
+
+    def test_gate_allows_favorite_property(self):
+        scheduler = self.scheduler()
+        flow = make_flow(scheduler=scheduler)
+        state = flow.invoke({
+            "current_state": "scheduling",
+            "message": "amanhã 10h",
+            "lead_id": "L1",
+            "shown_properties_count": 3,
+            "favorite_property": "Torre Nova",
+        })
+        scheduler.assert_called_once()
+        assert state["current_state"] == "handoff"
+
+    def test_gate_allows_deadline_in_lead_info(self):
+        scheduler = self.scheduler()
+        flow = make_flow(scheduler=scheduler)
+        state = flow.invoke({
+            "current_state": "scheduling",
+            "message": "amanhã 10h",
+            "lead_id": "L1",
+            "shown_properties_count": 3,
+            "lead_info": {"deadline": "6 meses"},
         })
         scheduler.assert_called_once()
         assert state["current_state"] == "handoff"

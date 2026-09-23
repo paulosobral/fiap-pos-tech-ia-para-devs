@@ -83,6 +83,6 @@ class TestDynamoRestrictionCheck:
         scheduler = MagicMock(return_value={"confirmed": True})
         check = DynamoRestrictionCheck(FakeAlertClient([restricted_item()]), "t-alerts")
         flow = SalesFlow(lead_qualifier=LeadQualifier(), scheduler=scheduler, restriction_check=check)
-        state = flow.invoke({"current_state": "scheduling", "message": "amanhã", "lead_id": "l1"})
+        state = flow.invoke({"current_state": "scheduling", "message": "amanhã", "lead_id": "l1", "visit_interest": True})
         scheduler.assert_not_called()
         assert state["scheduling_restricted"] is True

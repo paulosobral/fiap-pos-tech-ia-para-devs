@@ -76,6 +76,8 @@ class FlowState(TypedDict, total=False):
     followup_deferred: bool
     ics_invite: str
     shown_properties_count: int
+    favorite_property: str
+    visit_interest: bool
     _router_action: str | None  # ADR-011: ação classificada pelo llm_router (enum VALID_ACTIONS)
 
 
@@ -190,6 +192,14 @@ class SalesFlow:
         if action is not None:
             return action == "request_options"
         return bool(_OPTIONS_REQUEST_RE.search(state.get("message", "")))
+
+    @staticmethod
+    def ready_for_scheduling(state: FlowState) -> bool:
+        return bool(
+            state.get("favorite_property")
+            or state.get("visit_interest")
+            or (state.get("lead_info") or {}).get("deadline")
+        )
 
     # --- Nodes (cada um processa UM turno e retorna state atualizado) ---
 
@@ -371,6 +381,13 @@ class SalesFlow:
         message = state.get("message", "")
         if self._wants_options(state) and self.properties_rag is not None:
             return self._show_more_options(state)
+        if not self.ready_for_scheduling(state):
+            state["current_state"] = "recommendation"
+            state["response"] = (
+                "Antes de agendar, me diga qual imóvel mais te interessou "
+                "ou se quer refinar a busca. Assim consigo preparar a visita ideal."
+            )
+            return state
         shown_count = state.get("shown_properties_count", 0) + len(state.get("properties", []))
         if shown_count < 3 and not state.get("lead_id"):
             state["current_state"] = "recommendation"
