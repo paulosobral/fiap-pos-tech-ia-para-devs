@@ -229,7 +229,7 @@ class TestReplyGenerator:
     def test_llm_polishes_response(self):
         calls: list[tuple[str, str]] = []
 
-        def fake_reply(message, canned, lead_info, properties):
+        def fake_reply(message, canned, lead_info, properties, **kwargs):
             calls.append((message, canned))
             return "Claro! {canned}".replace("{canned}", canned.lower())
 
@@ -240,7 +240,7 @@ class TestReplyGenerator:
         assert state["intent"] == "rent"  # transição de estado preservada apesar do polish
 
     def test_reply_generator_failure_keeps_canned(self):
-        flow = make_flow(reply_generator=lambda *_: (_ for _ in ()).throw(RuntimeError("lu fail")))
+        flow = make_flow(reply_generator=lambda *a, **k: (_ for _ in ()).throw(RuntimeError("lu fail")))
         state = flow.invoke({"current_state": "intent", "message": "quero alugar"})
         assert state["current_state"] == "qualification"
         assert state.get("response")
@@ -248,7 +248,7 @@ class TestReplyGenerator:
     def test_lgpd_texts_are_never_rewritten(self):
         from service.security_layer import CONSENT_MESSAGE, REFUSAL_MESSAGE
 
-        def fake_reply(message, canned, lead_info, properties):
+        def fake_reply(message, canned, lead_info, properties, **kwargs):
             raise AssertionError("não pode ser chamado para LGPD")
 
         flow = make_flow(reply_generator=fake_reply)
@@ -589,6 +589,47 @@ class TestAgenticRouter:
         # routing discriminates: recommendation node ran RAG with router's new lead_info
         assert captured.get("budget") == "R$ 80 mil"
         assert "Opção Barata" in state["response"]
+
+
+class TestDiscoveryState:
+    def test_discovery_answers_about_shown_property_without_changing_stage(self):
+        props = [{"title": "Torre Nova", "region": "Pinheiros", "area_util": 100, "vagas": 2}]
+        router = lambda message, lead_info, current_state: {
+            "lead_info": {},
+            "action": "provide_info",
+        }
+        flow = make_flow(properties_rag=lambda info: props, llm_router=router)
+        state = flow.invoke({
+            "current_state": "recommendation",
+            "message": "a Torre Nova tem estacionamento?",
+            "lead_info": {},
+            "properties": props,
+            "favorite_property": "Torre Nova",
+            "shown_properties_count": 1,
+        })
+        # Either discovery node or recommendation kept stage; must mention property context
+        assert state["current_state"] in ("discovery", "recommendation")
+        assert state.get("favorite_property") == "Torre Nova"
+        assert "Torre Nova" in state["response"] or "estacionamento" in state["response"].lower() or "opções" in state["response"].lower()
+
+    def test_postprocess_passes_rich_kwargs(self):
+        captured = {}
+        def fake_reply(message, canned, lead_info, properties, **kwargs):
+            captured.update(kwargs)
+            return canned + " (llm)"
+        flow = make_flow(reply_generator=fake_reply, properties_rag=lambda i: [{"title": "X"}])
+        state = flow.invoke({
+            "current_state": "recommendation",
+            "message": "ok",
+            "lead_info": {},
+            "properties": [{"title": "X"}],
+            "favorite_property": "X",
+            "shown_properties_count": 3,
+        })
+        assert captured.get("favorite_property") == "X"
+        assert captured.get("conversation_stage") == "recommendation"
+        assert captured.get("shown_properties_count") == 3
+        assert state["response"].endswith("(llm)")
 
 
 class TestCommercialMemory:

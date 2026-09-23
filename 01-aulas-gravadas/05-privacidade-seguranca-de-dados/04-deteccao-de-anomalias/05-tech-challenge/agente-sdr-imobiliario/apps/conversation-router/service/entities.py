@@ -156,6 +156,7 @@ VALID_STATES = (
     "elicitation",
     "intent",
     "qualification",
+    "discovery",
     "recommendation",
     "scheduling",
     "handoff",

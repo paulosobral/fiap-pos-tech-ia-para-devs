@@ -136,7 +136,7 @@ class SalesFlow:
         scheduler: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
         handoff_builder: Callable[[dict[str, Any]], str] | None = None,
         llm_classify_intent: Callable[[str], tuple[str, float]] | None = None,
-        reply_generator: Callable[[str, str, dict[str, Any], list[dict[str, Any]]], str] | None = None,
+        reply_generator: Callable[..., str] | None = None,
         specialist_rotation: list[str] | None = None,
         specialist_fallback: str = "diretor",
         restriction_check: Callable[[str], bool] | None = None,
@@ -166,6 +166,7 @@ class SalesFlow:
         g.add_node("elicitation", self._node_elicitation)
         g.add_node("intent", self._node_intent)
         g.add_node("qualification", self._node_qualification)
+        g.add_node("discovery", self._node_discovery)
         g.add_node("recommendation", self._node_recommendation)
         g.add_node("scheduling", self._node_scheduling)
         g.add_node("handoff", self._node_handoff)
@@ -174,7 +175,7 @@ class SalesFlow:
 
         g.set_entry_point("preprocess")
         g.add_conditional_edges("preprocess", self._route_state)
-        for node in ("greeting", "elicitation", "intent", "qualification",
+        for node in ("greeting", "elicitation", "intent", "qualification", "discovery",
                       "recommendation", "scheduling", "handoff", "followup"):
             g.add_edge(node, "postprocess")
         g.add_edge("postprocess", END)
@@ -191,6 +192,12 @@ class SalesFlow:
             return "handoff"
         if action == "decline":
             return "followup"
+        if (
+            action in (None, "provide_info", "unclear")
+            and current in ("recommendation", "discovery")
+            and re.search(r"\b(?:estacionamento|vagas?|andar|pre[çc]o|valor|quanto|detalhes?|tem|possui)\b", state.get("message", ""), re.IGNORECASE)
+        ):
+            return "discovery"
         if action == "visit_interest":
             if self.ready_for_scheduling(state):
                 shown = max(state.get("shown_properties_count", 0) or 0, len(state.get("properties") or []))
@@ -423,6 +430,42 @@ class SalesFlow:
             "Alguma chamou atenção? Posso refinar por metragem, orçamento ou localização."
         )
 
+    def _node_discovery(self, state: FlowState) -> FlowState:
+        focus = state.get("favorite_property") or (
+            (state.get("properties") or [{}])[0].get("title") if state.get("properties") else None
+        )
+        message = state.get("message", "").lower()
+        props = state.get("properties") or []
+        focus_prop = next(
+            (p for p in props if focus and str(p.get("title", "")).lower() == str(focus).lower()),
+            props[0] if props else None,
+        )
+        if focus_prop:
+            detail_bits = []
+            if "estacionamento" in message or "vaga" in message:
+                vagas = focus_prop.get("vagas")
+                detail_bits.append(
+                    f"estacionamento com {vagas} vaga(s)" if vagas is not None else "estacionamento sob consulta"
+                )
+            if "andar" in message:
+                detail_bits.append(f"andar: {focus_prop.get('andar') or 'sob consulta'}")
+            if "preço" in message or "valor" in message or "quanto" in message:
+                detail_bits.append(f"valor: {focus_prop.get('price_text') or focus_prop.get('price') or 'sob consulta'}")
+            detail = "; ".join(detail_bits) if detail_bits else (
+                f"{focus_prop.get('title')} — {focus_prop.get('region', '')}, {focus_prop.get('area_util', '')} m²"
+            )
+            state["response"] = (
+                f"Sobre {focus_prop.get('title', 'o imóvel')}: {detail}. "
+                "Quer que eu compare com outra opção ou ajuste algum critério?"
+            )
+        else:
+            state["response"] = (
+                "Qual imóvel específico você quer que eu detalhe? "
+                "Posso comparar as opções que já mostrei."
+            )
+        state["current_state"] = "discovery"
+        return state
+
     def _node_recommendation(self, state: FlowState) -> FlowState:
         if state.get("_router_action") == "compare_properties" and state.get("properties"):
             props = state["properties"][:3]
@@ -561,6 +604,9 @@ class SalesFlow:
                 canned,
                 state.get("lead_info") or {},
                 state.get("properties") or [],
+                favorite_property=state.get("favorite_property"),
+                conversation_stage=state.get("current_state"),
+                shown_properties_count=state.get("shown_properties_count", 0),
             )
             if generated and generated.strip():
                 state["response"] = generated.strip()
@@ -601,6 +647,9 @@ class SalesFlow:
 
     def _handle_qualification(self, state, message):
         return self._node_qualification(state)
+
+    def _handle_discovery(self, state, message):
+        return self._node_discovery(state)
 
     def _handle_recommendation(self, state, message):
         return self._node_recommendation(state)

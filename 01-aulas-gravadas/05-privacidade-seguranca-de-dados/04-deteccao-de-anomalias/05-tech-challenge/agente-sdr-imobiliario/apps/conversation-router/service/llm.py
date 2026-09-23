@@ -104,8 +104,13 @@ _SYSTEM_PROMPT = (
 )
 
 _REPLY_SYSTEM_PROMPT = (
-    "SDR imobiliário B2B da W Levitt. Atenda leads do Telegram em português, "
-    "tom consultivo, direto. Regras rígidas:\n\n"
+    "Você é um consultor imobiliário corporativo da W Levitt. Atenda leads do Telegram em português.\n"
+    "NUNCA pareça um formulário. Faça apenas 1 pergunta por vez.\n"
+    "Se houver imóveis disponíveis: converse sobre eles, explore preferências, "
+    "não tente agendar imediatamente.\n"
+    "Só ofereça visita quando o usuário demonstrar interesse explícito OU mencionar uma opção específica.\n"
+    "Tom: consultivo, profissional, objetivo.\n\n"
+    "Regras rígidas:\n"
     "1. A RESPOSTA OFICIAL contém o que DEVE ser dito. Você APENAS melhora o tom, "
     "NUNCA altera o significado nem adiciona informações novas.\n"
     "2. IMÓVEIS RECOMENDADOS: SÓ cite imóveis que apareçam nesta lista. "
@@ -113,11 +118,8 @@ _REPLY_SYSTEM_PROMPT = (
     "bairro ou valor — apenas reescreva a resposta oficial.\n"
     "3. NUNCA invente: preço, metragem, bairro, nome de empreendimento, "
     "disponibilidade, ou prazo.\n"
-    "4. Máximo 3 frases. A pergunta final DEVE SER COerente com a ação do lead:\n"
-    "   - se mostrou opções → pergunte se quer agendar ou ver mais\n"
-    "   - se é qualificação → peça o dado faltante\n"
-    "   - se é handoff → confirme o encaminhamento\n"
-    "   - NUNCA force agendamento quando o lead só quer ver propriedades."
+    "4. Máximo 3 frases. A pergunta final DEVE SER coerente com a ação do lead; "
+    "NUNCA force agendamento quando o lead só quer ver propriedades ou conversar sobre elas."
 )
 
 # --- LiteLLM (cliente abstraído conforme PRD §8.1) ---------------------------
@@ -250,6 +252,9 @@ def generate_reply(
     url: str = "",
     timeout: float | None = None,
     force_complex: bool = False,
+    favorite_property: str | None = None,
+    conversation_stage: str | None = None,
+    shown_properties_count: int | None = None,
 ) -> str:
     primary = resolve_model(TIER_PRIMARY, explicit_model=model) if not force_complex else resolve_model(TIER_PRIMARY)
     fallback = resolve_model(TIER_FALLBACK)
@@ -275,9 +280,17 @@ def generate_reply(
         ensure_ascii=False,
         default=str,
     )[:1500]
+    stage_line = f"ESTÁGIO DA CONVERSA: {conversation_stage}" if conversation_stage else "ESTÁGIO DA CONVERSA: (desconhecido)"
+    fav_line = f"IMÓVEL FAVORITO DO LEAD: {favorite_property}" if favorite_property else "IMÓVEL FAVORITO DO LEAD: (nenhum)"
+    shown_line = (
+        f"IMÓVEIS JÁ EXIBIDOS: {shown_properties_count}"
+        if shown_properties_count is not None
+        else "IMÓVEIS JÁ EXIBIDOS: 0"
+    )
     user_block = (
         "RESPOSTA OFICIAL DO SISTEMA (transmita o conteúdo, pode melhorar o tom):\n"
         f"{canned_response}\n\n"
+        f"{stage_line}\n{fav_line}\n{shown_line}\n\n"
         f"DADOS DO LEAD (estruturados, já mascarados):\n{lead or '(vazio)'}\n\n"
         f"IMÓVEIS RECOMENDADOS (SÓ estes podem ser citados):\n{props or '(nenhum)'}\n\n"
         f"ÚLTIMA MENSAGEM DO LEAD:\n{message[:500]}"

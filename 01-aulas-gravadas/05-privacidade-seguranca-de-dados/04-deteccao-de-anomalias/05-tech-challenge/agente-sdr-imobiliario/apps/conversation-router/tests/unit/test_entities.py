@@ -55,7 +55,7 @@ class TestConversation:
     def test_valid_states_include_all_flow_states(self):
         assert set(VALID_STATES) == {
             "greeting", "elicitation", "intent", "qualification",
-            "recommendation", "scheduling", "handoff", "followup",
+            "discovery", "recommendation", "scheduling", "handoff", "followup",
         }
 
     def test_looks_like_phone(self):

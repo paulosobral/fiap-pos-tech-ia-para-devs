@@ -166,6 +166,42 @@ class TestGenerateReply:
             lm.generate_reply("oi", "resposta", {}, [], api_key="k")
 
 
+class TestGenerateReplyRichContext:
+    def test_prompt_is_consultative_and_user_block_has_stage(self, monkeypatch: pytest.MonkeyPatch):
+        captured = {}
+
+        def fake_completion(**kwargs):
+            captured.update(kwargs)
+            return _make_completion("Certo! Sobre a Torre Nova...")
+
+        monkeypatch.setattr(lm.litellm, "completion", fake_completion)
+        out = lm.generate_reply(
+            message="tem estacionamento?",
+            canned_response="A Torre Nova tem 2 vagas.",
+            lead_info={"region": "Pinheiros"},
+            properties=[{"title": "Torre Nova", "area_util": 100}],
+            api_key="k",
+            favorite_property="Torre Nova",
+            conversation_stage="discovery",
+            shown_properties_count=3,
+        )
+        system = captured["messages"][0]["content"]
+        assert "consultor" in system.lower()
+        assert "1 pergunta" in system or "uma pergunta" in system.lower()
+        user = captured["messages"][1]["content"]
+        assert "ESTÁGIO DA CONVERSA: discovery" in user
+        assert "Torre Nova" in user
+        assert "IMÓVEIS JÁ EXIBIDOS: 3" in user
+        assert out == "Certo! Sobre a Torre Nova..."
+
+    def test_backward_compat_positional_call(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(
+            lm.litellm, "completion",
+            lambda **kw: _make_completion("ok"),
+        )
+        assert lm.generate_reply("oi", "resposta", {}, [], api_key="k") == "ok"
+
+
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [

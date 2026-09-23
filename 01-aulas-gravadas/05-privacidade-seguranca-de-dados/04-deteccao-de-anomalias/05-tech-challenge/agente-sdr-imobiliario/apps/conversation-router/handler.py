@@ -440,12 +440,15 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
     llm_router = None
     if llm_key and _HAS_LLM:
         def llm_reply(
-            message: str, canned: str, lead_info: dict[str, Any], properties: list[dict[str, Any]]
+            message: str, canned: str, lead_info: dict[str, Any], properties: list[dict[str, Any]], **kwargs: Any
         ) -> str:
             try:
                 return _llm_generate_reply(
                     message, canned, lead_info, properties,
                     api_key=llm_key,
+                    favorite_property=kwargs.get("favorite_property"),
+                    conversation_stage=kwargs.get("conversation_stage"),
+                    shown_properties_count=kwargs.get("shown_properties_count"),
                 )
             except Exception:
                 logger.warning("LLM reply falhou; usando resposta oficial como fallback", exc_info=True)
