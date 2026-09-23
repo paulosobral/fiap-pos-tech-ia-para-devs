@@ -182,7 +182,7 @@ class SalesFlow:
             return "followup"
         if action == "visit_interest":
             if self.ready_for_scheduling(state):
-                shown = state.get("shown_properties_count", 0) + len(state.get("properties", []))
+                shown = max(state.get("shown_properties_count", 0) or 0, len(state.get("properties") or []))
                 if shown >= 3 or state.get("lead_id"):
                     return "scheduling"
             return current  # keep current node; preprocess already flagged interest
@@ -410,7 +410,7 @@ class SalesFlow:
                 "ou se quer refinar a busca. Assim consigo preparar a visita ideal."
             )
             return state
-        shown_count = state.get("shown_properties_count", 0) + len(state.get("properties", []))
+        shown_count = max(state.get("shown_properties_count", 0) or 0, len(state.get("properties") or []))
         if shown_count < 3 and not state.get("lead_id"):
             state["current_state"] = "recommendation"
             state["response"] = (

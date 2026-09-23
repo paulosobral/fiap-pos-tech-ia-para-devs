@@ -370,7 +370,7 @@ _ROUTER_SYSTEM_PROMPT = (
     "   - decline: quer parar/recusar/desistir\n"
     "   - unclear: ambígua, sem ação clara\n"
     "REGRA DE OURO: pedir mais detalhes = request_options; ajustar filtros = refine_search; "
-    "visitar/gostei = visit_interest; agendar = verbo explícito (request_schedule). "
+    "visitar/gostei = visit_interest; agendar = SÓ com verbo explícito (request_schedule). "
     "Pedir um corretor = request_human.\n"
     'Responda APENAS com JSON: {"lead_info": {...}, "action": "<uma das opções>"}.'
 )

@@ -373,6 +373,20 @@ class TestReadyForSchedulingGate:
         scheduler.assert_called_once()
         assert state["current_state"] == "handoff"
 
+    def test_gate_not_satisfied_by_double_counting_same_batch(self):
+        scheduler = self.scheduler()
+        props = [{"title": "A"}, {"title": "B"}]
+        flow = make_flow(scheduler=scheduler, properties_rag=lambda i: props)
+        state = flow.invoke({
+            "current_state": "scheduling",
+            "message": "amanhã 10h",
+            "visit_interest": True,
+            "shown_properties_count": 2,
+            "properties": props,
+        })
+        scheduler.assert_not_called()
+        assert state["current_state"] == "recommendation"
+
 
 class TestAgenticRouter:
     """ADR-011: LLM classifica ação (enum fixo); código decide o próximo nó."""
@@ -479,11 +493,17 @@ class TestAgenticRouter:
             {"title": "A", "region": "Pinheiros", "area_util": 100},
             {"title": "B", "region": "Pinheiros", "area_util": 150},
         ]
+        rag_calls = []
+
+        def rag(info):
+            rag_calls.append(info)
+            return catalog
+
         router = lambda message, lead_info, current_state: {
             "lead_info": {},
             "action": "compare_properties",
         }
-        flow = make_flow(properties_rag=lambda info: catalog, llm_router=router)
+        flow = make_flow(properties_rag=rag, llm_router=router)
         state = flow.invoke({
             "current_state": "recommendation",
             "message": "qual a diferença entre A e B?",
@@ -493,6 +513,7 @@ class TestAgenticRouter:
         })
         assert state["current_state"] == "recommendation"
         assert "A" in state["response"] and "B" in state["response"]
+        assert rag_calls == []
 
     def test_visit_interest_goes_to_scheduling_when_ready(self):
         scheduler = MagicMock(return_value={"confirmed": True, "when": "amanhã 10h"})
@@ -527,3 +548,44 @@ class TestAgenticRouter:
         })
         scheduler.assert_not_called()
         assert state.get("visit_interest") is True
+
+    def test_visit_interest_two_shown_same_batch_stays_current(self):
+        scheduler = MagicMock(return_value={"confirmed": True})
+        props = [{"title": "A"}, {"title": "B"}]
+        router = lambda message, lead_info, current_state: {
+            "lead_info": {},
+            "action": "visit_interest",
+        }
+        flow = make_flow(scheduler=scheduler, llm_router=router)
+        state = flow.invoke({
+            "current_state": "recommendation",
+            "message": "quero visitar",
+            "lead_info": {},
+            "shown_properties_count": 2,
+            "properties": props,
+        })
+        scheduler.assert_not_called()
+        assert state["current_state"] == "recommendation"
+        assert state.get("visit_interest") is True
+
+    def test_refine_search_from_qualification_routes_to_recommendation(self):
+        captured = {}
+
+        def rag(info):
+            captured.update(info)
+            return [{"title": "Opção Barata", "region": "Pinheiros", "area_util": 80}]
+
+        router = lambda message, lead_info, current_state: {
+            "lead_info": {"budget": "R$ 80 mil"},
+            "action": "refine_search",
+        }
+        flow = make_flow(properties_rag=rag, llm_router=router)
+        state = flow.invoke({
+            "current_state": "qualification",
+            "message": "tem algo mais barato?",
+            "lead_info": {"budget": "R$ 200 mil"},
+            "score": 40,
+        })
+        # routing discriminates: recommendation node ran RAG with router's new lead_info
+        assert captured.get("budget") == "R$ 80 mil"
+        assert "Opção Barata" in state["response"]

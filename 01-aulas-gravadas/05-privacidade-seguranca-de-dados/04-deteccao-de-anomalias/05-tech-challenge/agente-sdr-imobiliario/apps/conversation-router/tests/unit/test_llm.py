@@ -279,3 +279,4 @@ def test_router_prompt_documents_new_actions():
     assert "refine_search" in lm._ROUTER_SYSTEM_PROMPT
     assert "compare_properties" in lm._ROUTER_SYSTEM_PROMPT
     assert "visit_interest" in lm._ROUTER_SYSTEM_PROMPT
+    assert "SÓ com verbo explícito" in lm._ROUTER_SYSTEM_PROMPT
