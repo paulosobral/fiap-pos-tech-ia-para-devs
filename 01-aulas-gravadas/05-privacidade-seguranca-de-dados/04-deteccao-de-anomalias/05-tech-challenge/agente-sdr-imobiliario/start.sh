@@ -3,6 +3,7 @@
 # Fases 1-4 = CI (ci-config.md); fase 5 = deploy (terraform apply); fase 6 = smoke.
 # NEVER deployar sem passar por este script (project.md).
 set -euo pipefail
+export AWS_PAGER=""
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
@@ -176,7 +177,13 @@ echo "  API Gateway -> http://$ROUTER_IP:8080"
 # Setar o webhook do Telegram para o API Gateway (HTTPS exigido pelo Telegram)
 if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
   WEBHOOK_URL="$API_URL/webhook/telegram"
-  TG_RESULT=$(curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook?url=${WEBHOOK_URL}")
+  SECRET_TOKEN=$(aws secretsmanager get-secret-value --region "$REGION" \
+    --secret-id sdr/dashboard-api-token --query "SecretString" --output text 2>/dev/null || echo "")
+  if [ -n "$SECRET_TOKEN" ]; then
+    TG_RESULT=$(curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook?url=${WEBHOOK_URL}&secret_token=${SECRET_TOKEN}")
+  else
+    TG_RESULT=$(curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook?url=${WEBHOOK_URL}")
+  fi
   echo "  Telegram webhook: $WEBHOOK_URL"
   echo "$TG_RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print('  Telegram:', 'OK' if d.get('ok') else 'FAIL: '+d.get('description',''))" 2>/dev/null || echo "  Telegram: verifique manualmente"
 fi

@@ -21,6 +21,8 @@ resource "aws_ses_receipt_rule" "leads" {
     position        = 1
     invocation_type = "Event"
   }
+
+  depends_on = [aws_lambda_permission.allow_ses]
 }
 
 resource "aws_lambda_permission" "allow_ses" {

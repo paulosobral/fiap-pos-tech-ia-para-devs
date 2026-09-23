@@ -5,13 +5,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT/infra"
 
+export AWS_PAGER=""
+
 terraform init -input=false >/dev/null 2>&1 || true
 if terraform state list >/dev/null 2>&1; then
-  if [ "${AUTO:-0}" = "1" ]; then
-    terraform destroy -auto-approve -input=false
-  else
-    terraform destroy -input=false
-  fi
+  terraform destroy -auto-approve -input=false
 else
   echo "Nada para destruir (nenhum estado terraform)."
 fi
