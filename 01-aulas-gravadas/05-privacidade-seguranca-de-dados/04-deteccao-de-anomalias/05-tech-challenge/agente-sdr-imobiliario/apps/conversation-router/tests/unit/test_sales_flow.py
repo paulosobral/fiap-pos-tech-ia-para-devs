@@ -589,3 +589,73 @@ class TestAgenticRouter:
         # routing discriminates: recommendation node ran RAG with router's new lead_info
         assert captured.get("budget") == "R$ 80 mil"
         assert "Opção Barata" in state["response"]
+
+
+class TestCommercialMemory:
+    def test_detects_favorite_by_list_number(self):
+        props = [
+            {"title": "Torre Nova", "region": "Pinheiros", "area_util": 100},
+            {"title": "Torre Antiga", "region": "Pinheiros", "area_util": 80},
+        ]
+        flow = make_flow(properties_rag=lambda info: props)
+        state = flow.invoke({
+            "current_state": "recommendation",
+            "message": "gostei da 2",
+            "lead_info": {},
+            "properties": props,
+            "shown_properties_count": 2,
+        })
+        assert state.get("favorite_property") == "Torre Antiga"
+        assert state.get("context", {}).get("favorite_property") == "Torre Antiga"
+
+    def test_detects_favorite_by_title_substring(self):
+        props = [{"title": "Torre Nova", "region": "Pinheiros", "area_util": 100}]
+        flow = make_flow(properties_rag=lambda info: props)
+        state = flow.invoke({
+            "current_state": "recommendation",
+            "message": "gostei da Torre Nova",
+            "lead_info": {},
+            "properties": props,
+            "shown_properties_count": 1,
+        })
+        assert state.get("favorite_property") == "Torre Nova"
+
+    def test_detects_rejection(self):
+        props = [
+            {"title": "Torre Nova", "region": "Pinheiros", "area_util": 100},
+            {"title": "Torre Antiga", "region": "Pinheiros", "area_util": 80},
+        ]
+        flow = make_flow(properties_rag=lambda info: props)
+        state = flow.invoke({
+            "current_state": "recommendation",
+            "message": "não quero a 1",
+            "lead_info": {},
+            "properties": props,
+            "shown_properties_count": 2,
+        })
+        assert "Torre Nova" in (state.get("rejected_properties") or [])
+        assert state.get("context", {}).get("rejected_properties") is not None
+
+    def test_context_seed_restores_favorite_across_invokes(self):
+        props = [{"title": "Torre Nova", "region": "Pinheiros", "area_util": 100}]
+        flow = make_flow(scheduler=MagicMock(return_value={"confirmed": True, "when": "x"}))
+        # simulate prior turn persisted context
+        state = flow.invoke({
+            "current_state": "scheduling",
+            "message": "amanhã 10h",
+            "lead_id": "L1",
+            "shown_properties_count": 3,
+            "context": {"favorite_property": "Torre Nova"},
+        })
+        assert state["current_state"] == "handoff"  # gate opens via context seed
+
+    def test_visit_interest_flag_from_context_seed(self):
+        flow = make_flow(scheduler=MagicMock(return_value={"confirmed": True, "when": "x"}))
+        state = flow.invoke({
+            "current_state": "scheduling",
+            "message": "amanhã 10h",
+            "lead_id": "L1",
+            "shown_properties_count": 3,
+            "context": {"visit_interest": True},
+        })
+        assert state["current_state"] == "handoff"

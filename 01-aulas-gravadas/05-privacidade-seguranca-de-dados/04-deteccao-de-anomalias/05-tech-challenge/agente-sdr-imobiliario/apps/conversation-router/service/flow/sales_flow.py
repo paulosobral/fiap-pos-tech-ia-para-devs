@@ -53,6 +53,15 @@ _DECISOR_NO_RE = re.compile(r"n[ãa]o\s+(?:sou\s+(?:o\s+)?decisor|decido)", re.I
 _OPTIONS_REQUEST_RE = re.compile(r"\b(?:opç(?:ão|ões)|imóveis|imoveis|mostrar|mostre|cad[êe])\b", re.IGNORECASE)
 _REGION_STOP_WORDS = ("com", "e", "para", "pra", "no", "na", "do", "da", "até", "por", "ou")
 
+_FAVORITE_LIKE_RE = re.compile(
+    r"(?:gostei\s+da?s?\s+|quero\s+a\s+|prefiro\s+a\s+)(\d+|[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9 \-]+)",
+    re.IGNORECASE,
+)
+_REJECT_LIKE_RE = re.compile(
+    r"(?:n[ãa]o\s+quero\s+(?:a\s+|as\s+)?|descart[ae]\s+(?:a\s+|as\s+)?)(\d+|[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9 \-]+)",
+    re.IGNORECASE,
+)
+
 
 class FlowState(TypedDict, total=False):
     """Estado do grafo LangGraph — um turno por invocação."""
@@ -78,6 +87,8 @@ class FlowState(TypedDict, total=False):
     shown_properties_count: int
     favorite_property: str
     visit_interest: bool
+    rejected_properties: list[str]
+    interests: list[str]
     _router_action: str | None  # ADR-011: ação classificada pelo llm_router (enum VALID_ACTIONS)
 
 
@@ -223,6 +234,15 @@ class SalesFlow:
         seeded = state.get("lead_info") or {}
         merged = {**stored_info, **seeded}
 
+        if context.get("favorite_property"):
+            state["favorite_property"] = context["favorite_property"]
+        if context.get("visit_interest"):
+            state["visit_interest"] = True
+        if context.get("rejected_properties"):
+            state["rejected_properties"] = list(context["rejected_properties"])
+        if context.get("interests"):
+            state["interests"] = list(context["interests"])
+
         state["_router_action"] = None
         if self.llm_router is not None:
             try:
@@ -233,6 +253,7 @@ class SalesFlow:
                 state["_router_action"] = result.get("action")
                 if state["_router_action"] == "visit_interest":
                     state["visit_interest"] = True
+                    context["visit_interest"] = True
             except Exception:
                 logger.warning(
                     "llm_router falhou; usando extração regex + FSM determinístico (fallback ADR-011)",
@@ -240,7 +261,49 @@ class SalesFlow:
                 )
 
         state["lead_info"] = merged
+        self._apply_commercial_memory(state)
         return state
+
+    def _apply_commercial_memory(self, state: FlowState) -> None:
+        message = state.get("message", "")
+        properties = state.get("properties") or []
+        context = state.setdefault("context", {})
+
+        fav_match = _FAVORITE_LIKE_RE.search(message)
+        if fav_match:
+            token = fav_match.group(1).strip()
+            resolved = self._match_property_token(token, properties)
+            if resolved:
+                state["favorite_property"] = resolved
+                context["favorite_property"] = resolved
+                state["visit_interest"] = True
+                context["visit_interest"] = True
+
+        rej_match = _REJECT_LIKE_RE.search(message)
+        if rej_match:
+            token = rej_match.group(1).strip()
+            resolved = self._match_property_token(token, properties)
+            if resolved:
+                rejected = list(state.get("rejected_properties") or [])
+                if resolved not in rejected:
+                    rejected.append(resolved)
+                state["rejected_properties"] = rejected
+                context["rejected_properties"] = rejected
+
+    @staticmethod
+    def _match_property_token(token: str, properties: list[dict[str, Any]]) -> str | None:
+        if token.isdigit():
+            idx = int(token) - 1
+            if 0 <= idx < len(properties):
+                return properties[idx].get("title") or f"Imóvel {token}"
+        token_l = token.lower()
+        for p in properties:
+            title = str(p.get("title") or "")
+            if title and title.lower() in token_l:
+                return title
+            if token_l and token_l in title.lower():
+                return title
+        return None
 
     def _node_greeting(self, state: FlowState) -> FlowState:
         from service.security_layer import CONSENT_MESSAGE, REFUSAL_MESSAGE
