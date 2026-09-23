@@ -33,6 +33,7 @@ def make_adapter(transcript="Quero um espaço para 20 pessoas"):
     transcriber = MagicMock()
     transcriber.transcribe.return_value = transcript
     router = MagicMock()
+    router.reinject.return_value = transcript
     store = MagicMock()
     store.get_session.return_value = {"session_id": "s1"}
     adapter = VoiceAdapter(telegram=telegram, transcriber=transcriber, router=router, sessions=store)
@@ -47,6 +48,7 @@ class TestVoiceAdapterPipeline:
         assert result == {"batchItemFailures": []}
         transcriber.transcribe.assert_called_once_with(b"ogg-bytes")
         router.reinject.assert_called_once_with(42, "s1", "Quero um espaço para 20 pessoas")
+        telegram.send_message.assert_called_once_with(42, "Quero um espaço para 20 pessoas")
 
     def test_transcript_masked_end_to_end(self):
         adapter, *_ = make_adapter(transcript="Meu e-mail é joao@empresa.com")

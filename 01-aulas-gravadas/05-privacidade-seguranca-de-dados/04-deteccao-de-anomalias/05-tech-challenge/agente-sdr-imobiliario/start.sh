@@ -150,6 +150,15 @@ for i in $(seq 1 12); do
   sleep 10
 done
 
+# IP público da task do dashboard (Streamlit, porta 80)
+DASHBOARD_TASK_ARN=$(aws ecs list-tasks --cluster "$CLUSTER" --service-name sdr-dashboard-ui \
+  --region "$REGION" --query "taskArns[0]" --output text 2>/dev/null || true)
+DASHBOARD_ENI=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$DASHBOARD_TASK_ARN" \
+  --region "$REGION" --query "tasks[0].attachments[0].details[?name=='networkInterfaceId'].value" --output text 2>/dev/null || true)
+DASHBOARD_IP=$(aws ec2 describe-network-interfaces --network-interface-ids "$DASHBOARD_ENI" \
+  --region "$REGION" --query "NetworkInterfaces[0].Association.PublicIp" --output text 2>/dev/null || true)
+DASHBOARD_URL="http://${DASHBOARD_IP:-pending}"
+
 # Aponta as integrações HTTP_PROXY do API Gateway para o IP público da task do conversation-router
 echo "== [5e/6] Conectando API Gateway -> conversation-router"
 ROUTER_TASK_ARN=$(aws ecs list-tasks --cluster "$CLUSTER" --service-name sdr-conversation-router \
@@ -210,7 +219,7 @@ def hit_dashboard():
     assert r.status == 200, f"status {r.status}"
 check("GET /api/kpis", hit_dashboard)
 if ok:
-    print("SMOKE OK — API:", api)
+    print(f"SMOKE OK — API: {api}")
 else:
     print("SMOKE COM FALHAS")
     raise SystemExit(1)
@@ -218,9 +227,9 @@ PYEOF
 
 echo
 echo "Deploy concluído."
-echo "API:                 $API_URL"
+echo "API (Gateway):       $API_URL"
+echo "Dashboard:           $DASHBOARD_URL"
 echo "Conversation Router: task do ECS sdr-conversation-router (porta 8080; escala 09:00-18:00 BRT)"
-echo "Dashboard:           task do ECS sdr-dashboard-ui (IP público no Console > ECS > cluster sdr > service; escala 09:00-18:00 BRT)"
 echo "Voice adapter:       task do ECS sdr-voice-adapter (faster-whisper; escala 09:00-18:00 BRT; consome sdr-voice-queue)"
 echo "Token Telegram:      substitua em Secrets Manager (sdr/tg-bot-token) e re-aplique p/ ativar o bot"
 echo "LLM (OpenRouter):    defina LLM_API_KEY em secrets.local.env e re-aplique — Terraform grava na secret sdr/llm-api-key"

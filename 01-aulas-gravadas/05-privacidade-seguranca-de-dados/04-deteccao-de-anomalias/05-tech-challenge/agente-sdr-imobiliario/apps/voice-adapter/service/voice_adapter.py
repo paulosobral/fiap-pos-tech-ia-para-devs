@@ -92,10 +92,12 @@ class VoiceAdapter:
             return OUTCOME_DROP
         masked = self.masker.mask(transcript)
         try:
-            self.router.reinject(telegram_user_id, session_id, masked)
+            response_text = self.router.reinject(telegram_user_id, session_id, masked)
         except RouterError as exc:
             log_event("reinject_failed", session_id=session_id, error=str(exc))
             return OUTCOME_RETRY
+        if response_text:
+            self.telegram.send_message(telegram_user_id, response_text)
         log_event(
             "voice_transcribed",
             session_id=session_id,

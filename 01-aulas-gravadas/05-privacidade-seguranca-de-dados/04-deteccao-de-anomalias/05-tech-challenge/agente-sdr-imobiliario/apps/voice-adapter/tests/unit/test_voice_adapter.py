@@ -25,6 +25,7 @@ def make_adapter(transcript="Quero um espaço para 20 pessoas", sessions=True):
     transcriber = MagicMock()
     transcriber.transcribe.return_value = transcript
     router = MagicMock()
+    router.reinject.return_value = transcript
     store = MagicMock()
     store.get_session.return_value = {"session_id": "s1"} if sessions else None
     adapter = VoiceAdapter(telegram=telegram, transcriber=transcriber, router=router, sessions=store)
@@ -38,7 +39,7 @@ class TestVoiceAdapter:
         assert outcome == "ok"
         transcriber.transcribe.assert_called_once_with(b"ogg-bytes")
         router.reinject.assert_called_once_with(42, "s1", "Quero um espaço para 20 pessoas")
-        telegram.send_message.assert_not_called()
+        telegram.send_message.assert_called_once_with(42, "Quero um espaço para 20 pessoas")
 
     def test_invalid_message_is_dropped(self):
         adapter, telegram, _, router, _ = make_adapter()

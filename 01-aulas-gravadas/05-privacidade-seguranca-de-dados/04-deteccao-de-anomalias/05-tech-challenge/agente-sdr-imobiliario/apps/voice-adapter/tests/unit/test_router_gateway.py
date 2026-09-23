@@ -11,9 +11,10 @@ def make_gateway():
     return gateway, http
 
 
-def make_response(status_code=200):
+def make_response(status_code=200, response_text="ok"):
     resp = MagicMock()
     resp.status_code = status_code
+    resp.json.return_value = {"ok": True, "response": response_text}
     return resp
 
 

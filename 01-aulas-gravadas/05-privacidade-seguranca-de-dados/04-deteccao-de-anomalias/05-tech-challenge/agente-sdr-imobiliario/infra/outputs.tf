@@ -7,7 +7,7 @@ output "region" {
 }
 
 output "dashboard_ui" {
-  value = "endereço do Streamlit obtido via: DELAYED (task IP pós apply2)"
+  value = "http://<DASHBOARD_TASK_PUBLIC_IP> (obtido via start.sh)"
 }
 
 output "secrets_manager_telegram" {

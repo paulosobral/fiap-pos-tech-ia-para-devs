@@ -34,7 +34,7 @@ class HttpRouterGateway:
         self._secret = secret_token
         self._timeout = timeout
 
-    def reinject(self, telegram_user_id: int, session_id: str, text: str) -> None:
+    def reinject(self, telegram_user_id: int, session_id: str, text: str) -> str:
         headers = {"Content-Type": "application/json", "X-Internal-Secret": self._secret}
         try:
             response = self._http.post(
@@ -53,3 +53,4 @@ class HttpRouterGateway:
         if response.status_code >= 300:
             logger.error("router rejected re-injection with status %s", response.status_code)
             raise RouterError(f"router rejected with status {response.status_code}")
+        return response.json().get("response", "")
