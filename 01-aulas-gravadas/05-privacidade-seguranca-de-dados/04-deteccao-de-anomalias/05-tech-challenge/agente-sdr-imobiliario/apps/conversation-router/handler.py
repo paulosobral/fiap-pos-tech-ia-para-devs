@@ -428,7 +428,7 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
     if llm_key:
         def llm_classify(message: str) -> tuple[str, float]:
             try:
-                return _llm_classify_intent(message, api_key=llm_key, model=os.environ.get("LLM_MODEL"))
+                return _llm_classify_intent(message, api_key=llm_key)
             except Exception:
                 logger.warning("LLM classify falhou; usando regex como fallback", exc_info=True)
                 return SalesFlow._default_classify(message)
@@ -443,7 +443,7 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
             try:
                 return _llm_generate_reply(
                     message, canned, lead_info, properties,
-                    api_key=llm_key, model=os.environ.get("LLM_MODEL"),
+                    api_key=llm_key,
                 )
             except Exception:
                 logger.warning("LLM reply falhou; usando resposta oficial como fallback", exc_info=True)

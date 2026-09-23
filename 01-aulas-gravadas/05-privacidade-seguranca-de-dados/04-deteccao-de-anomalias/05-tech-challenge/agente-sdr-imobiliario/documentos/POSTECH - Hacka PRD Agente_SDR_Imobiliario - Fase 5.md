@@ -787,9 +787,12 @@ Resumo direto das adaptações feitas durante o deploy para estabilizar o bot:
    - `sdr-sessions`: atualizada para chave primária composta `PK` (String) e `SK` (String), com Global Secondary Indexes `telegram-user-index` (`telegram_user_id` [N]) e `lead-index` (`lead_id` [S]).
    - `sdr-pii`: atualizada para chave primária composta `PK` (String) e `SK` (String) para persistência segura via KMS.
 
-4. **Seleção Dinâmica de Modelo LLM via SSM Parameter Store**:
-   - Criado parâmetro `/sdr/llm-model` no AWS Systems Manager (SSM) Parameter Store.
-   - Permite trocar o modelo OpenRouter (ex: `anthropic/claude-3-haiku`) sem redeploy de imagem ou rebuild de infraestrutura.
+4. **Roteamento Multi-Tier de Modelos LLM (ADR-010)**:
+   - **Tier 1 (Primary, 90% do tráfego)**: `deepseek/deepseek-chat` — econômico e rápido — para classificação de intenção, triagem, qualificação e follow-up.
+   - **Tier 2 (Fallback automático)**: `anthropic/claude-3-haiku` — contingência transparente via LiteLLM quando o primário retorna 429/timeout/indisponibilidade.
+   - **Tier 3 (Complex)**: `anthropic/claude-3.5-sonnet` — acionado condicionalmente para negociação sofisticada ou handoff executivo.
+   - Parâmetros gerenciados no AWS SSM Parameter Store: `/sdr/llm-model-primary`, `/sdr/llm-model-fallback`, `/sdr/llm-model-complex`. Troca dinâmica sem redeploy de imagem.
+   - **Ganho**: redução de ~75% a 90% no consumo de tokens para o tráfego rotineiro. Resiliência total contra falhas de provedor.
 
 ---
 

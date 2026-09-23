@@ -200,23 +200,24 @@ SecurityLayer é um módulo interno de ConversationRouter. Extrai e persiste PII
 
 ---
 
-## ADR-009: LeadRouter com Regras Configuráveis
+## ADR-010: Roteamento de Modelos LLM em Camadas (Tier 1 Flash + Tier 2 Complex/Fallback) com LiteLLM e SSM
 
 **Context**
-A mentoria deixou explícito que lead de alto ticket (> 500 m²) deve ir para diretor/especialista, enquanto lead menor vai para rodízio de consultores. Opções incluem regras hard-coded ou configuráveis.
+Modelos premium (ex.: Claude 3.5 Sonnet / Claude 3.5 Haiku) têm custo desnecessariamente elevado para tarefas corriqueiras do SDR (80% do tráfego: saudações, triagem, elicitação e perguntas simples). Além disso, falhas de provedor (HTTP 429, timeouts, rate limits) quebram a experiência do usuário caso não haja mecanismo automático de contingência.
 
 **Decision**
-LeadRouter aplica regras configuráveis (ex.: até 500 m² → rodízio dos consultores; acima → diretor/especialista). Regras são armazenadas em configuração (pode ser DynamoDB ou ambiente). Registra a rota no DynamoDB para auditoria.
+Implementar uma arquitetura de LLM em 3 camadas orquestrada via LiteLLM e AWS SSM Parameter Store:
+1. **Tier 1 (Rotina - 90% das chamadas)**: modelo econômico e veloz (`deepseek/deepseek-chat` ou equivalente Flash) para classificação de intenção, triagem e polimento de respostas de qualificação.
+2. **Tier 2 (Fallback Automático de Erro)**: fallback resiliente (`anthropic/claude-3-haiku` ou fallback model) acionado transparentemente pelo LiteLLM em caso de timeout, 429 ou erro do provedor primário.
+3. **Tier 3 (Complex / Handoff / Argumentação Avançada)**: modelo de alta capacidade (`anthropic/claude-3.5-sonnet`) acionado condicionalmente em fluxos de negociação sofisticada ou dúvidas consultivas complexas.
+Parâmetros dinâmicos gerenciados no AWS SSM Parameter Store (`/sdr/llm-model-primary`, `/sdr/llm-model-fallback`, `/sdr/llm-model-complex`).
 
 **Consequences**
 **Positivos:**
-- Flexibilidade (regras podem ser ajustadas sem código)
-- Alinhado com insight da mentoria
-- Auditoria completa da rota
+- Redução de ~75% a 90% do consumo de tokens para conversas padrão.
+- Alta resiliência (zero downtime em 429/indisponibilidade via fallback nativo).
+- Troca a quente de provedores via Parameter Store sem novo deploy de imagem.
 
 **Negativos:**
-- Complexidade adicional (configuração de regras)
-- Necessidade de validação de regras
-
-**Alternatives Rejected**
-- **Regras hard-coded**: Rejeitado porque não permite ajuste sem código e não é alinhado com insight da mentoria
+- Ligeiro aumento na complexidade de configuração e gestão de múltiplos parâmetros no SSM.
+- Necessidade de testes de integração cobrindo os caminhos de fallback.

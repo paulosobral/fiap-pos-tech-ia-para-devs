@@ -1,74 +1,96 @@
-"""Cliente LLM via LiteLLM (OpenRouter → Claude 3.5 Haiku) — FR-02/§8.1 do PRD.
+"""Cliente LLM multi-tier via LiteLLM (OpenRouter) — FR-02/ADR-010.
 
-Usa LiteLLM como cliente abstraído (LLM_PROVIDER=openrouter|bedrock) conforme PRD §8.1.
-Fallback: se litellm não estiver instalado (ex.: testes locais sem deps), usa urllib
-puro como transporte — mantém o mesmo contrato e os meslos prompts.
+Camadas:
+  Tier 1 (Primary):   deepseek/deepseek-chat — barato, 90% do tráfego
+  Tier 2 (Fallback):  anthropic/claude-3-haiku — contingência em 429/timeout
+  Tier 3 (Complex):   anthropic/claude-3.5-sonnet — negociação avançada/handoff
 
 Config (env, injetadas no deploy):
-  LLM_API_KEY       chave do OpenRouter (override de dev/testes). Produção: o handler
-                    resolve via Secrets Manager (sdr/llm-api-key, env LLM_API_SECRET_ID).
-                    Nenhuma das duas = módulo indisponível: o fluxo cai no classificador
-                    por regex.
-  LLM_MODEL     modelo (default 'anthropic/claude-3.5-haiku').
-  LLM_TIMEOUT   timeout da chamada em segundos (default 8).
+  LLM_MODEL_PRIMARY         nome do modelo Tier 1 (default deepseek/deepseek-chat)
+  LLM_MODEL_FALLBACK        nome do modelo Tier 2 (default anthropic/claude-3-haiku)
+  LLM_MODEL_COMPLEX         nome do modelo Tier 3 (default anthropic/claude-3.5-sonnet)
+  LLM_MODEL_PRIMARY_SSM     path SSM Parameter Store p/ Tier 1
+  LLM_MODEL_FALLBACK_SSM    path SSM Parameter Store p/ Tier 2
+  LLM_MODEL_COMPLEX_SSM     path SSM Parameter Store p/ Tier 3
+  LLM_API_KEY               chave do OpenRouter
+  LLM_TIMEOUT               timeout da chamada em segundos (default 8)
 """
-
 from __future__ import annotations
 
 import json
 import logging
 import os
+import time as _time
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "anthropic/claude-3-haiku"
+DEFAULT_MODEL_PRIMARY = "deepseek/deepseek-chat"
+DEFAULT_MODEL_FALLBACK = "anthropic/claude-3-haiku"
+DEFAULT_MODEL_COMPLEX = "anthropic/claude-3.5-sonnet"
 
-_CACHED_MODEL: str | None = None
-_CACHED_MODEL_TS: float = 0.0
+TIER_PRIMARY = "primary"
+TIER_FALLBACK = "fallback"
+TIER_COMPLEX = "complex"
+
+_SSM_CACHE: dict[str, tuple[str, float]] = {}
 _CACHE_TTL_SECONDS = 60.0
 
+_SSM_PARAM_BY_TIER = {
+    TIER_PRIMARY: "LLM_MODEL_PRIMARY_SSM",
+    TIER_FALLBACK: "LLM_MODEL_FALLBACK_SSM",
+    TIER_COMPLEX: "LLM_MODEL_COMPLEX_SSM",
+}
 
-def resolve_model(explicit_model: str | None = None) -> str:
-    """Resolve o modelo OpenRouter a ser usado.
-    Ordem de precedência:
-      1. explicit_model passado diretamente
-      2. AWS SSM Parameter Store (/sdr/llm-model ou env LLM_MODEL_SSM_PARAM)
-      3. Variável de ambiente LLM_MODEL
-      4. DEFAULT_MODEL
-    """
+_ENV_BY_TIER = {
+    TIER_PRIMARY: "LLM_MODEL_PRIMARY",
+    TIER_FALLBACK: "LLM_MODEL_FALLBACK",
+    TIER_COMPLEX: "LLM_MODEL_COMPLEX",
+}
+
+_DEFAULT_BY_TIER = {
+    TIER_PRIMARY: DEFAULT_MODEL_PRIMARY,
+    TIER_FALLBACK: DEFAULT_MODEL_FALLBACK,
+    TIER_COMPLEX: DEFAULT_MODEL_COMPLEX,
+}
+
+
+def resolve_model(
+    tier: str = TIER_PRIMARY,
+    explicit_model: str | None = None,
+) -> str:
     if explicit_model:
         return explicit_model
 
-    global _CACHED_MODEL, _CACHED_MODEL_TS
-    import time
-    now = time.time()
-    if _CACHED_MODEL and (now - _CACHED_MODEL_TS) < _CACHE_TTL_SECONDS:
-        return _CACHED_MODEL
+    now = _time.time()
+    if tier in _SSM_CACHE:
+        cached_val, cached_ts = _SSM_CACHE[tier]
+        if (now - cached_ts) < _CACHE_TTL_SECONDS:
+            return cached_val
 
-    ssm_param_name = os.environ.get("LLM_MODEL_SSM_PARAM", "/sdr/llm-model")
-    if ssm_param_name:
+    ssm_env = _SSM_PARAM_BY_TIER.get(tier, "")
+    ssm_param = os.environ.get(ssm_env)
+    if ssm_param:
         try:
             import boto3
             ssm = boto3.client("ssm", region_name=os.environ.get("AWS_REGION", "us-east-1"))
-            res = ssm.get_parameter(Name=ssm_param_name)
+            res = ssm.get_parameter(Name=ssm_param)
             val = res.get("Parameter", {}).get("Value")
             if val and val.strip():
-                _CACHED_MODEL = val.strip()
-                _CACHED_MODEL_TS = now
-                logger.info("Modelo LLM resolvido via SSM Parameter Store (%s): %s", ssm_param_name, _CACHED_MODEL)
-                return _CACHED_MODEL
+                _SSM_CACHE[tier] = (val.strip(), now)
+                return val.strip()
         except Exception:
-            # Fallback silencioso para env ou default se SSM falhar/não existir
             pass
 
-    env_model = os.environ.get("LLM_MODEL")
+    env_name = _ENV_BY_TIER.get(tier, "")
+    env_model = os.environ.get(env_name)
     if env_model and env_model.strip():
-        _CACHED_MODEL = env_model.strip()
-        _CACHED_MODEL_TS = now
-        return _CACHED_MODEL
+        _SSM_CACHE[tier] = (env_model.strip(), now)
+        return env_model.strip()
 
-    return DEFAULT_MODEL
+    return _DEFAULT_BY_TIER.get(tier, DEFAULT_MODEL_PRIMARY)
+
+
 VALID_INTENTS = ("purchase", "rent", "investment", "unknown")
 
 _SYSTEM_PROMPT = (
@@ -99,9 +121,9 @@ _REPLY_SYSTEM_PROMPT = (
 try:
     import litellm
 
-    litellm.telemetry = False  # NF-02/§8.8: telemetria desligada
+    litellm.telemetry = False
     _HAS_LITELLM = True
-except ImportError:  # pragma: no cover — fallback para testes sem deps
+except ImportError:  # pragma: no cover
     litellm = None  # type: ignore[assignment]
     _HAS_LITELLM = False
 
@@ -114,7 +136,6 @@ def _completion(
     temperature: float,
     response_format: dict[str, str] | None = None,
 ) -> str:
-    """Chama LiteLLM (openrouter) ou fallback urllib se litellm ausente."""
     if _HAS_LITELLM:
         kwargs: dict[str, Any] = {
             "model": f"openrouter/{model}",
@@ -128,8 +149,26 @@ def _completion(
             kwargs["response_format"] = response_format
         resp = litellm.completion(**kwargs)
         return resp["choices"][0]["message"]["content"]
-    # Fallback urllib (testes locais sem litellm instalado)
     return _urllib_completion(messages, api_key, model, max_tokens, temperature, response_format)
+
+
+def _completion_with_fallback(
+    messages: list[dict[str, str]],
+    api_key: str,
+    primary_model: str,
+    fallback_model: str,
+    max_tokens: int,
+    temperature: float,
+    response_format: dict[str, str] | None = None,
+) -> str:
+    try:
+        return _completion(messages, api_key, primary_model, max_tokens, temperature, response_format)
+    except Exception:
+        logger.warning(
+            "Modelo primário %s falhou; tentando fallback %s",
+            primary_model, fallback_model, exc_info=True,
+        )
+        return _completion(messages, api_key, fallback_model, max_tokens, temperature, response_format)
 
 
 def _urllib_completion(
@@ -171,21 +210,21 @@ def classify_intent(
     message: str,
     api_key: str,
     model: str | None = None,
-    url: str = "",  # mantido por compat; litellm ignora
+    url: str = "",
     timeout: float | None = None,
 ) -> tuple[str, float]:
-    """Retorna (intent, confidence) via LiteLLM/OpenRouter. Levanta exceção em falha —
-    o chamador decide o fallback (regex)."""
-    model = resolve_model(model)
+    primary = resolve_model(TIER_PRIMARY, explicit_model=model)
+    fallback = resolve_model(TIER_FALLBACK)
     if timeout:
         os.environ["LLM_TIMEOUT"] = str(timeout)
-    raw = _completion(
+    raw = _completion_with_fallback(
         messages=[
             {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user", "content": message},
         ],
         api_key=api_key,
-        model=model,
+        primary_model=primary,
+        fallback_model=fallback,
         max_tokens=40,
         temperature=0,
         response_format={"type": "json_object"},
@@ -193,25 +232,8 @@ def classify_intent(
     intent, confidence = _parse(raw)
     if intent is None or confidence is None:
         raise ValueError("Resposta LLM sem intenção válida")
-    logger.info("LLM classify: intent=%s confidence=%.2f", intent, confidence)
+    logger.info("LLM classify: intent=%s confidence=%.2f model=%s", intent, confidence, primary)
     return intent, confidence
-
-
-def _parse(raw: str) -> tuple[str | None, float | None]:
-    if not raw:
-        return None, None
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        return None, None
-    intent = data.get("intent", "unknown")
-    if intent not in VALID_INTENTS:
-        return None, None
-    try:
-        confidence = float(data.get("confidence", 0.0))
-    except (TypeError, ValueError):
-        return None, None
-    return intent, max(0.0, min(1.0, confidence))
 
 
 def generate_reply(
@@ -223,17 +245,22 @@ def generate_reply(
     model: str | None = None,
     url: str = "",
     timeout: float | None = None,
+    force_complex: bool = False,
 ) -> str:
-    """Reescreve a resposta oficial do fluxo em texto natural humanizado (FR-02).
+    primary = resolve_model(TIER_PRIMARY, explicit_model=model) if not force_complex else resolve_model(TIER_PRIMARY)
+    fallback = resolve_model(TIER_FALLBACK)
+    complex_model = resolve_model(TIER_COMPLEX)
 
-    NUNCA recebe PII real: `message` já vem mascarada da security-layer (PRD 7.3).
-    `properties` são os top-k do RAG — só esses podem ser citados (constraint via
-    RAG, PRD 8.1/8.2). Levanta exceção em qualquer falha: o chamador mantém a
-    resposta oficial (fallback determinístico).
-    """
-    model = resolve_model(model)
+    if force_complex:
+        chosen_model = complex_model
+        use_fallback = False
+    else:
+        chosen_model = primary
+        use_fallback = True
+
     if timeout:
         os.environ["LLM_TIMEOUT"] = str(timeout)
+
     lead = json.dumps(lead_info, ensure_ascii=False, default=str)[:800]
     props = json.dumps(
         [
@@ -251,17 +278,47 @@ def generate_reply(
         f"IMÓVEIS RECOMENDADOS (SÓ estes podem ser citados):\n{props or '(nenhum)'}\n\n"
         f"ÚLTIMA MENSAGEM DO LEAD:\n{message[:500]}"
     )
-    raw = _completion(
-        messages=[
-            {"role": "system", "content": _REPLY_SYSTEM_PROMPT},
-            {"role": "user", "content": user_block},
-        ],
-        api_key=api_key,
-        model=model,
-        max_tokens=280,
-        temperature=0.6,
-    )
+    if use_fallback:
+        raw = _completion_with_fallback(
+            messages=[
+                {"role": "system", "content": _REPLY_SYSTEM_PROMPT},
+                {"role": "user", "content": user_block},
+            ],
+            api_key=api_key,
+            primary_model=chosen_model,
+            fallback_model=fallback,
+            max_tokens=280,
+            temperature=0.6,
+        )
+    else:
+        raw = _completion(
+            messages=[
+                {"role": "system", "content": _REPLY_SYSTEM_PROMPT},
+                {"role": "user", "content": user_block},
+            ],
+            api_key=api_key,
+            model=chosen_model,
+            max_tokens=280,
+            temperature=0.6,
+        )
     if not raw or not raw.strip():
         raise ValueError("Resposta LLM vazia")
-    logger.info("LLM reply gerado (%d chars)", len(raw))
+    logger.info("LLM reply gerado (%d chars) model=%s", len(raw), chosen_model)
     return raw.strip()
+
+
+def _parse(raw: str) -> tuple[str | None, float | None]:
+    if not raw:
+        return None, None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return None, None
+    intent = data.get("intent", "unknown")
+    if intent not in VALID_INTENTS:
+        return None, None
+    try:
+        confidence = float(data.get("confidence", 0.0))
+    except (TypeError, ValueError):
+        return None, None
+    return intent, max(0.0, min(1.0, confidence))

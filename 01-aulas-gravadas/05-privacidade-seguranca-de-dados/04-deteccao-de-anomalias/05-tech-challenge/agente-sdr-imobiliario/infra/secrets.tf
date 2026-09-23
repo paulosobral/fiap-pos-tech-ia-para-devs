@@ -65,9 +65,25 @@ resource "aws_secretsmanager_secret_version" "internal_secret_token" {
 }
 
 resource "aws_ssm_parameter" "llm_model" {
-  name        = "/sdr/llm-model"
-  description = "Modelo padrão LLM do OpenRouter para o agente SDR"
+  name        = "/sdr/llm-model-primary"
+  description = "Modelo primário LLM (Tier 1 — rotina/econômico: triagem, qualificação, follow-up) no OpenRouter"
   type        = "String"
   value       = var.llm_model
+  overwrite   = true
+}
+
+resource "aws_ssm_parameter" "llm_model_fallback" {
+  name        = "/sdr/llm-model-fallback"
+  description = "Modelo de fallback automático (Tier 2 — usado pelo LiteLLM em 429/timeout/indisponibilidade do primário) no OpenRouter"
+  type        = "String"
+  value       = var.llm_model_fallback
+  overwrite   = true
+}
+
+resource "aws_ssm_parameter" "llm_model_complex" {
+  name        = "/sdr/llm-model-complex"
+  description = "Modelo premium (Tier 3 — negociação sofisticada, dúvidas jurídicas, handoff executivo) no OpenRouter"
+  type        = "String"
+  value       = var.llm_model_complex
   overwrite   = true
 }

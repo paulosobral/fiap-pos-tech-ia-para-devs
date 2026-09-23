@@ -99,5 +99,17 @@ variable "followup_schedule" {
 variable "llm_model" {
   description = "Identificador do modelo LLM no OpenRouter a ser usado pelo conversation-router"
   type        = string
+  default     = "deepseek/deepseek-chat"
+}
+
+variable "llm_model_fallback" {
+  description = "Modelo de fallback no OpenRouter em caso de indisponibilidade/429/timeout"
+  type        = string
   default     = "anthropic/claude-3-haiku"
+}
+
+variable "llm_model_complex" {
+  description = "Modelo avançado no OpenRouter para casos complexos / negociação sofisticada"
+  type        = string
+  default     = "anthropic/claude-3.5-sonnet"
 }
