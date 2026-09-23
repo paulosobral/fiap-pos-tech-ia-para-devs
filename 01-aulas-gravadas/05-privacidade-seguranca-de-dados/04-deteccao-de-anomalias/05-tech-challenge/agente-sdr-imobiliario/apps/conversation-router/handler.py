@@ -108,7 +108,12 @@ class ConversationRouter:
         self.internal_secret_token = internal_secret_token
 
     def validate_secret(self, headers: dict[str, str] | None, expected: str | None = None) -> bool:
-        expected = expected or self.secret_token or os.environ.get("TELEGRAM_SECRET_TOKEN")
+        expected = (
+            expected
+            or self.secret_token
+            or os.environ.get("TELEGRAM_SECRET_TOKEN")
+            or os.environ.get("INTERNAL_SECRET_TOKEN")
+        )
         if not expected:
             return False
         if not headers:

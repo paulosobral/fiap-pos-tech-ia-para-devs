@@ -149,6 +149,38 @@ for i in $(seq 1 12); do
   sleep 10
 done
 
+# Aponta as integrações HTTP_PROXY do API Gateway para o IP público da task do conversation-router
+echo "== [5e/6] Conectando API Gateway -> conversation-router"
+ROUTER_TASK_ARN=$(aws ecs list-tasks --cluster "$CLUSTER" --service-name sdr-conversation-router \
+  --region "$REGION" --query "taskArns[0]" --output text 2>/dev/null)
+ROUTER_ENI=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$ROUTER_TASK_ARN" \
+  --region "$REGION" --query "tasks[0].attachments[0].details[?name=='networkInterfaceId'].value" --output text 2>/dev/null)
+ROUTER_IP=$(aws ec2 describe-network-interfaces --network-interface-ids "$ROUTER_ENI" \
+  --region "$REGION" --query "NetworkInterfaces[0].Association.PublicIp" --output text 2>/dev/null)
+echo "  Router IP: $ROUTER_IP"
+
+API_ID=$(aws apigatewayv2 get-apis --region "$REGION" \
+  --query "Items[?Name=='sdr-http-api'].ApiId" --output text 2>/dev/null)
+# Integração POST (webhook + internal)
+POST_INT_ID=$(aws apigatewayv2 get-integrations --api-id "$API_ID" --region "$REGION" \
+  --query "Items[?IntegrationType=='HTTP_PROXY' && IntegrationMethod=='POST'].IntegrationId" --output text 2>/dev/null)
+aws apigatewayv2 update-integration --api-id "$API_ID" --integration-id "$POST_INT_ID" \
+  --region "$REGION" --integration-uri "http://$ROUTER_IP:8080" >/dev/null 2>&1
+# Integração GET (health)
+GET_INT_ID=$(aws apigatewayv2 get-integrations --api-id "$API_ID" --region "$REGION" \
+  --query "Items[?IntegrationType=='HTTP_PROXY' && IntegrationMethod=='GET'].IntegrationId" --output text 2>/dev/null)
+aws apigatewayv2 update-integration --api-id "$API_ID" --integration-id "$GET_INT_ID" \
+  --region "$REGION" --integration-uri "http://$ROUTER_IP:8080" >/dev/null 2>&1
+echo "  API Gateway -> http://$ROUTER_IP:8080"
+
+# Setar o webhook do Telegram para o API Gateway (HTTPS exigido pelo Telegram)
+if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
+  WEBHOOK_URL="$API_URL/webhook/telegram"
+  TG_RESULT=$(curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook?url=${WEBHOOK_URL}")
+  echo "  Telegram webhook: $WEBHOOK_URL"
+  echo "$TG_RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print('  Telegram:', 'OK' if d.get('ok') else 'FAIL: '+d.get('description',''))" 2>/dev/null || echo "  Telegram: verifique manualmente"
+fi
+
 echo "== [6/6] Smoke checks"
 "$PY" - <<PYEOF
 import json, urllib.request, time

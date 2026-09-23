@@ -84,6 +84,12 @@ variable "router_schedule_end" {
   default     = "cron(0 21 * * ? *)"
 }
 
+variable "router_endpoint" {
+  description = "URL HTTP do conversation-router no ECS (IP:8080). Atualizada pelo start.sh apos scale-out."
+  type        = string
+  default     = "http://127.0.0.1:8080"
+}
+
 variable "followup_schedule" {
   description = "Frequência do follow-up agendado (u6) — cron com hora fixa UTC DENTRO da janela de silêncio 8-18 BRT (12:00 UTC = 09:00 BRT). No dev do rate(1 day), o tick cai fora da janela e o follow-up nunca sai."
   type        = string

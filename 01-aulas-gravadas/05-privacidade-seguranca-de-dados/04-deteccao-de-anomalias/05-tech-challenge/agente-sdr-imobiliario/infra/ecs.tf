@@ -429,6 +429,7 @@ resource "aws_ecs_task_definition" "conversation_router" {
       environment = [
         { name = "PORT", value = "8080" },
         { name = "TELEGRAM_BOT_TOKEN", value = var.telegram_bot_token },
+        { name = "TELEGRAM_SECRET_TOKEN", value = random_password.internal_secret.result },
         { name = "INTERNAL_SECRET_TOKEN", value = random_password.internal_secret.result },
         { name = "LLM_API_SECRET_ID", value = aws_secretsmanager_secret.llm_api_key.arn },
         { name = "PII_KMS_KEY_ID", value = aws_kms_key.pii.key_id },
