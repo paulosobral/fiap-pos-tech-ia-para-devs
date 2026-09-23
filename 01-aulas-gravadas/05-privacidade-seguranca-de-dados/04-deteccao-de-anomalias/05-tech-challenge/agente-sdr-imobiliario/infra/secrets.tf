@@ -63,3 +63,11 @@ resource "aws_secretsmanager_secret_version" "internal_secret_token" {
   secret_id     = aws_secretsmanager_secret.internal_secret_token.id
   secret_string = random_password.internal_secret.result
 }
+
+resource "aws_ssm_parameter" "llm_model" {
+  name        = "/sdr/llm-model"
+  description = "Modelo padrão LLM do OpenRouter para o agente SDR"
+  type        = "String"
+  value       = var.llm_model
+  overwrite   = true
+}

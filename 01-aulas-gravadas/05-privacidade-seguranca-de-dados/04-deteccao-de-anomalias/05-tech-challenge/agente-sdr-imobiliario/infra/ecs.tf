@@ -431,6 +431,8 @@ resource "aws_ecs_task_definition" "conversation_router" {
         { name = "TELEGRAM_BOT_TOKEN", value = var.telegram_bot_token },
         { name = "TELEGRAM_SECRET_TOKEN", value = random_password.internal_secret.result },
         { name = "INTERNAL_SECRET_TOKEN", value = random_password.internal_secret.result },
+        { name = "LLM_MODEL", value = var.llm_model },
+        { name = "LLM_MODEL_SSM_PARAM", value = aws_ssm_parameter.llm_model.name },
         { name = "LLM_API_SECRET_ID", value = aws_secretsmanager_secret.llm_api_key.arn },
         { name = "PII_KMS_KEY_ID", value = aws_kms_key.pii.key_id },
         { name = "SESSIONS_TABLE", value = aws_dynamodb_table.sessions.name },

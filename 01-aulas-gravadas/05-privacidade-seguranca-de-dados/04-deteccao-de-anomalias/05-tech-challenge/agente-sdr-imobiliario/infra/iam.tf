@@ -43,6 +43,14 @@ resource "aws_iam_policy" "sdr_lambda" {
         ]
       },
       {
+        Sid    = "SSMParameterStore"
+        Effect = "Allow"
+        Action = ["ssm:GetParameter", "ssm:GetParameters"]
+        Resource = [
+          "arn:aws:ssm:${var.region}:*:parameter/sdr/*",
+        ]
+      },
+      {
         Sid    = "CloudWatchLogs"
         Effect = "Allow"
         Action = [

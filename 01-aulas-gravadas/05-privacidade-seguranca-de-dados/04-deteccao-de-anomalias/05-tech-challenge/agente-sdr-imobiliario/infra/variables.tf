@@ -95,3 +95,9 @@ variable "followup_schedule" {
   type        = string
   default     = "cron(0 12 * * ? *)"
 }
+
+variable "llm_model" {
+  description = "Identificador do modelo LLM no OpenRouter a ser usado pelo conversation-router"
+  type        = string
+  default     = "anthropic/claude-3-haiku"
+}

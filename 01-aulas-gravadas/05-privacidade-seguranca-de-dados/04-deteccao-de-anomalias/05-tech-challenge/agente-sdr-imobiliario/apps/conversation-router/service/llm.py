@@ -22,7 +22,53 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "anthropic/claude-3.5-haiku"
+DEFAULT_MODEL = "anthropic/claude-3-haiku"
+
+_CACHED_MODEL: str | None = None
+_CACHED_MODEL_TS: float = 0.0
+_CACHE_TTL_SECONDS = 60.0
+
+
+def resolve_model(explicit_model: str | None = None) -> str:
+    """Resolve o modelo OpenRouter a ser usado.
+    Ordem de precedência:
+      1. explicit_model passado diretamente
+      2. AWS SSM Parameter Store (/sdr/llm-model ou env LLM_MODEL_SSM_PARAM)
+      3. Variável de ambiente LLM_MODEL
+      4. DEFAULT_MODEL
+    """
+    if explicit_model:
+        return explicit_model
+
+    global _CACHED_MODEL, _CACHED_MODEL_TS
+    import time
+    now = time.time()
+    if _CACHED_MODEL and (now - _CACHED_MODEL_TS) < _CACHE_TTL_SECONDS:
+        return _CACHED_MODEL
+
+    ssm_param_name = os.environ.get("LLM_MODEL_SSM_PARAM", "/sdr/llm-model")
+    if ssm_param_name:
+        try:
+            import boto3
+            ssm = boto3.client("ssm", region_name=os.environ.get("AWS_REGION", "us-east-1"))
+            res = ssm.get_parameter(Name=ssm_param_name)
+            val = res.get("Parameter", {}).get("Value")
+            if val and val.strip():
+                _CACHED_MODEL = val.strip()
+                _CACHED_MODEL_TS = now
+                logger.info("Modelo LLM resolvido via SSM Parameter Store (%s): %s", ssm_param_name, _CACHED_MODEL)
+                return _CACHED_MODEL
+        except Exception:
+            # Fallback silencioso para env ou default se SSM falhar/não existir
+            pass
+
+    env_model = os.environ.get("LLM_MODEL")
+    if env_model and env_model.strip():
+        _CACHED_MODEL = env_model.strip()
+        _CACHED_MODEL_TS = now
+        return _CACHED_MODEL
+
+    return DEFAULT_MODEL
 VALID_INTENTS = ("purchase", "rent", "investment", "unknown")
 
 _SYSTEM_PROMPT = (
@@ -136,7 +182,7 @@ def classify_intent(
 ) -> tuple[str, float]:
     """Retorna (intent, confidence) via LiteLLM/OpenRouter. Levanta exceção em falha —
     o chamador decide o fallback (regex)."""
-    model = model or os.environ.get("LLM_MODEL") or DEFAULT_MODEL
+    model = resolve_model(model)
     if timeout:
         os.environ["LLM_TIMEOUT"] = str(timeout)
     raw = _completion(
@@ -191,7 +237,7 @@ def generate_reply(
     RAG, PRD 8.1/8.2). Levanta exceção em qualquer falha: o chamador mantém a
     resposta oficial (fallback determinístico).
     """
-    model = model or os.environ.get("LLM_MODEL") or DEFAULT_MODEL
+    model = resolve_model(model)
     if timeout:
         os.environ["LLM_TIMEOUT"] = str(timeout)
     lead = json.dumps(lead_info, ensure_ascii=False, default=str)[:800]

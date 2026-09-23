@@ -771,6 +771,28 @@ O desenvolvimento será conduzido com a metodologia **AI-DLC (AWS)** — 5 fases
 
 ---
 
+## 11. Ajustes Técnicos de Infraestrutura e Execução (AI-DLC)
+
+Resumo direto das adaptações feitas durante o deploy para estabilizar o bot:
+
+1. **Migração do `conversation-router` para ECS Fargate**:
+   - Movido de Lambda para ECS Fargate (porta 8080) devido ao consumo de memória/dependências (FAISS, PyTorch/SentenceTransformers) e cold starts.
+   - Rotas no API Gateway HTTP API v2 mapeadas via `HTTP_PROXY` para a task Fargate.
+
+2. **Validação de Webhook e Gestão de Segredos**:
+   - `TELEGRAM_SECRET_TOKEN` alinhado com `INTERNAL_SECRET_TOKEN` gerado no Terraform (`sdr/dashboard-api-token`).
+   - Webhook do Telegram registrado com parâmetro `secret_token`, garantindo header `X-Telegram-Bot-Api-Secret-Token` válido no recebimento.
+
+3. **Correção de Schemas DynamoDB (Single Table Design)**:
+   - `sdr-sessions`: atualizada para chave primária composta `PK` (String) e `SK` (String), com Global Secondary Indexes `telegram-user-index` (`telegram_user_id` [N]) e `lead-index` (`lead_id` [S]).
+   - `sdr-pii`: atualizada para chave primária composta `PK` (String) e `SK` (String) para persistência segura via KMS.
+
+4. **Seleção Dinâmica de Modelo LLM via SSM Parameter Store**:
+   - Criado parâmetro `/sdr/llm-model` no AWS Systems Manager (SSM) Parameter Store.
+   - Permite trocar o modelo OpenRouter (ex: `anthropic/claude-3-haiku`) sem redeploy de imagem ou rebuild de infraestrutura.
+
+---
+
 *Documento gerado a partir de brainstorming/validação e servirá de guia para a pipeline AI-DLC (profile: POC) — revisão de aprovação do cliente/aluno antes da implementação.*
 
 *Atualizado em 09/set/2026 — v1.9: contrato OpenAPI movido para arquivo próprio `apigw-openapi.yaml` (visualizável no VS Code com OpenAPI Editor/Swagger Viewer), linkado no §7.5.*
