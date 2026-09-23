@@ -44,7 +44,10 @@ class SessionStore:
             KeyConditionExpression="lead_id = :lid",
             ExpressionAttributeValues={":lid": {"S": lead_id}},
         )
-        conv_items = response.get("Items", [])
+        conv_items = [
+            it for it in response.get("Items", [])
+            if self._scalar(it.get("SK", "")).startswith("CONV#")
+        ]
         return Lead.from_item(self._unmarshal(lead_item)), (
             Conversation.from_item(self._unmarshal(conv_items[0])) if conv_items else None
         )
