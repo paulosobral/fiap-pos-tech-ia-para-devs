@@ -113,7 +113,11 @@ _REPLY_SYSTEM_PROMPT = (
     "bairro ou valor — apenas reescreva a resposta oficial.\n"
     "3. NUNCA invente: preço, metragem, bairro, nome de empreendimento, "
     "disponibilidade, ou prazo.\n"
-    "4. Máximo 3 frases. Termine com uma pergunta de avanço."
+    "4. Máximo 3 frases. A pergunta final DEVE SER COerente com a ação do lead:\n"
+    "   - se mostrou opções → pergunte se quer agendar ou ver mais\n"
+    "   - se é qualificação → peça o dado faltante\n"
+    "   - se é handoff → confirme o encaminhamento\n"
+    "   - NUNCA force agendamento quando o lead só quer ver propriedades."
 )
 
 # --- LiteLLM (cliente abstraído conforme PRD §8.1) ---------------------------
@@ -348,11 +352,15 @@ _ROUTER_SYSTEM_PROMPT = (
     "2. CLASSIFIQUE a ação pretendida do lead, escolhendo UMA destas: "
     f"{', '.join(VALID_ACTIONS)}.\n"
     "   - provide_info: está respondendo com dados (padrão sem pedido claro)\n"
-    "   - request_options: quer ver opções de imóveis ('cadê as opções', 'tem mais?')\n"
-    "   - request_schedule: quer agendar visita\n"
-    "   - request_human: quer falar direto com corretor/humano\n"
+    "   - request_options: quer VER/RECEBER/VER mais opções de imóveis ou detalhes "
+    "('cadê as opções', 'me envie mais detalhes', 'tem mais?', 'quero ver', 'manda as opções', 'envie detalhes')\n"
+    "   - request_schedule: quer agendar visita APENAS com verbo explícito de agendamento "
+    "('agendar', 'marcar visita', 'reserve', 'agende', 'quero marcar')\n"
+    "   - request_human: QUER FALAR COM UM CORRETOR/HUMANO AGORA (ex: 'quero um corretor', "
+    "'fala com alguém', 'preciso de um humano', 'atendente')\n"
     "   - decline: quer parar/recusar/desistir\n"
     "   - unclear: ambígua, sem ação clara\n"
+    "REGRA DE OURO: 'request_schedule' SÓ com verbo de agendamento explícito. Pedir mais detalhes/propriedades = request_options. Pedir um corretor = request_human.\n"
     'Responda APENAS com JSON: {"lead_info": {...}, "action": "<uma das opções>"}.'
 )
 

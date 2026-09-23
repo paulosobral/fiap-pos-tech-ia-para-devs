@@ -28,11 +28,13 @@ def test_sales_flow_ics_generated_on_scheduling():
             "summary": "Visita Torre Faria Lima",
             "location": "Av. Faria Lima, 3477",
         },
+        properties_rag=lambda info: [{"title": f"Imóvel {i}"} for i in range(5)],
     )
     res = flow.invoke({
         "current_state": "scheduling",
         "message": "terça às 14h",
         "lead_info": {"intent": "rent", "region": "Faria Lima"},
+        "shown_properties_count": 3,
     })
     assert res["current_state"] == "handoff"
     assert "ics_invite" in res

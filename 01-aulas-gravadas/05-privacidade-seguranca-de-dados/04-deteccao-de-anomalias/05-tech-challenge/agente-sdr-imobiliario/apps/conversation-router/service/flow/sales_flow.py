@@ -75,6 +75,7 @@ class FlowState(TypedDict, total=False):
     scheduling_restricted: bool
     followup_deferred: bool
     ics_invite: str
+    shown_properties_count: int
     _router_action: str | None  # ADR-011: ação classificada pelo llm_router (enum VALID_ACTIONS)
 
 
@@ -171,6 +172,8 @@ class SalesFlow:
         if current in ("greeting", "elicitation"):
             return current  # LGPD: consentimento sempre determinístico, nunca via LLM
         action = state.get("_router_action")
+        if action == "request_human" and _OPTIONS_REQUEST_RE.search(state.get("message", "")):
+            return current  # usuário quer opções, não humano
         if action == "request_human":
             return "handoff"
         if action == "decline":
@@ -178,8 +181,12 @@ class SalesFlow:
         return current
 
     def _wants_options(self, state: FlowState) -> bool:
-        """ADR-011: se o router LLM rodou, confia nele; senão cai no regex (rede de segurança)."""
+        """ADR-011: se o router LLM rodou, confie nele; senão cai no regex (rede de segurança).
+        Safety net: se o LLM classificou como request_human mas a mensagem pede opções,
+        sobrescreva para mostrar recomendações."""
         action = state.get("_router_action")
+        if action == "request_human" and _OPTIONS_REQUEST_RE.search(state.get("message", "")):
+            return True
         if action is not None:
             return action == "request_options"
         return bool(_OPTIONS_REQUEST_RE.search(state.get("message", "")))
@@ -250,13 +257,34 @@ class SalesFlow:
             return state
         state["intent"] = intent
         state["current_state"] = "qualification"
-        state["response"] = "Ótimo! Qual a metragem desejada, região e orçamento?"
+        info = state.get("lead_info", {})
+        if self.properties_rag is not None and (info.get("region") or info.get("area")):
+            state["current_state"] = "recommendation"
+            region = info.get("region", "")
+            state["response"] = self._build_early_recommendation(state, region)
+        else:
+            state["response"] = "Ótimo! Qual a metragem desejada, região e orçamento?"
         return state
 
     def _node_qualification(self, state: FlowState) -> FlowState:
         info = state.get("lead_info", {})
         if self._wants_options(state) and self.properties_rag is not None:
             return self._node_recommendation(state)
+        if self.properties_rag is not None and (info.get("region") or info.get("area")):
+            state["current_state"] = "recommendation"
+            properties = self.properties_rag(info)
+            if properties:
+                state["properties"] = properties[:3]
+                state["shown_properties_count"] = len(properties[:3])
+                listed = "\n".join(
+                    f"{i + 1}. {p.get('title', 'Imóvel')} — {p.get('region', '')}, {p.get('area_util', '')} m²"
+                    for i, p in enumerate(state["properties"])
+                )
+                state["response"] = (
+                    f"Já tenho uma ideia do que você procura. Separei algumas opções:\n{listed}\n\n"
+                    "Alguma chamou atenção? Posso refinar por metragem, orçamento ou região."
+                )
+                return state
         result = self.qualifier.calculate_score(info)
         state["score"] = result["score"]
         state["score_factors"] = result["factors"]
@@ -270,12 +298,20 @@ class SalesFlow:
         else:
             state["current_state"] = "qualification"
             state["lead_qualified"] = False
-            state["response"] = (
-                self.qualifier.explain(result)
-                + " Ainda precisamos de algumas informações: "
-                + ", ".join(result["missing"])
-                + "."
-            )
+            missing = result["missing"]
+            if self.properties_rag and (info.get("region") or info.get("area")):
+                state["response"] = (
+                    "Quase lá! "
+                    + ", ".join(missing)
+                    + " pra eu te mostrar as melhores opções."
+                )
+            else:
+                state["response"] = (
+                    self.qualifier.explain(result)
+                    + " Ainda precisamos de algumas informações: "
+                    + ", ".join(missing)
+                    + "."
+                )
         return state
 
     @staticmethod
@@ -285,12 +321,33 @@ class SalesFlow:
         match = re.search(r"(\d+(?:[.,]\d+)?)", str(area))
         return float(match.group(1).replace(",", ".")) if match else None
 
+    def _build_early_recommendation(self, state: FlowState, region: str) -> str:
+        """Mostra imóveis imediatamente quando a intenção é clara — SDR consultivo."""
+        if self.properties_rag is None:
+            return f"Perfeito! Tenho opções em {region}. Posso te mostrar agora?" if region else "Perfeito! Posso te mostrar as opções."
+        properties = self.properties_rag(state.get("lead_info", {}))
+        if not properties:
+            return "Perfeito! Vou buscar as melhores opções pra você."
+        top = properties[:3]
+        listed = "\n".join(
+            f"{i + 1}. {p.get('title', 'Imóvel')} — {p.get('region', '')}, {p.get('area_util', '')} m²"
+            for i, p in enumerate(top)
+        )
+        state["properties"] = top
+        state["shown_properties_count"] = len(top)
+        return (
+            f"Tenho algumas opções pra você:\n{listed}\n"
+            "Alguma chamou atenção? Posso refinar por metragem, orçamento ou localização."
+        )
+
     def _node_recommendation(self, state: FlowState) -> FlowState:
         if self._wants_options(state) and self.properties_rag is not None:
             return self._show_more_options(state)
         if self.properties_rag is None:
-            state["current_state"] = "scheduling"
-            state["response"] = "Podemos agendar uma visita?"
+            state["response"] = (
+                "Sem imóveis disponíveis agora. "
+                "Posso mostrar opções assim que tivermos mais dados, ou ajudar com outra coisa?"
+            )
             return state
         properties = self.properties_rag(state.get("lead_info", {}))
         if not properties:
@@ -299,18 +356,29 @@ class SalesFlow:
             )
             return state
         state["properties"] = properties[:3]
-        state["current_state"] = "scheduling"
         listed = "\n".join(
             f"{i + 1}. {p.get('title', 'Imóvel')} — {p.get('region', '')}, {p.get('area_util', '')} m²"
             for i, p in enumerate(state["properties"])
         )
-        state["response"] = f"Encontramos estas opções:\n{listed}\nGostaria de agendar uma visita?"
+        state["response"] = (
+            f"Separei algumas opções que parecem próximas do que você procura:\n{listed}\n\n"
+            "Alguma delas chamou atenção? "
+            "Posso também ajustar por metragem, orçamento ou localização."
+        )
         return state
 
     def _node_scheduling(self, state: FlowState) -> FlowState:
         message = state.get("message", "")
         if self._wants_options(state) and self.properties_rag is not None:
             return self._show_more_options(state)
+        shown_count = state.get("shown_properties_count", 0) + len(state.get("properties", []))
+        if shown_count < 3 and not state.get("lead_id"):
+            state["current_state"] = "recommendation"
+            state["response"] = (
+                "Antes de pensar em agendar, vou te mostrar mais opções. "
+                "Qualquer uma dessas te interessou?"
+            )
+            return self._show_more_options(state) if self.properties_rag else state
         if self._is_restricted(state.get("lead_id")):
             state["scheduling_restricted"] = True
             state["current_state"] = "handoff"
@@ -333,24 +401,25 @@ class SalesFlow:
         return state
 
     def _show_more_options(self, state: FlowState) -> FlowState:
-        """Pedido de mais opções em scheduling: reconsulta RAG excluindo o que já foi exibido."""
+        """Pedido de mais opções: reconsulta RAG excluindo o que já foi exibido."""
         shown = {p.get("title") for p in (state.get("properties") or [])}
         properties = self.properties_rag(state.get("lead_info", {}))
         fresh = [p for p in properties if p.get("title") not in shown][:3]
         if not fresh:
-            state["current_state"] = "scheduling"
             state["response"] = (
                 "Essas são todas as opções que atendem aos seus critérios. "
-                "Gostaria de agendar uma visita em alguma delas?"
+                "Posso mostrar outras ou ajudar com mais alguma coisa?"
             )
             return state
         state["properties"] = (state.get("properties") or []) + fresh
-        state["current_state"] = "scheduling"
         listed = "\n".join(
             f"- {p.get('title', 'Imóvel')} — {p.get('region', '')}, {p.get('area_util', '')} m²"
             for p in fresh
         )
-        state["response"] = f"Encontrei mais estas opções:\n{listed}\nGostaria de agendar uma visita?"
+        state["response"] = (
+            f"Separei mais algumas opções que parecem próximas do que você procura:\n{listed}\n\n"
+            "Alguma chamou atenção? Posso também refinar por metragem, orçamento ou localização."
+        )
         return state
 
     def _node_handoff(self, state: FlowState) -> FlowState:
