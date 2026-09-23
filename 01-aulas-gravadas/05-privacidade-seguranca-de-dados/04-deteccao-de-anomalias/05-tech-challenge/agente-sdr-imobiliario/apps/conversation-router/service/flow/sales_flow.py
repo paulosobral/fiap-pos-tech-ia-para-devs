@@ -286,6 +286,8 @@ class SalesFlow:
         return float(match.group(1).replace(",", ".")) if match else None
 
     def _node_recommendation(self, state: FlowState) -> FlowState:
+        if self._wants_options(state) and self.properties_rag is not None:
+            return self._show_more_options(state)
         if self.properties_rag is None:
             state["current_state"] = "scheduling"
             state["response"] = "Podemos agendar uma visita?"

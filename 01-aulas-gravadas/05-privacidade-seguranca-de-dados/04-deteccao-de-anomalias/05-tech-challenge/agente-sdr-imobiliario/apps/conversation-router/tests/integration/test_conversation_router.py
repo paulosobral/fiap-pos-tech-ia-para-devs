@@ -344,3 +344,50 @@ class TestConversationRouter:
         router.handle(update("continuar"))
         lead, _ = router.store.get_by_telegram_user(42)
         assert lead.route == "diretor"
+
+    def test_agentic_router_wired_when_key_present(self, monkeypatch):
+        captured: dict = {}
+
+        def fake_sales_flow(**kwargs):
+            captured.update(kwargs)
+            mock = MagicMock()
+            mock.invoke.return_value = {"response": "ok", "current_state": "greeting"}
+            return mock
+
+        fake_boto3 = types.ModuleType("boto3")
+        fake_boto3.client = lambda *args, **kwargs: MagicMock()
+        monkeypatch.setenv("LLM_API_KEY", "sk-or-test-key")
+        monkeypatch.setenv("INTERNAL_SECRET_TOKEN", "test-token")
+        monkeypatch.setitem(sys.modules, "boto3", fake_boto3)
+        monkeypatch.setattr(handler_module, "SalesFlow", fake_sales_flow)
+        monkeypatch.setattr(handler_module, "ConversationRouter", lambda **kwargs: MagicMock(handle=lambda e: {"statusCode": 200}))
+        monkeypatch.setattr(handler_module, "SessionStore", lambda *args, **kwargs: MagicMock())
+        monkeypatch.setattr(handler_module, "SecurityLayer", lambda **kwargs: MagicMock())
+        monkeypatch.setattr(handler_module, "DynamoRestrictionCheck", lambda *args, **kwargs: MagicMock())
+        handler_module.handler({"body": '{"message": "olá"}'}, None)
+        assert captured.get("llm_router") is not None
+        monkeypatch.undo()
+
+    def test_agentic_router_not_wired_without_key(self, monkeypatch):
+        captured: dict = {}
+
+        def fake_sales_flow(**kwargs):
+            captured.update(kwargs)
+            mock = MagicMock()
+            mock.invoke.return_value = {"response": "ok", "current_state": "greeting"}
+            return mock
+
+        fake_boto3 = types.ModuleType("boto3")
+        fake_boto3.client = lambda *args, **kwargs: MagicMock()
+        monkeypatch.delenv("LLM_API_KEY", raising=False)
+        monkeypatch.delenv("LLM_API_SECRET_ID", raising=False)
+        monkeypatch.setenv("INTERNAL_SECRET_TOKEN", "test-token")
+        monkeypatch.setitem(sys.modules, "boto3", fake_boto3)
+        monkeypatch.setattr(handler_module, "SalesFlow", fake_sales_flow)
+        monkeypatch.setattr(handler_module, "ConversationRouter", lambda **kwargs: MagicMock(handle=lambda e: {"statusCode": 200}))
+        monkeypatch.setattr(handler_module, "SessionStore", lambda *args, **kwargs: MagicMock())
+        monkeypatch.setattr(handler_module, "SecurityLayer", lambda **kwargs: MagicMock())
+        monkeypatch.setattr(handler_module, "DynamoRestrictionCheck", lambda *args, **kwargs: MagicMock())
+        handler_module.handler({"body": '{"message": "olá"}'}, None)
+        assert captured.get("llm_router") is None
+        monkeypatch.undo()

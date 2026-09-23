@@ -82,4 +82,22 @@ Commit the `aidlc/` workspace tree — the record (state, the per-clone audit sh
 - `**/aidlc/spaces/*/intents/**/.aidlc-sensors/` (engine-shaped sensor caches at any depth, including legacy package-local trees)
 - `aidlc/spaces/*/intents/*/runtime-graph.json` (also covers per-Bolt worktree fragments by relative-path glob)
 - `aidlc/spaces/*/intents/*/.aidlc-*` (recovery, hooks-health, sensors scratch)
-<!-- END AI-DLC:agents -->
+## Session Work (2026-09-23)
+
+### ADR-011: Roteamento Conversacional Agentic via LangGraph — COMPLETO
+- `SalesFlow` agora aceita `llm_router: Callable` no construtor.
+- `_node_preprocess` chama `llm_router(message, lead_info, current_state)` para classificar ação (enum `VALID_ACTIONS`), mescla deltas de `lead_info` e aplica fallback regex/FSM em exceção.
+- `FlowState` inclui `_router_action: str | None` para que LangGraph preserve a ação do router entre nós.
+- `_route_state`: `request_human` → "handoff", `decline` → "followup"; `greeting`/`elicitation` nunca são roteadas via LLM (LGPD).
+- `_wants_options(state)`: confia no `_router_action` quando o router LLM rodou; senão cai no regex como rede de segurança.
+- `_node_recommendation`, `_node_qualification`, `_node_scheduling`, `_node_followup` usam `_wants_options` para rotear para `_show_more_options`/`_node_recommendation`.
+- `_invoke_fsm` (fallback sem LangGraph) usa `_node_preprocess` + `_route_state` para consistência com modo gráfico.
+- `handler.py`: importa `extract_and_route` e injeta `llm_router=_llm_extract_and_route` em `SalesFlow` quando `LLM_API_KEY` está presente; `llm_router=None` sem chave.
+
+### Testes (191 passing)
+- `apps/conversation-router/tests`: 191 passam (39 em test_sales_flow incluindo TestAgenticRouter com 7 testes de roteamento agentic).
+- `test_handler_llm_secret.py`: 6 testes incluindo wiring de `llm_router` com/sem `LLM_API_KEY`.
+- `test_conversation_router.py`: testes de wiring do handler substituem o e2e anterior (causava stuck em "intent" por classificador regex ter confiança baixa).
+
+### Regra de UX (não quebrar)
+- Após `_node_elicitation`, `current_state = "intent"` (não "qualification"). Para avançar, `_node_intent` requer confiança ≥ 0.85 do classificador. Em testes de integração, use `router.flow.invoke = lambda s: {...}` para mockar ou verifique o wiring em vez do fluxo e2e completo.
