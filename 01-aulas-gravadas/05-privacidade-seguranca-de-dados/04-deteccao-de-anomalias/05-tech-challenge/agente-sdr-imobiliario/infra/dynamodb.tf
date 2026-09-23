@@ -1,26 +1,38 @@
 resource "aws_dynamodb_table" "sessions" {
   name         = "sdr-sessions"
   billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "telegram_user_id"
-  range_key    = "started_at"
+  hash_key     = "PK"
+  range_key    = "SK"
+
+  attribute {
+    name = "PK"
+    type = "S"
+  }
+  attribute {
+    name = "SK"
+    type = "S"
+  }
   attribute {
     name = "telegram_user_id"
-    type = "S"
+    type = "N"
   }
   attribute {
-    name = "started_at"
+    name = "lead_id"
     type = "S"
   }
-  attribute {
-    name = "lead_status"
-    type = "S"
-  }
+
   global_secondary_index {
-    name            = "lead-index"
-    hash_key        = "lead_status"
-    range_key       = "started_at"
+    name            = "telegram-user-index"
+    hash_key        = "telegram_user_id"
     projection_type = "ALL"
   }
+
+  global_secondary_index {
+    name            = "lead-index"
+    hash_key        = "lead_id"
+    projection_type = "ALL"
+  }
+
   ttl {
     attribute_name = "ttl"
     enabled        = true
@@ -30,11 +42,18 @@ resource "aws_dynamodb_table" "sessions" {
 resource "aws_dynamodb_table" "pii" {
   name         = "sdr-pii"
   billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "telegram_user_id"
+  hash_key     = "PK"
+  range_key    = "SK"
+
   attribute {
-    name = "telegram_user_id"
+    name = "PK"
     type = "S"
   }
+  attribute {
+    name = "SK"
+    type = "S"
+  }
+
   ttl {
     attribute_name = "ttl"
     enabled        = true
