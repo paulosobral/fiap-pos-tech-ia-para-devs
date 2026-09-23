@@ -12,12 +12,11 @@ resource "aws_apigatewayv2_stage" "default" {
   auto_deploy = true
 }
 
-resource "aws_apigatewayv2_integration" "router" {
-  api_id                 = aws_apigatewayv2_api.http.id
-  integration_type       = "AWS_PROXY"
-  integration_uri        = module.lambda_conversation_router.lambda_function_invoke_arn
-  payload_format_version = "2.0"
-}
+# conversation-router agora em ECS Fargate.
+# No POC sem ALB (custo mínimo e zero-idle), os endpoints são atendidos diretamente pelo container
+# ou roteados via HTTP integration.
+# Para manter a URL única do API Gateway para webhooks e health, mantemos a rota HTTP integration se desejado,
+# ou expomos o endpoint do router.
 
 resource "aws_apigatewayv2_integration" "dashboard" {
   api_id                 = aws_apigatewayv2_api.http.id
@@ -26,37 +25,10 @@ resource "aws_apigatewayv2_integration" "dashboard" {
   payload_format_version = "2.0"
 }
 
-# Rotas
-resource "aws_apigatewayv2_route" "webhook_telegram" {
-  api_id    = aws_apigatewayv2_api.http.id
-  route_key = "POST /webhook/telegram"
-  target    = "integrations/${aws_apigatewayv2_integration.router.id}"
-}
-
-resource "aws_apigatewayv2_route" "internal_proxy" {
-  api_id    = aws_apigatewayv2_api.http.id
-  route_key = "POST /internal/{proxy+}"
-  target    = "integrations/${aws_apigatewayv2_integration.router.id}"
-}
-
-resource "aws_apigatewayv2_route" "health" {
-  api_id    = aws_apigatewayv2_api.http.id
-  route_key = "GET /health"
-  target    = "integrations/${aws_apigatewayv2_integration.router.id}"
-}
-
 resource "aws_apigatewayv2_route" "dashboard_proxy" {
   api_id    = aws_apigatewayv2_api.http.id
   route_key = "GET /api/{proxy+}"
   target    = "integrations/${aws_apigatewayv2_integration.dashboard.id}"
-}
-
-# Permissões de invocação para o API Gateway
-resource "aws_lambda_permission" "router_apigw" {
-  action        = "lambda:InvokeFunction"
-  function_name = module.lambda_conversation_router.lambda_function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_apigatewayv2_api.http.execution_arn}/*/*/*"
 }
 
 resource "aws_lambda_permission" "dashboard_apigw" {

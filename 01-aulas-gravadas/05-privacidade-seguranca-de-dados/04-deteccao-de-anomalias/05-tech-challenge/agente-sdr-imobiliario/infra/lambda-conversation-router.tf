@@ -1,9 +1,14 @@
+# conversation-router agora roda em ECS Fargate (litellm, langgraph, faiss completos).
+# A Lambda conversation-router permanece como dummy/desativada para compatibilidade de testes.
+
 module "lambda_conversation_router" {
   source  = "terraform-aws-modules/lambda/aws"
   version = "~> 7.0"
 
+  create_function = false
+
   function_name          = "sdr-conversation-router"
-  description            = "u1 - roteador de conversa (webhook Telegram + internals)"
+  description            = "u1 - roteador de conversa (deprecated em favor do ECS Fargate)"
   handler                = "handler.handler"
   runtime                = "python3.11"
   create_package         = false

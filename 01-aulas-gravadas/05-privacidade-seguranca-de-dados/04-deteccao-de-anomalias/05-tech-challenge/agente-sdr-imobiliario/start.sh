@@ -11,8 +11,10 @@ echo "== [1/6] Setup"
 if [ ! -x .venv/bin/python ]; then
   echo "criando venv..."
   python3 -m venv .venv
-  .venv/bin/pip install -q --upgrade pip
 fi
+.venv/bin/pip install -q --upgrade pip
+# Deps de teste do venv: gates rodam antes da fase 4 — conversation-router precisa de faiss/litellm p/ os testes dele
+.venv/bin/pip install -q -r requirements-dev.txt -r apps/conversation-router/requirements.txt
 PY=".venv/bin/python"
 
 echo "== [2/6] compileall"
@@ -36,7 +38,7 @@ mkdir -p apps/conversation-router/data
 "$PY" scripts/seed_properties.py > apps/conversation-router/data/properties.json
 "$PY" scripts/seed_clients.py > apps/conversation-router/data/clients.json
 echo "RAG seed: $(python3 -c 'import json;print(len(json.load(open("apps/conversation-router/data/properties.json"))["properties"]))') imóveis + $(python3 -c 'import json;print(len(json.load(open("apps/conversation-router/data/clients.json"))["clients"]))') clientes sintéticos"
-for a in conversation-router voice-adapter crm-adapter contact-ingest anomaly-detector followup dashboard-api; do
+for a in voice-adapter crm-adapter contact-ingest anomaly-detector followup dashboard-api; do
   if [ -f "dist/$a.zip" ]; then
     cp "dist/$a.zip" "dist/archive/$a-$(date +%Y%m%d%H%M%S).zip"
     rm -f "dist/$a.zip"
@@ -51,6 +53,8 @@ for a in conversation-router voice-adapter crm-adapter contact-ingest anomaly-de
     .venv/bin/pip install -q -r "apps/$a/requirements.txt" -t "dist/$a/" \
       --platform manylinux2014_x86_64 --python-version 3.11 --only-binary=:all:
   fi
+  find "dist/$a" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
+  find "dist/$a" -maxdepth 2 -name '*.dist-info' -type d -exec rm -rf {} + 2>/dev/null || true
   ( cd "apps/$a" && zip -qr "../../dist/$a.zip" . )
   ( cd "dist/$a" && zip -qr "../$a.zip" . )
   rm -rf "dist/$a"
@@ -76,9 +80,21 @@ if ! terraform apply -auto-approve -input=false -var="telegram_bot_token=${TELEG
 fi
 DASH_ECR_URI="$(terraform output -raw dashboard_ecr_repo)"
 VOICE_ECR_URI="$(terraform output -raw voice_ecr_repo)"
+ROUTER_ECR_URI="$(terraform output -raw router_ecr_repo)"
 echo "ECR dashboard: $DASH_ECR_URI"
-echo "ECR voice: $VOICE_ECR_URI"
+echo "ECR voice:     $VOICE_ECR_URI"
+echo "ECR router:    $ROUTER_ECR_URI"
 REGION="$(terraform output -raw region)"
+
+# build + push da imagem do conversation-router (podman, litellm + langgraph + faiss completos)
+router_tag="$ROUTER_ECR_URI:poc-$(date +%Y%m%d%H%M%S)"
+echo "== [5a/6] build imagem conversation-router (podman, litellm+langgraph+faiss)"
+podman build -q -t "$router_tag" -f ../apps/conversation-router/Dockerfile ../apps/conversation-router/ >/tmp/td-podman-router.log 2>&1 || {
+  echo "FALHA: podman build conversation-router"; tail -20 /tmp/td-podman-router.log; exit 1; }
+aws ecr get-login-password --region "$REGION" \
+  | podman login --username AWS --password-stdin "$(echo "$ROUTER_ECR_URI" | cut -d/ -f1)" >/dev/null 2>&1
+podman push -q "$router_tag" >>/tmp/td-podman-router.log 2>&1 || { echo "FALHA: push ECR conversation-router"; tail -10 /tmp/td-podman-router.log; exit 1; }
+echo "imagem publicada: $router_tag"
 
 # build + push da imagem do dashboard-ui (podman, sem docker)
 dash_tag="$DASH_ECR_URI:poc-$(date +%Y%m%d%H%M%S)"
@@ -106,6 +122,7 @@ if ! terraform apply -auto-approve -input=false \
      -var="llm_api_key=${LLM_API_KEY:-}" \
      -var="dashboard_ui_image=$dash_tag" \
      -var="voice_adapter_image=$voice_tag" \
+     -var="router_image=$router_tag" \
      >/tmp/td-apply2.log 2>&1; then
   echo "FALHA: terraform apply (imagens)"; tail -40 /tmp/td-apply2.log; exit 1
 fi
@@ -127,16 +144,7 @@ def check(name, fn):
 def hit_health():
     r = urllib.request.urlopen(api + "/health", timeout=15)
     assert r.status == 200, f"status {r.status}"
-check("GET /health", hit_health)
-def hit_webhook_unauth():
-    req = urllib.request.Request(api + "/webhook/telegram", method="POST",
-        data=b'{}', headers={"Content-Type": "application/json"})
-    try:
-        urllib.request.urlopen(req, timeout=15)
-        raise AssertionError("webhook sem secret retornou sucesso")
-    except urllib.error.HTTPError as e:
-        assert e.code in (400, 401), f"esperava 400/401, veio {e.code}"
-check("webhook rejeita sem secret (400/401)", hit_webhook_unauth)
+# check("GET /health", hit_health) — health agora no container conversation-router (porta 8080)
 def hit_dashboard():
     req = urllib.request.Request(api + "/api/kpis", method="GET",
         headers={"Authorization": "Bearer poc-smoke"})
@@ -152,9 +160,10 @@ PYEOF
 
 echo
 echo "Deploy concluído."
-echo "API:            $API_URL"
-echo "Dashboard:      task do ECS sdr-dashboard-ui (IP público no Console > ECS > cluster sdr > service; escala 09:00-18:00 BRT)"
-echo "Voice adapter:  task do ECS sdr-voice-adapter (faster-whisper; escala 09:00-18:00 BRT; consome sdr-voice-queue)"
-echo "Token Telegram: substitua em Secrets Manager (sdr/tg-bot-token) e re-aplique p/ ativar o bot"
-echo "LLM (OpenRouter): defina LLM_API_KEY em secrets.local.env e re-aplique — Terraform grava na secret sdr/llm-api-key (a Lambda lê via Secrets Manager)"
-echo "Teardown:       ./stop.sh"
+echo "API:                 $API_URL"
+echo "Conversation Router: task do ECS sdr-conversation-router (porta 8080; escala 09:00-18:00 BRT)"
+echo "Dashboard:           task do ECS sdr-dashboard-ui (IP público no Console > ECS > cluster sdr > service; escala 09:00-18:00 BRT)"
+echo "Voice adapter:       task do ECS sdr-voice-adapter (faster-whisper; escala 09:00-18:00 BRT; consome sdr-voice-queue)"
+echo "Token Telegram:      substitua em Secrets Manager (sdr/tg-bot-token) e re-aplique p/ ativar o bot"
+echo "LLM (OpenRouter):    defina LLM_API_KEY em secrets.local.env e re-aplique — Terraform grava na secret sdr/llm-api-key"
+echo "Teardown:            ./stop.sh"
