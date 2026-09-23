@@ -17,6 +17,7 @@ logger.setLevel(logging.INFO)
 
 try:
     from service.llm import classify_intent as _llm_classify_intent
+    from service.llm import extract_and_route as _llm_extract_and_route
     from service.llm import generate_reply as _llm_generate_reply
     from service.properties_catalog import search_properties as _search_properties
 
@@ -436,7 +437,8 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
         llm_classifier = llm_classify
 
     llm_reply = None
-    if llm_key:
+    llm_router = None
+    if llm_key and _HAS_LLM:
         def llm_reply(
             message: str, canned: str, lead_info: dict[str, Any], properties: list[dict[str, Any]]
         ) -> str:
@@ -449,11 +451,21 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
                 logger.warning("LLM reply falhou; usando resposta oficial como fallback", exc_info=True)
                 return canned
 
+        def llm_route(
+            message: str, lead_info: dict[str, Any], current_state: str
+        ) -> dict[str, Any]:
+            return _llm_extract_and_route(
+                message, lead_info, current_state, api_key=llm_key
+            )
+
+        llm_router = llm_route
+
     flow = SalesFlow(
         lead_qualifier=LeadQualifier(),
         llm_classify_intent=llm_classifier,
         reply_generator=llm_reply,
-        properties_rag=_search_properties if _HAS_LLM else None,
+        llm_router=llm_router,
+        properties_rag=(lambda info: _search_properties(info, top_k=9)) if _HAS_LLM else None,
         specialist_rotation=[s.strip() for s in os.environ.get("SPECIALIST_ROTATION", "").split(",") if s.strip()],
         specialist_fallback=os.environ.get("SPECIALIST_FALLBACK", "diretor"),
         restriction_check=DynamoRestrictionCheck(dynamodb, os.environ.get("ALERTS_TABLE", "sdr-alerts")),

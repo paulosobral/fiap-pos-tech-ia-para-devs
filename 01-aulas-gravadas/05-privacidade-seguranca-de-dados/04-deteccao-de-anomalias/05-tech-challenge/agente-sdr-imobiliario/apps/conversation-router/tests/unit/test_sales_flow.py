@@ -128,11 +128,91 @@ class TestSalesFlow:
         assert info["area"] == "100 m²"
         assert info["budget"] == "R$ 60 mil"
 
-    def test_qualification_low_score_routes_followup(self):
+    def test_qualification_low_score_keeps_collecting_information(self):
         flow = make_flow()
         state = flow.invoke({"current_state": "qualification", "message": "ok", "lead_info": {}})
-        assert state["current_state"] == "followup"
+        assert state["current_state"] == "qualification"
         assert state["lead_qualified"] is False
+        assert "Ainda precisamos" in state["response"]
+
+    def test_extracts_region_and_decision_maker_from_real_chat_wording(self):
+        info = extract_lead_structure("quero aluguel em Pinheiros; quem decide sou eu, proprietário")
+        assert info["region"] == "Pinheiros"
+        assert info["decision_maker"] == "yes"
+
+    def test_options_request_recovers_from_previous_followup_and_uses_rag(self):
+        rag = lambda info: [{"title": "Pinheiros Office", "region": "Pinheiros", "area_util": 100}]
+        flow = make_flow(properties_rag=rag)
+        state = flow.invoke(
+            {
+                "current_state": "followup",
+                "message": "cadê as opções?",
+                "lead_info": {"region": "Pinheiros", "area": "100 m²", "budget": "R$ 5000"},
+            }
+        )
+        assert state["current_state"] == "scheduling"
+        assert "Pinheiros Office" in state["response"]
+
+    def test_options_request_uses_rag_before_lead_is_fully_qualified(self):
+        rag = lambda info: [{"title": "Pinheiros Office", "region": "Pinheiros", "area_util": 100}]
+        flow = make_flow(properties_rag=rag)
+        state = flow.invoke(
+            {
+                "current_state": "qualification",
+                "message": "cadê as opções?",
+                "lead_info": {"region": "Pinheiros", "area": "100 m²", "budget": "R$ 5000"},
+            }
+        )
+        assert state["current_state"] == "scheduling"
+        assert "Pinheiros Office" in state["response"]
+
+    def test_more_options_request_in_scheduling_shows_new_properties(self):
+        catalog = [
+            {"title": f"Imóvel {i}", "region": "Pinheiros", "area_util": 100} for i in range(6)
+        ]
+        def rag(info):
+            return catalog
+        flow = make_flow(properties_rag=rag)
+        first = flow.invoke(
+            {
+                "current_state": "recommendation",
+                "message": "quero ver",
+                "lead_info": {"region": "Pinheiros"},
+            }
+        )
+        assert "Imóvel 0" in first["response"]
+        second = flow.invoke(
+            {
+                "current_state": "scheduling",
+                "message": "tem mais opções?",
+                "lead_info": {"region": "Pinheiros"},
+                "properties": first["properties"],
+                "context": first.get("context", {}),
+            }
+        )
+        assert "Imóvel 0" not in second["response"]
+        assert "Imóvel 3" in second["response"]
+        assert second["current_state"] == "scheduling"
+
+    def test_more_options_request_exhausted_catalog_stays_in_scheduling(self):
+        rag = lambda info: [{"title": "Único Imóvel", "region": "Pinheiros", "area_util": 100}]
+        flow = make_flow(properties_rag=rag)
+        first = flow.invoke(
+            {"current_state": "recommendation", "message": "quero ver", "lead_info": {"region": "Pinheiros"}}
+        )
+        second = flow.invoke(
+            {
+                "current_state": "scheduling",
+                "message": "tem mais opções?",
+                "lead_info": {"region": "Pinheiros"},
+                "properties": first["properties"],
+            }
+        )
+        assert "todas as opções" in second["response"]
+        assert second["current_state"] == "scheduling"
+
+    def test_extracts_budget_from_rent_ceiling_wording(self):
+        assert extract_lead_structure("aluguel até 5000 reais")["budget"] == "até 5000 reais"
 
     def test_recommendation_with_results_lists_top3(self):
         rag = lambda info: [{"title": f"Imóvel {i}", "region": "B", "area_util": 100} for i in range(5)]
@@ -228,3 +308,77 @@ class TestSchedulingRestriction:
         state = flow.invoke({"current_state": "scheduling", "message": "amanhã 10h"})
         scheduler.assert_called_once()
         assert state["current_state"] == "handoff"
+
+
+class TestAgenticRouter:
+    """ADR-011: LLM classifica ação (enum fixo); código decide o próximo nó."""
+
+    def test_llm_router_merges_extracted_lead_info(self):
+        router = lambda message, lead_info, current_state: {
+            "lead_info": {"region": "Pinheiros", "decision_maker": "yes"},
+            "action": "provide_info",
+        }
+        flow = make_flow(llm_router=router)
+        state = flow.invoke({"current_state": "qualification", "message": "qualquer frase nova", "lead_info": {}})
+        assert state["lead_info"]["region"] == "Pinheiros"
+        assert state["lead_info"]["decision_maker"] == "yes"
+
+    def test_llm_router_failure_falls_back_to_regex_extraction(self):
+        def boom(message, lead_info, current_state):
+            raise RuntimeError("LLM indisponível")
+
+        flow = make_flow(llm_router=boom)
+        state = flow.invoke(
+            {"current_state": "qualification", "message": "100 m² na região de Pinheiros", "lead_info": {}}
+        )
+        assert state["lead_info"]["region"] == "Pinheiros"
+        assert state["lead_info"]["area"] == "100 m²"
+
+    def test_request_options_action_shows_recommendations_regardless_of_score(self):
+        rag = lambda info: [{"title": "Torre Nova", "region": "Pinheiros", "area_util": 100}]
+        router = lambda message, lead_info, current_state: {"lead_info": {}, "action": "request_options"}
+        flow = make_flow(properties_rag=rag, llm_router=router)
+        state = flow.invoke(
+            {"current_state": "qualification", "message": "alguma frase nunca vista antes", "lead_info": {}}
+        )
+        assert state["current_state"] == "scheduling"
+        assert "Torre Nova" in state["response"]
+
+    def test_request_options_action_in_scheduling_shows_more(self):
+        catalog = [{"title": f"Imóvel {i}", "region": "B", "area_util": 100} for i in range(6)]
+        router = lambda message, lead_info, current_state: {"lead_info": {}, "action": "request_options"}
+        flow = make_flow(properties_rag=lambda info: catalog, llm_router=router)
+        first = flow.invoke({"current_state": "recommendation", "message": "quero ver", "lead_info": {}})
+        second = flow.invoke(
+            {
+                "current_state": "scheduling",
+                "message": "frase totalmente diferente pedindo mais",
+                "lead_info": {},
+                "properties": first["properties"],
+            }
+        )
+        assert "Imóvel 3" in second["response"]
+        assert second["current_state"] == "scheduling"
+
+    def test_request_human_action_goes_straight_to_handoff_from_any_state(self):
+        router = lambda message, lead_info, current_state: {"lead_info": {}, "action": "request_human"}
+        flow = make_flow(llm_router=router)
+        state = flow.invoke(
+            {"current_state": "qualification", "message": "quero falar com uma pessoa de verdade", "lead_info": {}}
+        )
+        assert state["current_state"] == "handoff"
+
+    def test_decline_action_routes_to_followup(self):
+        router = lambda message, lead_info, current_state: {"lead_info": {}, "action": "decline"}
+        flow = make_flow(llm_router=router)
+        state = flow.invoke(
+            {"current_state": "qualification", "message": "na verdade desisto, não quero mais", "lead_info": {}}
+        )
+        assert state["current_state"] == "followup"
+
+    def test_provide_info_action_keeps_default_state_machine_behavior(self):
+        router = lambda message, lead_info, current_state: {"lead_info": {}, "action": "provide_info"}
+        flow = make_flow(llm_router=router)
+        state = flow.invoke({"current_state": "qualification", "message": "ok", "lead_info": {}})
+        assert state["current_state"] == "qualification"
+        assert state["lead_qualified"] is False

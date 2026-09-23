@@ -354,6 +354,17 @@ resource "aws_api_gateway_rest_api" "sdr" {
 - **Interface natural-first — nunca URA**: a mentoria deixou explícito ("não é digite 1/digite 2, é uma conversa muito fluida" — Leonardo, 1952s; "conversa humanizada", 1801s). Entrada livre sempre aceita; os **botões inline são só atalhos** (escolher entre 2–3 imóveis, confirmar data de visita, "falar com um corretor") — o fluxo funciona igualmente com texto livre. Consentimento LGPD contextualizado na primeira mensagem, sem checkbox. Primeira abordagem: **coletar dados + propor reunião**, não apresentar imóvel (decisão do cliente).
 - **Guardrails aplicados em código (LiteLLM)**: masking de PII no pré-envio, validação de saída (regex de contato), denied topics e detecção de prompt injection — ver §8.8.
 
+### 8.1.1 Roteamento conversacional agentic (ADR-011)
+
+O grafo LangGraph do `sales-flow` usa um nó `router` acionado por LLM para decidir a transição de estado a cada turno — substitui a extração/detecção de intenção por regex hardcoded (uma expressão por variação de frase), que não generalizava para novas formas de o usuário se expressar.
+
+- **Extração estruturada via LLM**: uma chamada LLM (Tier 1 do ADR-010) retorna os campos de `lead_info` (área, região, orçamento, prazo, nº de pessoas, decisor) extraídos da mensagem livre — sem depender de padrão fixo de frase.
+- **Gates de negócio permanecem 100% em código, nunca no LLM**: consentimento LGPD obrigatório; score de qualificação (`LeadQualifier`, determinístico e inalterado) obrigatório ≥70 antes de `recommendation`; verificação de restrição de agendamento; recusa sempre terminal.
+- **Nó `router`**: recebe a mensagem, o histórico e um **enum de transições válidas** computado em código a partir dos gates acima, e escolhe uma delas. Transição fora do enum ou falha do LLM cai no fallback determinístico (regex + FSM), que continua existindo como rede de segurança.
+- **Por que não delegar o score ao LLM**: a qualificação com score explicável é diferencial competitivo sustentável frente a Lais.ai/Maya (ver análise competitiva) — não pode virar caixa-preta.
+
+Decisão completa e alternativas rejeitadas em `aidlc/.../inception/domain-design/decisions.md` (ADR-011).
+
 ### 8.2 RAG — duas bases (imóveis + clientes)
 
 A mentoria deixou explícito: o RAG precisa de **dois catálogos** — o de **imóveis** (ofertas) e o de **clientes** (histórico/status, simulando CRM).

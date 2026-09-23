@@ -181,3 +181,71 @@ class TestGenerateReply:
 )
 def test_parse(raw: str, expected: tuple[object, object]):
     assert lm._parse(raw) == expected
+
+
+class TestExtractAndRoute:
+    """ADR-011: LLM extrai lead_info livre + classifica ação em enum fixo."""
+
+    def test_success_extracts_fields_and_action(self, monkeypatch: pytest.MonkeyPatch):
+        def fake_completion(**kwargs):
+            return _make_completion(
+                '{"lead_info": {"region": "Pinheiros", "decision_maker": "yes"}, '
+                '"action": "provide_info"}'
+            )
+
+        monkeypatch.setattr(lm.litellm, "completion", fake_completion)
+        result = lm.extract_and_route(
+            message="quero aluguel em Pinheiros, quem decide sou eu",
+            lead_info={},
+            current_state="qualification",
+            api_key="k",
+        )
+        assert result["lead_info"] == {"region": "Pinheiros", "decision_maker": "yes"}
+        assert result["action"] == "provide_info"
+
+    def test_detects_options_request_action(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(
+            lm.litellm, "completion",
+            lambda **kw: _make_completion('{"lead_info": {}, "action": "request_options"}'),
+        )
+        result = lm.extract_and_route("tem mais opções?", {}, "scheduling", api_key="k")
+        assert result["action"] == "request_options"
+
+    def test_invalid_action_raises(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(
+            lm.litellm, "completion",
+            lambda **kw: _make_completion('{"lead_info": {}, "action": "invent_transition"}'),
+        )
+        with pytest.raises(ValueError):
+            lm.extract_and_route("oi", {}, "qualification", api_key="k")
+
+    def test_malformed_json_raises(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(lm.litellm, "completion", lambda **kw: _make_completion("não é json"))
+        with pytest.raises(ValueError):
+            lm.extract_and_route("oi", {}, "qualification", api_key="k")
+
+    def test_unknown_extracted_fields_are_dropped(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(
+            lm.litellm, "completion",
+            lambda **kw: _make_completion(
+                '{"lead_info": {"region": "Pinheiros", "nome_do_lead": "Paulo"}, "action": "provide_info"}'
+            ),
+        )
+        result = lm.extract_and_route("meu nome é Paulo, moro em Pinheiros", {}, "qualification", api_key="k")
+        assert result["lead_info"] == {"region": "Pinheiros"}
+
+    def test_fallback_tier_kicks_in_on_primary_failure(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("LLM_MODEL_PRIMARY", "p")
+        monkeypatch.setenv("LLM_MODEL_FALLBACK", "f")
+        call_count = [0]
+
+        def fake_completion(**kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise lm.litellm.AuthenticationError("429", llm_provider="openrouter", model="p")
+            return _make_completion('{"lead_info": {}, "action": "request_schedule"}')
+
+        monkeypatch.setattr(lm.litellm, "completion", fake_completion)
+        result = lm.extract_and_route("quero agendar", {}, "recommendation", api_key="k")
+        assert result["action"] == "request_schedule"
+        assert call_count[0] == 2

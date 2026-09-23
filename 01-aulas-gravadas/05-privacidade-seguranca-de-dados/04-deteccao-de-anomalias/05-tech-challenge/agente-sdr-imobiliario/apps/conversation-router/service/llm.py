@@ -322,3 +322,87 @@ def _parse(raw: str) -> tuple[str | None, float | None]:
     except (TypeError, ValueError):
         return None, None
     return intent, max(0.0, min(1.0, confidence))
+
+
+# --- Roteamento agentic (ADR-011) --------------------------------------------
+# O LLM nunca escolhe o próximo nó do grafo diretamente — apenas classifica a
+# ação pretendida do lead num enum fixo. O código (sales_flow.py) mapeia
+# (estado_atual, action, gates de negócio) -> próximo nó, sempre determinístico.
+
+VALID_ACTIONS = (
+    "provide_info",
+    "request_options",
+    "request_schedule",
+    "request_human",
+    "decline",
+    "unclear",
+)
+
+_KNOWN_LEAD_FIELDS = ("area", "region", "budget", "deadline", "people_count", "decision_maker")
+
+_ROUTER_SYSTEM_PROMPT = (
+    "Você é o roteador de conversa de um SDR imobiliário B2B. A cada mensagem do lead, "
+    "faça duas coisas:\n"
+    "1. EXTRAIA os dados de negócio citados na mensagem (só os que aparecerem): "
+    "area, region, budget, deadline, people_count (inteiro), decision_maker ('yes'/'no').\n"
+    "2. CLASSIFIQUE a ação pretendida do lead, escolhendo UMA destas: "
+    f"{', '.join(VALID_ACTIONS)}.\n"
+    "   - provide_info: está respondendo com dados (padrão sem pedido claro)\n"
+    "   - request_options: quer ver opções de imóveis ('cadê as opções', 'tem mais?')\n"
+    "   - request_schedule: quer agendar visita\n"
+    "   - request_human: quer falar direto com corretor/humano\n"
+    "   - decline: quer parar/recusar/desistir\n"
+    "   - unclear: ambígua, sem ação clara\n"
+    'Responda APENAS com JSON: {"lead_info": {...}, "action": "<uma das opções>"}.'
+)
+
+
+def extract_and_route(
+    message: str,
+    lead_info: dict[str, Any],
+    current_state: str,
+    api_key: str,
+    model: str | None = None,
+) -> dict[str, Any]:
+    """Uma chamada LLM (Tier 1): extrai deltas de lead_info + classifica a ação
+    do lead num enum fixo (VALID_ACTIONS). O próximo nó do grafo é decidido em
+    código (sales_flow.py), nunca pelo LLM — ver ADR-011.
+
+    Levanta ValueError se a resposta não for JSON válido ou a ação estiver fora
+    do enum; o caller deve tratar como falha e cair no fallback determinístico.
+    """
+    primary = resolve_model(TIER_PRIMARY, explicit_model=model)
+    fallback = resolve_model(TIER_FALLBACK)
+    context = json.dumps(
+        {"lead_info_atual": lead_info, "estado_atual": current_state}, ensure_ascii=False, default=str
+    )[:600]
+    raw = _completion_with_fallback(
+        messages=[
+            {"role": "system", "content": _ROUTER_SYSTEM_PROMPT},
+            {"role": "user", "content": f"CONTEXTO: {context}\n\nMENSAGEM DO LEAD: {message}"},
+        ],
+        api_key=api_key,
+        primary_model=primary,
+        fallback_model=fallback,
+        max_tokens=200,
+        temperature=0,
+        response_format={"type": "json_object"},
+    )
+    return _parse_extract_and_route(raw)
+
+
+def _parse_extract_and_route(raw: str) -> dict[str, Any]:
+    if not raw:
+        raise ValueError("Resposta LLM vazia")
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError("Resposta LLM não é JSON válido") from exc
+    action = data.get("action")
+    if action not in VALID_ACTIONS:
+        raise ValueError(f"Ação fora do enum válido: {action!r}")
+    extracted = data.get("lead_info")
+    if not isinstance(extracted, dict):
+        extracted = {}
+    clean = {k: v for k, v in extracted.items() if k in _KNOWN_LEAD_FIELDS and v not in (None, "")}
+    return {"lead_info": clean, "action": action}

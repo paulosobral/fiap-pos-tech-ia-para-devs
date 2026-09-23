@@ -35,13 +35,22 @@ _BUDGET_UNIT_RE = re.compile(
     rf"\b({_BUDGET_NUMBER_RE})\s*({_BUDGET_UNIT_RE_TEXT})\b",
     re.IGNORECASE,
 )
+_BUDGET_CEILING_RE = re.compile(
+    rf"(?:at[ée]|até\s+r\$?)\s*({_BUDGET_NUMBER_RE})\s*(?:reais|r\$)?",
+    re.IGNORECASE,
+)
 _DEADLINE_RE = re.compile(r"(?:prazo\s*(?:de|:)?\s*)?(\d+)\s*(m[êe]s(?:es)?|semanas?|dias?)", re.IGNORECASE)
 _PEOPLE_RE = re.compile(r"(\d+)\s*(?:pessoas|colaboradores|usuários|usuarios|funcionários|funcionarios)", re.IGNORECASE)
 _REGION_RE = re.compile(
     r"(?:regi[ãa]o|bairro|zona)\s+(?:d[oa]s?|de|em)?\s*([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)*)", re.IGNORECASE
 )
-_DECISOR_YES_RE = re.compile(r"sou\s+(?:o\s+)?decisor|eu\s+(?:que\s+)?decido", re.IGNORECASE)
+_REGION_CONTEXT_RE = re.compile(r"\b(?:em|na|no)\s+([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)?)", re.IGNORECASE)
+_DECISOR_YES_RE = re.compile(
+    r"sou\s+(?:o\s+)?(?:decisor|propriet[aá]rio)|eu\s+(?:que\s+)?decido|quem\s+decide\s+sou\s+eu",
+    re.IGNORECASE,
+)
 _DECISOR_NO_RE = re.compile(r"n[ãa]o\s+(?:sou\s+(?:o\s+)?decisor|decido)", re.IGNORECASE)
+_OPTIONS_REQUEST_RE = re.compile(r"\b(?:opç(?:ão|ões)|imóveis|imoveis|mostrar|mostre|cad[êe])\b", re.IGNORECASE)
 _REGION_STOP_WORDS = ("com", "e", "para", "pra", "no", "na", "do", "da", "até", "por", "ou")
 
 
@@ -66,19 +75,21 @@ class FlowState(TypedDict, total=False):
     scheduling_restricted: bool
     followup_deferred: bool
     ics_invite: str
+    _router_action: str | None  # ADR-011: ação classificada pelo llm_router (enum VALID_ACTIONS)
 
 
 def extract_lead_structure(message: str) -> dict[str, Any]:
     info: dict[str, Any] = {}
     if area := _AREA_RE.search(message):
         info["area"] = area.group(0)
-    if budget := (_BUDGET_PREFIXED_RE.search(message) or _BUDGET_UNIT_RE.search(message)):
+    if budget := (_BUDGET_PREFIXED_RE.search(message) or _BUDGET_UNIT_RE.search(message) or _BUDGET_CEILING_RE.search(message)):
         info["budget"] = budget.group(0)
     if deadline := _DEADLINE_RE.search(message):
         info["deadline"] = deadline.group(0)
     if people := _PEOPLE_RE.search(message):
         info["people_count"] = int(people.group(1))
-    if region := _REGION_RE.search(message):
+    region = _REGION_RE.search(message) or _REGION_CONTEXT_RE.search(message)
+    if region:
         tokens = region.group(1).split()
         while tokens and tokens[-1].lower() in _REGION_STOP_WORDS:
             tokens.pop()
@@ -115,6 +126,7 @@ class SalesFlow:
         specialist_rotation: list[str] | None = None,
         specialist_fallback: str = "diretor",
         restriction_check: Callable[[str], bool] | None = None,
+        llm_router: Callable[[str, dict[str, Any], str], dict[str, Any]] | None = None,
     ) -> None:
         self.qualifier = lead_qualifier
         self.properties_rag = properties_rag
@@ -125,6 +137,7 @@ class SalesFlow:
         self.specialist_rotation = specialist_rotation or []
         self.specialist_fallback = specialist_fallback
         self.restriction_check = restriction_check
+        self.llm_router = llm_router
         if _HAS_LANGGRAPH:
             self._graph = self._build_graph()
         else:
@@ -154,21 +167,52 @@ class SalesFlow:
         return g.compile()
 
     def _route_state(self, state: FlowState) -> str:
-        return state.get("current_state", "greeting")
+        current = state.get("current_state", "greeting")
+        if current in ("greeting", "elicitation"):
+            return current  # LGPD: consentimento sempre determinístico, nunca via LLM
+        action = state.get("_router_action")
+        if action == "request_human":
+            return "handoff"
+        if action == "decline":
+            return "followup"
+        return current
+
+    def _wants_options(self, state: FlowState) -> bool:
+        """ADR-011: se o router LLM rodou, confia nele; senão cai no regex (rede de segurança)."""
+        action = state.get("_router_action")
+        if action is not None:
+            return action == "request_options"
+        return bool(_OPTIONS_REQUEST_RE.search(state.get("message", "")))
 
     # --- Nodes (cada um processa UM turno e retorna state atualizado) ---
 
     def _node_preprocess(self, state: FlowState) -> FlowState:
         message = state.get("message", "")
         context = state.setdefault("context", {})
-        extracted = extract_lead_structure(message)
+        extracted = extract_lead_structure(message)  # baseline regex — rede de segurança
         if extracted:
             stored = dict(context.get("lead_info") or {})
             stored.update(extracted)
             context["lead_info"] = stored
         stored_info = context.get("lead_info") or {}
         seeded = state.get("lead_info") or {}
-        state["lead_info"] = {**stored_info, **seeded}
+        merged = {**stored_info, **seeded}
+
+        state["_router_action"] = None
+        if self.llm_router is not None:
+            try:
+                result = self.llm_router(message, merged, state.get("current_state", "greeting"))
+                llm_deltas = result.get("lead_info") or {}
+                merged = {**merged, **llm_deltas}
+                context["lead_info"] = {**(context.get("lead_info") or {}), **llm_deltas}
+                state["_router_action"] = result.get("action")
+            except Exception:
+                logger.warning(
+                    "llm_router falhou; usando extração regex + FSM determinístico (fallback ADR-011)",
+                    exc_info=True,
+                )
+
+        state["lead_info"] = merged
         return state
 
     def _node_greeting(self, state: FlowState) -> FlowState:
@@ -211,6 +255,8 @@ class SalesFlow:
 
     def _node_qualification(self, state: FlowState) -> FlowState:
         info = state.get("lead_info", {})
+        if self._wants_options(state) and self.properties_rag is not None:
+            return self._node_recommendation(state)
         result = self.qualifier.calculate_score(info)
         state["score"] = result["score"]
         state["score_factors"] = result["factors"]
@@ -222,7 +268,7 @@ class SalesFlow:
             )
             state["response"] = self.qualifier.explain(result)
         else:
-            state["current_state"] = "followup"
+            state["current_state"] = "qualification"
             state["lead_qualified"] = False
             state["response"] = (
                 self.qualifier.explain(result)
@@ -261,6 +307,8 @@ class SalesFlow:
 
     def _node_scheduling(self, state: FlowState) -> FlowState:
         message = state.get("message", "")
+        if self._wants_options(state) and self.properties_rag is not None:
+            return self._show_more_options(state)
         if self._is_restricted(state.get("lead_id")):
             state["scheduling_restricted"] = True
             state["current_state"] = "handoff"
@@ -282,6 +330,27 @@ class SalesFlow:
         state["response"] = "Agendamento confirmado! Enviarei o convite e o resumo ao corretor."
         return state
 
+    def _show_more_options(self, state: FlowState) -> FlowState:
+        """Pedido de mais opções em scheduling: reconsulta RAG excluindo o que já foi exibido."""
+        shown = {p.get("title") for p in (state.get("properties") or [])}
+        properties = self.properties_rag(state.get("lead_info", {}))
+        fresh = [p for p in properties if p.get("title") not in shown][:3]
+        if not fresh:
+            state["current_state"] = "scheduling"
+            state["response"] = (
+                "Essas são todas as opções que atendem aos seus critérios. "
+                "Gostaria de agendar uma visita em alguma delas?"
+            )
+            return state
+        state["properties"] = (state.get("properties") or []) + fresh
+        state["current_state"] = "scheduling"
+        listed = "\n".join(
+            f"- {p.get('title', 'Imóvel')} — {p.get('region', '')}, {p.get('area_util', '')} m²"
+            for p in fresh
+        )
+        state["response"] = f"Encontrei mais estas opções:\n{listed}\nGostaria de agendar uma visita?"
+        return state
+
     def _node_handoff(self, state: FlowState) -> FlowState:
         if self.handoff_builder is not None:
             state["handoff_summary"] = self.handoff_builder(state)
@@ -291,6 +360,8 @@ class SalesFlow:
         return state
 
     def _node_followup(self, state: FlowState) -> FlowState:
+        if self._wants_options(state) and self.properties_rag is not None:
+            return self._node_recommendation(state)
         if self._is_restricted(state.get("lead_id")):
             state["followup_deferred"] = True
             state["current_state"] = "followup"
@@ -333,19 +404,11 @@ class SalesFlow:
         return self._invoke_fsm(state)
 
     def _invoke_fsm(self, state: dict[str, Any]) -> dict[str, Any]:
-        """Fallback manual (sem LangGraph) — mantém o mesmo contrato."""
-        current = state.get("current_state", "greeting")
+        """Fallback manual (sem LangGraph) — mesmo contrato, mesmo router agentic (ADR-011)."""
+        state = self._node_preprocess(state)
+        resolved = self._route_state(state)
         message = state.get("message", "")
-        context = state.setdefault("context", {})
-        extracted = extract_lead_structure(message)
-        if extracted:
-            stored = dict(context.get("lead_info") or {})
-            stored.update(extracted)
-            context["lead_info"] = stored
-        stored_info = context.get("lead_info") or {}
-        seeded = state.get("lead_info") or {}
-        state["lead_info"] = {**stored_info, **seeded}
-        method = getattr(self, f"_handle_{current}", None)
+        method = getattr(self, f"_handle_{resolved}", None)
         if method is None:
             state["response"] = "Como posso ajudar?"
             return state

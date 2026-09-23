@@ -221,3 +221,30 @@ Parâmetros dinâmicos gerenciados no AWS SSM Parameter Store (`/sdr/llm-model-p
 **Negativos:**
 - Ligeiro aumento na complexidade de configuração e gestão de múltiplos parâmetros no SSM.
 - Necessidade de testes de integração cobrindo os caminhos de fallback.
+
+## ADR-011: Roteamento Conversacional Agentic via LangGraph (LLM decide transição, gates de negócio ficam em código)
+
+**Context**
+A extração de dados do lead (`area`, `region`, `budget`, `deadline`, `people_count`, `decision_maker`) e a detecção de intenções contextuais ("cadê as opções?", "tem mais opções?", recusa a meio de fluxo) eram feitas 100% via regex hardcoded, uma expressão por variação de frase (`_AREA_RE`, `_REGION_RE`, `_BUDGET_PREFIXED_RE`, `_BUDGET_CEILING_RE`, `_DECISOR_YES_RE`, `_OPTIONS_REQUEST_RE`, entre outras). Cada nova forma de o usuário se expressar (ex.: "em Pinheiros" sem prefixo "bairro/região", "quem decide sou eu", "até 5000 reais", "tem mais opções?" durante o estado `scheduling`) exigia um regex novo, revelando bugs recorrentes de robustez de linguagem natural e tornando o `LangGraph` um roteador decorativo (`_route_state` apenas lia `current_state`, sem decisão real). A análise competitiva (`ideation/market-research/competitive-analysis.md`) registra a **qualificação com score explicável** como diferencial sustentável da POC frente a Lais.ai/Maya — esse diferencial não pode ser perdido ao evoluir a robustez conversacional.
+
+**Decision**
+Inserir um nó `router` acionado por LLM entre `preprocess` e os nós de destino do grafo, com decisão restrita a um enum de transições válidas computado em código:
+1. **Extração estruturada via LLM** (`service/llm.py::extract_and_route`, Tier 1 do ADR-010): uma chamada LLM por turno retorna JSON com os deltas de `lead_info` extraídos da mensagem livre do usuário, substituindo os regex de extração (que passam a existir apenas como fallback de segurança).
+2. **Gates de negócio permanecem 100% em código**, nunca delegados ao LLM: consentimento LGPD obrigatório antes de `intent`; `LeadQualifier.calculate_score()` (inalterado, determinístico) com `SCORE_THRESHOLD` obrigatório antes de `recommendation`; verificação de restrição de agendamento (`_is_restricted`); recusa ("não") sempre terminal.
+3. **Nó `router` (LLM)** recebe a mensagem, o histórico relevante, `lead_info` e o **enum de transições válidas** (calculado por `compute_valid_transitions(state)`, função pura em código que aplica os gates do item 2) e escolhe uma delas. Transição fora do enum ou falha do LLM → fallback determinístico para o FSM regex atual (nunca bloqueia o turno).
+4. Reaproveita o roteamento em camadas e o fallback automático do ADR-010 para a chamada de `extract_and_route`.
+
+**Consequences**
+**Positivos:**
+- Elimina a classe de bug "frase nova = regex novo": qualquer forma de o usuário pedir mais opções, recusar, ou fornecer dados generaliza via LLM, sem lista de regex crescente.
+- Mantém o score de qualificação 100% determinístico e testável sem LLM — preserva o diferencial competitivo declarado.
+- LangGraph passa a ter decisão real na aresta condicional (`router`), alinhado ao padrão de mercado de agentes conversacionais.
+- Fallback determinístico existente (regex + FSM) não é descartado — vira rede de segurança para falha/timeout do LLM.
+
+**Negativos:**
+- Uma chamada LLM adicional por turno (latência ~200-400ms), mitigada por reuso do Tier 1 econômico (ADR-010).
+- Superfície de teste maior — requer mocks de `llm_router` (mesmo padrão de DI de `llm_classify_intent`/`reply_generator`) para manter testes determinísticos e sem chamada real de API.
+
+**Alternatives Rejected**
+- **Delegar o score de qualificação ao LLM**: rejeitado por eliminar a explicabilidade/auditabilidade que é diferencial competitivo (ver Q1 da pergunta de brainstorming ao usuário, resposta explícita "score determinístico é inegociável").
+- **Agente único com tool-calling livre (sem grafo de estados)**: mais flexível, porém perde a garantia de gates de negócio determinísticos (ex.: poderia chamar "agendar visita" antes de qualificar o lead) e aumenta custo/latência por turno; fica registrado como possível evolução pós-POC, não adotado agora.
