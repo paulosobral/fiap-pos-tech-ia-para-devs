@@ -130,6 +130,25 @@ fi
 API_URL="$(terraform output -raw api_url)"
 cd ..
 
+# Scale-out manual das 3 tasks ECS (o cron so dispara no proximo 09:00 BRT)
+echo "== [5d/6] Scale-out das tasks ECS"
+CLUSTER="sdr-cluster"
+for svc in sdr-conversation-router sdr-dashboard-ui sdr-voice-adapter; do
+  echo -n "  $svc -> 1... "
+  aws ecs update-service --cluster "$CLUSTER" --service "$svc" --desired-count 1 \
+    --region "$REGION" --query "service.serviceName" --output text 2>/dev/null && echo "OK" || echo "skip"
+done
+
+echo "Aguardando tasks subirem..."
+for i in $(seq 1 12); do
+  running=$(aws ecs describe-services --cluster "$CLUSTER" \
+    --services sdr-conversation-router sdr-dashboard-ui sdr-voice-adapter \
+    --region "$REGION" --query "sum(services[].runningCount)" --output text 2>/dev/null || echo 0)
+  echo "  running: $running/3"
+  [ "$running" = "3" ] && break
+  sleep 10
+done
+
 echo "== [6/6] Smoke checks"
 "$PY" - <<PYEOF
 import json, urllib.request, time
