@@ -367,9 +367,12 @@ _ROUTER_SYSTEM_PROMPT = (
     "area, region, budget, deadline, people_count (inteiro), decision_maker ('yes'/'no').\n"
     "2. CLASSIFIQUE a ação pretendida do lead, escolhendo UMA destas: "
     f"{', '.join(VALID_ACTIONS)}.\n"
-    "   - provide_info: está respondendo com dados (padrão sem pedido claro)\n"
-    "   - request_options: quer VER/RECEBER/VER mais opções de imóveis ou detalhes "
-    "('cadê as opções', 'me envie mais detalhes', 'tem mais?', 'quero ver', 'manda as opções', 'envie detalhes')\n"
+    "   - provide_info: está respondendo com dados, perguntando detalhe de um imóvel "
+    "específico já mostrado ('a Torre Nova tem estacionamento?', 'tem vaga?', "
+    "'qual o andar?', 'quanto custa a Torre Nova?') ou padrão sem pedido claro\n"
+    "   - request_options: quer VER/RECEBER mais imóveis ou listar opções "
+    "('cadê as opções', 'me envie mais detalhes', 'tem mais opções?', "
+    "'quero ver mais imóveis', 'manda as opções', 'envie detalhes')\n"
     "   - refine_search: quer AJUSTAR critérios da busca ('mais barato', 'menor', 'outra região', "
     "'sem estacionamento?', filtros novos)\n"
     "   - compare_properties: quer COMPARAR opções já mostradas ('diferença entre 1 e 2', "
@@ -382,9 +385,9 @@ _ROUTER_SYSTEM_PROMPT = (
     "'fala com alguém', 'preciso de um humano', 'atendente')\n"
     "   - decline: quer parar/recusar/desistir\n"
     "   - unclear: ambígua, sem ação clara\n"
-    "REGRA DE OURO: pedir mais detalhes = request_options; ajustar filtros = refine_search; "
-    "visitar/gostei = visit_interest; agendar = SÓ com verbo explícito (request_schedule). "
-    "Pedir um corretor = request_human.\n"
+    "REGRA DE OURO: perguntar detalhe de um imóvel = provide_info; listar/ver mais imóveis = "
+    "request_options; ajustar filtros = refine_search; visitar/gostei = visit_interest; "
+    "agendar = SÓ com verbo explícito (request_schedule). Pedir um corretor = request_human.\n"
     'Responda APENAS com JSON: {"lead_info": {...}, "action": "<uma das opções>"}.'
 )
 

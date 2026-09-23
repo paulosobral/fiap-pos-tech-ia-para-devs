@@ -568,6 +568,25 @@ class TestAgenticRouter:
         assert state["current_state"] == "recommendation"
         assert state.get("visit_interest") is True
 
+    def test_visit_interest_lead_id_alone_does_not_open_scheduling_when_shown_below_three(self):
+        scheduler = MagicMock(return_value={"confirmed": True, "when": "amanhã 10h"})
+        router = lambda message, lead_info, current_state: {
+            "lead_info": {},
+            "action": "visit_interest",
+        }
+        flow = make_flow(scheduler=scheduler, llm_router=router, properties_rag=lambda i: [{"title": "X"}])
+        state = flow.invoke({
+            "current_state": "recommendation",
+            "message": "quero visitar",
+            "lead_info": {},
+            "lead_id": "L1",
+            "shown_properties_count": 1,
+            "properties": [{"title": "X"}],
+        })
+        scheduler.assert_not_called()
+        assert state.get("visit_interest") is True
+        assert state["current_state"] == "recommendation"
+
     def test_refine_search_from_qualification_routes_to_recommendation(self):
         captured = {}
 
@@ -592,7 +611,7 @@ class TestAgenticRouter:
 
 
 class TestDiscoveryState:
-    def test_discovery_answers_about_shown_property_without_changing_stage(self):
+    def test_discovery_answers_about_shown_property_and_stays_discovery(self):
         props = [{"title": "Torre Nova", "region": "Pinheiros", "area_util": 100, "vagas": 2}]
         router = lambda message, lead_info, current_state: {
             "lead_info": {},
@@ -607,10 +626,46 @@ class TestDiscoveryState:
             "favorite_property": "Torre Nova",
             "shown_properties_count": 1,
         })
-        # Either discovery node or recommendation kept stage; must mention property context
-        assert state["current_state"] in ("discovery", "recommendation")
+        assert state["current_state"] == "discovery"
         assert state.get("favorite_property") == "Torre Nova"
-        assert "Torre Nova" in state["response"] or "estacionamento" in state["response"].lower() or "opções" in state["response"].lower()
+        assert "estacionamento" in state["response"].lower() or "2 vaga" in state["response"]
+
+    def test_discovery_request_options_from_discovery_shows_more(self):
+        catalog = [
+            {"title": f"Imóvel {i}", "region": "Pinheiros", "area_util": 100} for i in range(6)
+        ]
+        router = lambda message, lead_info, current_state: {
+            "lead_info": {},
+            "action": "request_options",
+        }
+        flow = make_flow(properties_rag=lambda info: catalog, llm_router=router)
+        state = flow.invoke({
+            "current_state": "discovery",
+            "message": "quero ver mais opções",
+            "lead_info": {},
+            "properties": catalog[:3],
+            "favorite_property": "Imóvel 0",
+            "shown_properties_count": 3,
+        })
+        assert "Imóvel 3" in state["response"]
+        assert "Sobre Imóvel 0" not in state["response"]
+        assert state["current_state"] == "discovery"
+
+    def test_discovery_more_options_regex_path_from_discovery(self):
+        catalog = [
+            {"title": f"Imóvel {i}", "region": "Pinheiros", "area_util": 100} for i in range(6)
+        ]
+        flow = make_flow(properties_rag=lambda info: catalog)
+        state = flow.invoke({
+            "current_state": "discovery",
+            "message": "mostre mais opções",
+            "lead_info": {},
+            "properties": catalog[:3],
+            "favorite_property": "Imóvel 0",
+            "shown_properties_count": 3,
+        })
+        assert "Imóvel 3" in state["response"]
+        assert "Sobre Imóvel 0" not in state["response"]
 
     def test_postprocess_passes_rich_kwargs(self):
         captured = {}

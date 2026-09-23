@@ -316,3 +316,23 @@ def test_router_prompt_documents_new_actions():
     assert "compare_properties" in lm._ROUTER_SYSTEM_PROMPT
     assert "visit_interest" in lm._ROUTER_SYSTEM_PROMPT
     assert "SÓ com verbo explícito" in lm._ROUTER_SYSTEM_PROMPT
+
+
+def test_router_prompt_splits_attribute_detail_vs_list_more():
+    prompt = lm._ROUTER_SYSTEM_PROMPT
+    segments = {}
+    for chunk in prompt.split("   - ")[1:]:
+        key = chunk.split(":", 1)[0].strip()
+        segments[key] = chunk
+    provide = segments.get("provide_info", "")
+    options = segments.get("request_options", "")
+    assert "estacionamento" in provide
+    assert "vaga" in provide
+    assert "andar" in provide
+    assert "quanto custa a Torre Nova" in provide
+    assert "tem mais opções" in options
+    assert "me envie mais detalhes" in options
+    assert "mais imóveis" in options
+    assert "pedir mais detalhes = request_options" not in prompt
+    assert "detalhe de um imóvel" in prompt or "detalhe de imóvel" in prompt
+    assert "'tem mais?'" not in prompt

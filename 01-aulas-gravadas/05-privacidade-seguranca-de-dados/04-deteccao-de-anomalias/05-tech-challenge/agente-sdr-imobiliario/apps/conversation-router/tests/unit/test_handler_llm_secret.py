@@ -66,6 +66,22 @@ def test_handler_function_wires_llm_router_when_key_present(monkeypatch: pytest.
     assert captured.get("llm_router") is not None
     assert captured.get("reply_generator") is not None
 
+    monkeypatch.setattr(
+        handler, "_llm_generate_reply",
+        lambda *a, **k: f"ok:{k.get('favorite_property')}:{k.get('conversation_stage')}:{k.get('shown_properties_count')}",
+    )
+    reply = captured["reply_generator"]
+    out = reply(
+        "a Torre Nova tem estacionamento?",
+        "Sobre a Torre Nova: estacionamento com 2 vaga(s).",
+        {"region": "Pinheiros"},
+        [{"title": "Torre Nova"}],
+        favorite_property="Torre Nova",
+        conversation_stage="discovery",
+        shown_properties_count=1,
+    )
+    assert out == "ok:Torre Nova:discovery:1"
+
 
 def test_handler_function_leaves_llm_router_none_without_key(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("LLM_API_KEY", raising=False)

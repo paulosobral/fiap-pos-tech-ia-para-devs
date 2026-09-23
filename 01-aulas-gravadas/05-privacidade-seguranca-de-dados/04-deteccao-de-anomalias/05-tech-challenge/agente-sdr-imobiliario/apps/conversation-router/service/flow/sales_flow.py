@@ -201,7 +201,7 @@ class SalesFlow:
         if action == "visit_interest":
             if self.ready_for_scheduling(state):
                 shown = max(state.get("shown_properties_count", 0) or 0, len(state.get("properties") or []))
-                if shown >= 3 or state.get("lead_id"):
+                if shown >= 3:
                     return "scheduling"
             return current  # keep current node; preprocess already flagged interest
         if action in ("refine_search", "compare_properties"):
@@ -431,6 +431,8 @@ class SalesFlow:
         )
 
     def _node_discovery(self, state: FlowState) -> FlowState:
+        if self._wants_options(state) and self.properties_rag is not None:
+            return self._show_more_options(state)
         focus = state.get("favorite_property") or (
             (state.get("properties") or [{}])[0].get("title") if state.get("properties") else None
         )
