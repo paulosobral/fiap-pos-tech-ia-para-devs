@@ -249,3 +249,33 @@ class TestExtractAndRoute:
         result = lm.extract_and_route("quero agendar", {}, "recommendation", api_key="k")
         assert result["action"] == "request_schedule"
         assert call_count[0] == 2
+
+    def test_accepts_refine_search_action(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(
+            lm.litellm, "completion",
+            lambda **kw: _make_completion('{"lead_info": {"budget": "R$ 80 mil"}, "action": "refine_search"}'),
+        )
+        result = lm.extract_and_route("tem algo mais barato?", {}, "recommendation", api_key="k")
+        assert result["action"] == "refine_search"
+
+    def test_accepts_compare_properties_action(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(
+            lm.litellm, "completion",
+            lambda **kw: _make_completion('{"lead_info": {}, "action": "compare_properties"}'),
+        )
+        result = lm.extract_and_route("qual a diferença entre 1 e 2?", {}, "recommendation", api_key="k")
+        assert result["action"] == "compare_properties"
+
+    def test_accepts_visit_interest_action(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(
+            lm.litellm, "completion",
+            lambda **kw: _make_completion('{"lead_info": {}, "action": "visit_interest"}'),
+        )
+        result = lm.extract_and_route("quero visitar a Torre Nova", {}, "recommendation", api_key="k")
+        assert result["action"] == "visit_interest"
+
+
+def test_router_prompt_documents_new_actions():
+    assert "refine_search" in lm._ROUTER_SYSTEM_PROMPT
+    assert "compare_properties" in lm._ROUTER_SYSTEM_PROMPT
+    assert "visit_interest" in lm._ROUTER_SYSTEM_PROMPT

@@ -180,6 +180,14 @@ class SalesFlow:
             return "handoff"
         if action == "decline":
             return "followup"
+        if action == "visit_interest":
+            if self.ready_for_scheduling(state):
+                shown = state.get("shown_properties_count", 0) + len(state.get("properties", []))
+                if shown >= 3 or state.get("lead_id"):
+                    return "scheduling"
+            return current  # keep current node; preprocess already flagged interest
+        if action in ("refine_search", "compare_properties"):
+            return "recommendation"
         return current
 
     def _wants_options(self, state: FlowState) -> bool:
@@ -223,6 +231,8 @@ class SalesFlow:
                 merged = {**merged, **llm_deltas}
                 context["lead_info"] = {**(context.get("lead_info") or {}), **llm_deltas}
                 state["_router_action"] = result.get("action")
+                if state["_router_action"] == "visit_interest":
+                    state["visit_interest"] = True
             except Exception:
                 logger.warning(
                     "llm_router falhou; usando extração regex + FSM determinístico (fallback ADR-011)",
@@ -351,6 +361,18 @@ class SalesFlow:
         )
 
     def _node_recommendation(self, state: FlowState) -> FlowState:
+        if state.get("_router_action") == "compare_properties" and state.get("properties"):
+            props = state["properties"][:3]
+            lines = [
+                f"- {p.get('title', 'Imóvel')}: {p.get('region', '')}, "
+                f"{p.get('area_util', '')} m², {p.get('price_text') or p.get('price', 'sob consulta')}"
+                for p in props
+            ]
+            state["response"] = (
+                "Comparativo das opções:\n" + "\n".join(lines) + "\n\n"
+                "Quer que eu detalhe alguma ou ajuste algum critério?"
+            )
+            return state
         if self._wants_options(state) and self.properties_rag is not None:
             return self._show_more_options(state)
         if self.properties_rag is None:

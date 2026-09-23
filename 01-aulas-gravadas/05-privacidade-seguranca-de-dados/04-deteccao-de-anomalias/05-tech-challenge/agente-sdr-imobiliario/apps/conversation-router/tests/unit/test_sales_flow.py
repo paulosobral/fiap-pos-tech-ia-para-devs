@@ -454,3 +454,76 @@ class TestAgenticRouter:
         state = flow.invoke({"current_state": "qualification", "message": "ok", "lead_info": {}})
         assert state["current_state"] == "qualification"
         assert state["lead_qualified"] is False
+
+    def test_refine_search_reruns_rag_with_new_lead_info(self):
+        captured = {}
+        def rag(info):
+            captured.update(info)
+            return [{"title": "Opção Barata", "region": "Pinheiros", "area_util": 80}]
+        router = lambda message, lead_info, current_state: {
+            "lead_info": {"budget": "R$ 80 mil"},
+            "action": "refine_search",
+        }
+        flow = make_flow(properties_rag=rag, llm_router=router)
+        state = flow.invoke({
+            "current_state": "recommendation",
+            "message": "tem algo mais barato?",
+            "lead_info": {"budget": "R$ 200 mil"},
+            "shown_properties_count": 3,
+        })
+        assert captured.get("budget") == "R$ 80 mil"
+        assert "Opção Barata" in state["response"]
+
+    def test_compare_properties_shows_listed_options(self):
+        catalog = [
+            {"title": "A", "region": "Pinheiros", "area_util": 100},
+            {"title": "B", "region": "Pinheiros", "area_util": 150},
+        ]
+        router = lambda message, lead_info, current_state: {
+            "lead_info": {},
+            "action": "compare_properties",
+        }
+        flow = make_flow(properties_rag=lambda info: catalog, llm_router=router)
+        state = flow.invoke({
+            "current_state": "recommendation",
+            "message": "qual a diferença entre A e B?",
+            "lead_info": {},
+            "properties": catalog,
+            "shown_properties_count": 2,
+        })
+        assert state["current_state"] == "recommendation"
+        assert "A" in state["response"] and "B" in state["response"]
+
+    def test_visit_interest_goes_to_scheduling_when_ready(self):
+        scheduler = MagicMock(return_value={"confirmed": True, "when": "amanhã 10h"})
+        router = lambda message, lead_info, current_state: {
+            "lead_info": {},
+            "action": "visit_interest",
+        }
+        flow = make_flow(scheduler=scheduler, llm_router=router, properties_rag=lambda i: [{"title": "X"}])
+        state = flow.invoke({
+            "current_state": "recommendation",
+            "message": "quero visitar a Torre Nova",
+            "lead_info": {},
+            "shown_properties_count": 3,
+            "properties": [{"title": "X"}],
+        })
+        assert state.get("visit_interest") is True
+        scheduler.assert_called_once()
+
+    def test_visit_interest_stays_if_not_enough_shown(self):
+        scheduler = MagicMock(return_value={"confirmed": True})
+        router = lambda message, lead_info, current_state: {
+            "lead_info": {},
+            "action": "visit_interest",
+        }
+        flow = make_flow(scheduler=scheduler, llm_router=router)
+        state = flow.invoke({
+            "current_state": "recommendation",
+            "message": "quero visitar",
+            "lead_info": {},
+            "shown_properties_count": 1,
+            "properties": [],
+        })
+        scheduler.assert_not_called()
+        assert state.get("visit_interest") is True

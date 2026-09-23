@@ -336,6 +336,9 @@ def _parse(raw: str) -> tuple[str | None, float | None]:
 VALID_ACTIONS = (
     "provide_info",
     "request_options",
+    "refine_search",
+    "compare_properties",
+    "visit_interest",
     "request_schedule",
     "request_human",
     "decline",
@@ -354,13 +357,21 @@ _ROUTER_SYSTEM_PROMPT = (
     "   - provide_info: está respondendo com dados (padrão sem pedido claro)\n"
     "   - request_options: quer VER/RECEBER/VER mais opções de imóveis ou detalhes "
     "('cadê as opções', 'me envie mais detalhes', 'tem mais?', 'quero ver', 'manda as opções', 'envie detalhes')\n"
+    "   - refine_search: quer AJUSTAR critérios da busca ('mais barato', 'menor', 'outra região', "
+    "'sem estacionamento?', filtros novos)\n"
+    "   - compare_properties: quer COMPARAR opções já mostradas ('diferença entre 1 e 2', "
+    "'compara as duas', 'qual é melhor')\n"
+    "   - visit_interest: demonstra INTERESSE em visitar ou em um imóvel específico "
+    "('quero visitar', 'gostei da 2', 'essa me interessa') SEM verbo de agendamento explícito\n"
     "   - request_schedule: quer agendar visita APENAS com verbo explícito de agendamento "
     "('agendar', 'marcar visita', 'reserve', 'agende', 'quero marcar')\n"
     "   - request_human: QUER FALAR COM UM CORRETOR/HUMANO AGORA (ex: 'quero um corretor', "
     "'fala com alguém', 'preciso de um humano', 'atendente')\n"
     "   - decline: quer parar/recusar/desistir\n"
     "   - unclear: ambígua, sem ação clara\n"
-    "REGRA DE OURO: 'request_schedule' SÓ com verbo de agendamento explícito. Pedir mais detalhes/propriedades = request_options. Pedir um corretor = request_human.\n"
+    "REGRA DE OURO: pedir mais detalhes = request_options; ajustar filtros = refine_search; "
+    "visitar/gostei = visit_interest; agendar = verbo explícito (request_schedule). "
+    "Pedir um corretor = request_human.\n"
     'Responda APENAS com JSON: {"lead_info": {...}, "action": "<uma das opções>"}.'
 )
 
