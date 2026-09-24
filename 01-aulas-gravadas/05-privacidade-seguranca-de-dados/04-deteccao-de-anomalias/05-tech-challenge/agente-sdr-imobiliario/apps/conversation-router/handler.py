@@ -449,6 +449,9 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
                     favorite_property=kwargs.get("favorite_property"),
                     conversation_stage=kwargs.get("conversation_stage"),
                     shown_properties_count=kwargs.get("shown_properties_count"),
+                    visit_interest=bool(kwargs.get("visit_interest")),
+                    rejected_properties=kwargs.get("rejected_properties"),
+                    last_tool=kwargs.get("last_tool"),
                 )
             except Exception:
                 logger.warning("LLM reply falhou; usando resposta oficial como fallback", exc_info=True)

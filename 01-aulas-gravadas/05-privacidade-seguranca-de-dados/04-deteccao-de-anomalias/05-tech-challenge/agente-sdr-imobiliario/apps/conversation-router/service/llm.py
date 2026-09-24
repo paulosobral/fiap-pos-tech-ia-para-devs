@@ -119,7 +119,13 @@ _REPLY_SYSTEM_PROMPT = (
     "3. NUNCA invente: preço, metragem, bairro, nome de empreendimento, "
     "disponibilidade, ou prazo.\n"
     "4. Máximo 3 frases. A pergunta final DEVE SER coerente com a ação do lead; "
-    "NUNCA force agendamento quando o lead só quer ver propriedades ou conversar sobre elas."
+    "NUNCA force agendamento quando o lead só quer ver propriedades ou conversar sobre elas.\n"
+    "5. Se houver muitos imóveis na lista, use 1 frase por imóvel + fecho "
+    "(lista longa) em vez de no máximo 3 frases.\n"
+    "6. Coerência com a última tool: se ÚLTIMA TOOL for request_options/refine_search, "
+    "não ofereça agendamento; se for express_visit_interest/request_schedule, pode "
+    "mencionar visita; se for decline, não insista.\n"
+    "7. Respeite INTERESSE DE VISITA e REJEITADOS do lead (não reofereça imóveis rejeitados)."
 )
 
 # --- LiteLLM (cliente abstraído conforme PRD §8.1) ---------------------------
@@ -255,6 +261,9 @@ def generate_reply(
     favorite_property: str | None = None,
     conversation_stage: str | None = None,
     shown_properties_count: int | None = None,
+    visit_interest: bool = False,
+    rejected_properties: list[str] | None = None,
+    last_tool: str | None = None,
 ) -> str:
     primary = resolve_model(TIER_PRIMARY, explicit_model=model) if not force_complex else resolve_model(TIER_PRIMARY)
     fallback = resolve_model(TIER_FALLBACK)
@@ -287,10 +296,16 @@ def generate_reply(
         if shown_properties_count is not None
         else "IMÓVEIS JÁ EXIBIDOS: 0"
     )
+    visit_line = f"INTERESSE DE VISITA: {'sim' if visit_interest else 'não'}"
+    rejected_line = f"REJEITADOS: {', '.join(rejected_properties or []) or '(nenhum)'}"
+    tool_line = f"ÚLTIMA TOOL: {last_tool or '(nenhuma)'}"
+    long_list = len(properties) > 3
+    max_tokens = 800 if long_list else 280
     user_block = (
         "RESPOSTA OFICIAL DO SISTEMA (transmita o conteúdo, pode melhorar o tom):\n"
         f"{canned_response}\n\n"
-        f"{stage_line}\n{fav_line}\n{shown_line}\n\n"
+        f"{stage_line}\n{fav_line}\n{shown_line}\n"
+        f"{visit_line}\n{rejected_line}\n{tool_line}\n\n"
         f"DADOS DO LEAD (estruturados, já mascarados):\n{lead or '(vazio)'}\n\n"
         f"IMÓVEIS RECOMENDADOS (SÓ estes podem ser citados):\n{props or '(nenhum)'}\n\n"
         f"ÚLTIMA MENSAGEM DO LEAD:\n{message[:500]}"
@@ -304,7 +319,7 @@ def generate_reply(
             api_key=api_key,
             primary_model=chosen_model,
             fallback_model=fallback,
-            max_tokens=280,
+            max_tokens=max_tokens,
             temperature=0.6,
         )
     else:
@@ -315,7 +330,7 @@ def generate_reply(
             ],
             api_key=api_key,
             model=chosen_model,
-            max_tokens=280,
+            max_tokens=max_tokens,
             temperature=0.6,
         )
     if not raw or not raw.strip():

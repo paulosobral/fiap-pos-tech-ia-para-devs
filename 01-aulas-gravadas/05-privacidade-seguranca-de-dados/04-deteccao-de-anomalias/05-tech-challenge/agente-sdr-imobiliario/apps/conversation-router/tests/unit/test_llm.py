@@ -202,6 +202,67 @@ class TestGenerateReplyRichContext:
         assert lm.generate_reply("oi", "resposta", {}, [], api_key="k") == "ok"
 
 
+class TestGenerateReplyToolAgent:
+    """Task 6: visit_interest + rejected + last_tool kwargs + consultative prompt + long-list cap."""
+
+    def test_generate_reply_accepts_new_kwargs(self):
+        import inspect
+
+        sig = inspect.signature(lm.generate_reply)
+        assert "visit_interest" in sig.parameters
+        assert "rejected_properties" in sig.parameters
+        assert "last_tool" in sig.parameters
+
+    def test_reply_prompt_mentions_last_tool_and_consultative(self):
+        prompt = lm._REPLY_SYSTEM_PROMPT
+        assert "last_tool" in prompt or "ÚLTIMA" in prompt or "TOOL" in prompt.upper()
+        assert "1 pergunta" in prompt or "uma pergunta" in prompt.lower()
+
+    def test_user_block_has_new_fields_and_long_list_cap(self, monkeypatch: pytest.MonkeyPatch):
+        captured: dict[str, object] = {}
+
+        def fake_completion(**kwargs):
+            captured.update(kwargs)
+            return _make_completion("ok")
+
+        monkeypatch.setattr(lm.litellm, "completion", fake_completion)
+        props = [{"title": f"P{i}", "area_util": 100} for i in range(5)]
+        lm.generate_reply(
+            message="oi",
+            canned_response="resposta",
+            lead_info={},
+            properties=props,
+            api_key="k",
+            visit_interest=True,
+            rejected_properties=["Torre Velha"],
+            last_tool="request_options",
+        )
+        assert captured["max_tokens"] == 800
+        user = captured["messages"][1]["content"]
+        assert "INTERESSE DE VISITA: sim" in user
+        assert "REJEITADOS: Torre Velha" in user
+        assert "ÚLTIMA TOOL: request_options" in user
+        system = captured["messages"][0]["content"]
+        assert "1 frase por imóvel" in system.lower() or "uma frase por imóvel" in system.lower()
+
+    def test_short_list_keeps_280_tokens(self, monkeypatch: pytest.MonkeyPatch):
+        captured: dict[str, object] = {}
+
+        def fake_completion(**kwargs):
+            captured.update(kwargs)
+            return _make_completion("ok")
+
+        monkeypatch.setattr(lm.litellm, "completion", fake_completion)
+        lm.generate_reply(
+            message="oi",
+            canned_response="r",
+            lead_info={},
+            properties=[{"title": "A"}],
+            api_key="k",
+        )
+        assert captured["max_tokens"] == 280
+
+
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [

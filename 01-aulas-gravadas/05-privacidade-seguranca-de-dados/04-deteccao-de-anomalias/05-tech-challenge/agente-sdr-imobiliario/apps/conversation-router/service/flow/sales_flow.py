@@ -828,6 +828,9 @@ class SalesFlow:
                 favorite_property=state.get("favorite_property"),
                 conversation_stage=state.get("current_state"),
                 shown_properties_count=state.get("shown_properties_count", 0),
+                visit_interest=bool(state.get("visit_interest")),
+                rejected_properties=state.get("rejected_properties"),
+                last_tool=state.get("_last_tool"),
             )
             if generated and generated.strip():
                 state["response"] = generated.strip()
