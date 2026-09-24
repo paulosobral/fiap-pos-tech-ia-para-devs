@@ -1,7 +1,7 @@
 # Design: Tool-Agent Router + FSM Leve (Evolution)
 
 **Date:** 2026-09-23
-**Status:** Approved (user)
+**Status:** Approved (user) — Section 3 review: scheduling gate does not require `favorite_property`
 **Path:** Architectural (brainstorming)
 **Supersedes in part:** `2026-09-23-consultative-sdr-design.md` (consultative behaviors remain; routing contract and state model change here)
 
@@ -81,6 +81,7 @@ Notes:
 
 - Tool name is `express_visit_interest` (not `visit_interest`) to avoid collision with memory field `visit_interest`.
 - `request_schedule` means “user wants to schedule”, not “schedule now”; code still runs `ready_for_scheduling`.
+- Scheduling gate does **not** require `favorite_property != None`. Legitimate cases: “Quero marcar uma visita”, “Gostei das opções”, “Podemos conversar amanhã?” — `visit_interest=True` without a named favorite. `favorite_property` only enriches handoff/ICS when present.
 - New tool vs roadmap: `property_detail` replaces overloaded `provide_info` for property questions (price, parking, floor, spaces, generator, etc.).
 - `request_options.arguments.list_scope`: `"filtered" | "all"` (optional; default `filtered`).
 
@@ -117,7 +118,7 @@ Notes:
 | `compare_properties` | conversation: compare | `len(shown) >= 2`; else clarify |
 | `refine_search` | conversation: new RAG query | none |
 | `express_visit_interest` | conversation: set memory only | evidence rule |
-| `request_schedule` | **scheduling** | `ready_for_scheduling` + `shown >= 3` + `visit_interest`; fail → stay conversation + explain |
+| `request_schedule` | **scheduling** | `ready_for_scheduling` + `shown >= 3` + `visit_interest == True`. **`favorite_property` NOT required** — only enriches handoff/ICS when present. Fail → stay conversation + explain |
 | `request_human` | **handoff** | if message also asks for options → conversation |
 | `decline` | **followup** | none |
 | `provide_info` / `unclear` | conversation fallback | discovery regex if detail-like |
