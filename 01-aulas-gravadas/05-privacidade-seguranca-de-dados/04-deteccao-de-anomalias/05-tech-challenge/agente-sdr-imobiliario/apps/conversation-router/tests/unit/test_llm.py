@@ -219,55 +219,134 @@ def test_parse(raw: str, expected: tuple[object, object]):
     assert lm._parse(raw) == expected
 
 
-class TestExtractAndRoute:
-    """ADR-011: LLM extrai lead_info livre + classifica ação em enum fixo."""
+class TestToolContract:
+    """Single-step tool-call contract (spec 2026-09-23 §4)."""
 
-    def test_success_extracts_fields_and_action(self, monkeypatch: pytest.MonkeyPatch):
+    def test_valid_tools_enum(self):
+        expected = {
+            "request_options", "property_detail", "compare_properties",
+            "refine_search", "express_visit_interest", "request_schedule",
+            "request_human", "decline", "provide_info", "unclear",
+        }
+        assert set(lm.VALID_TOOLS) == expected
+        assert "visit_interest" not in lm.VALID_TOOLS
+
+    def test_parse_tool_call_full(self):
+        raw = (
+            '{"thought":"x","tool":"request_options","arguments":{"list_scope":"all"},'
+            '"lead_info":{"region":"Pinheiros"},'
+            '"memory_updates":{"favorite_property":null,"visit_interest":false}}'
+        )
+        out = lm._parse_extract_and_route(raw)
+        assert out["tool"] == "request_options"
+        assert out["arguments"]["list_scope"] == "all"
+        assert out["lead_info"]["region"] == "Pinheiros"
+        assert out["memory_updates"]["visit_interest"] is False
+
+    def test_parse_invalid_tool_raises(self):
+        with pytest.raises(ValueError):
+            lm._parse_extract_and_route('{"tool":"invented_tool","thought":"x"}')
+
+    def test_parse_invalid_json_raises(self):
+        with pytest.raises(ValueError):
+            lm._parse_extract_and_route("not json")
+
+    def test_parse_missing_tool_raises(self):
+        with pytest.raises(ValueError):
+            lm._parse_extract_and_route('{"thought":"x","lead_info":{}}')
+
+    def test_parse_defaults_for_optional_blocks(self):
+        out = lm._parse_extract_and_route('{"tool":"unclear"}')
+        assert out["thought"] == ""
+        assert out["arguments"] == {}
+        assert out["lead_info"] == {}
+        assert out["memory_updates"] == {}
+
+    def test_extract_and_route_returns_tool_contract(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(
+            lm.litellm, "completion",
+            lambda **kw: _make_completion(
+                '{"thought":"show options","tool":"request_options",'
+                '"arguments":{"list_scope":"filtered"},"lead_info":{"region":"Pinheiros"},'
+                '"memory_updates":{"favorite_property":null,"visit_interest":false}}'
+            ),
+        )
+        result = lm.extract_and_route("mostra opções", {}, "conversation", api_key="k")
+        assert result["tool"] == "request_options"
+        assert "action" not in result
+        assert result["lead_info"]["region"] == "Pinheiros"
+
+    def test_extract_and_route_rejects_invalid_tool(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(
+            lm.litellm, "completion",
+            lambda **kw: _make_completion('{"tool":"invented","thought":"x"}'),
+        )
+        with pytest.raises(ValueError):
+            lm.extract_and_route("oi", {}, "conversation", api_key="k")
+
+    def test_router_prompt_documents_tools_and_memory(self):
+        prompt = lm._ROUTER_SYSTEM_PROMPT
+        assert "express_visit_interest" in prompt
+        assert "property_detail" in prompt
+        assert "memory_updates" in prompt
+        assert "list_scope" in prompt
+        assert "visit_interest" in prompt
+        assert "favorito" in prompt.lower() or "favorite_property" in prompt
+
+
+class TestExtractAndRoute:
+    """Tool-agent: LLM extrai lead_info livre + escolhe tool do enum fixo."""
+
+    def test_success_extracts_fields_and_tool(self, monkeypatch: pytest.MonkeyPatch):
         def fake_completion(**kwargs):
             return _make_completion(
-                '{"lead_info": {"region": "Pinheiros", "decision_maker": "yes"}, '
-                '"action": "provide_info"}'
+                '{"thought":"info", "lead_info": {"region": "Pinheiros", "decision_maker": "yes"}, '
+                '"tool": "provide_info", "arguments": {}, '
+                '"memory_updates": {"favorite_property": null, "visit_interest": false}}'
             )
 
         monkeypatch.setattr(lm.litellm, "completion", fake_completion)
         result = lm.extract_and_route(
             message="quero aluguel em Pinheiros, quem decide sou eu",
             lead_info={},
-            current_state="qualification",
+            current_state="conversation",
             api_key="k",
         )
         assert result["lead_info"] == {"region": "Pinheiros", "decision_maker": "yes"}
-        assert result["action"] == "provide_info"
+        assert result["tool"] == "provide_info"
+        assert result["thought"] == "info"
+        assert "action" not in result
 
-    def test_detects_options_request_action(self, monkeypatch: pytest.MonkeyPatch):
+    def test_detects_options_request_tool(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(
             lm.litellm, "completion",
-            lambda **kw: _make_completion('{"lead_info": {}, "action": "request_options"}'),
+            lambda **kw: _make_completion('{"lead_info": {}, "tool": "request_options", "arguments": {}}'),
         )
         result = lm.extract_and_route("tem mais opções?", {}, "scheduling", api_key="k")
-        assert result["action"] == "request_options"
+        assert result["tool"] == "request_options"
 
-    def test_invalid_action_raises(self, monkeypatch: pytest.MonkeyPatch):
+    def test_invalid_tool_raises(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(
             lm.litellm, "completion",
-            lambda **kw: _make_completion('{"lead_info": {}, "action": "invent_transition"}'),
+            lambda **kw: _make_completion('{"lead_info": {}, "tool": "invent_transition"}'),
         )
         with pytest.raises(ValueError):
-            lm.extract_and_route("oi", {}, "qualification", api_key="k")
+            lm.extract_and_route("oi", {}, "conversation", api_key="k")
 
     def test_malformed_json_raises(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(lm.litellm, "completion", lambda **kw: _make_completion("não é json"))
         with pytest.raises(ValueError):
-            lm.extract_and_route("oi", {}, "qualification", api_key="k")
+            lm.extract_and_route("oi", {}, "conversation", api_key="k")
 
     def test_unknown_extracted_fields_are_dropped(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(
             lm.litellm, "completion",
             lambda **kw: _make_completion(
-                '{"lead_info": {"region": "Pinheiros", "nome_do_lead": "Paulo"}, "action": "provide_info"}'
+                '{"lead_info": {"region": "Pinheiros", "nome_do_lead": "Paulo"}, '
+                '"tool": "provide_info", "arguments": {}}'
             ),
         )
-        result = lm.extract_and_route("meu nome é Paulo, moro em Pinheiros", {}, "qualification", api_key="k")
+        result = lm.extract_and_route("meu nome é Paulo, moro em Pinheiros", {}, "conversation", api_key="k")
         assert result["lead_info"] == {"region": "Pinheiros"}
 
     def test_fallback_tier_kicks_in_on_primary_failure(self, monkeypatch: pytest.MonkeyPatch):
@@ -279,60 +358,65 @@ class TestExtractAndRoute:
             call_count[0] += 1
             if call_count[0] == 1:
                 raise lm.litellm.AuthenticationError("429", llm_provider="openrouter", model="p")
-            return _make_completion('{"lead_info": {}, "action": "request_schedule"}')
+            return _make_completion('{"lead_info": {}, "tool": "request_schedule", "arguments": {}}')
 
         monkeypatch.setattr(lm.litellm, "completion", fake_completion)
-        result = lm.extract_and_route("quero agendar", {}, "recommendation", api_key="k")
-        assert result["action"] == "request_schedule"
+        result = lm.extract_and_route("quero agendar", {}, "conversation", api_key="k")
+        assert result["tool"] == "request_schedule"
         assert call_count[0] == 2
 
-    def test_accepts_refine_search_action(self, monkeypatch: pytest.MonkeyPatch):
+    def test_accepts_refine_search_tool(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(
             lm.litellm, "completion",
-            lambda **kw: _make_completion('{"lead_info": {"budget": "R$ 80 mil"}, "action": "refine_search"}'),
+            lambda **kw: _make_completion(
+                '{"lead_info": {"budget": "R$ 80 mil"}, "tool": "refine_search", "arguments": {}}'
+            ),
         )
-        result = lm.extract_and_route("tem algo mais barato?", {}, "recommendation", api_key="k")
-        assert result["action"] == "refine_search"
+        result = lm.extract_and_route("tem algo mais barato?", {}, "conversation", api_key="k")
+        assert result["tool"] == "refine_search"
 
-    def test_accepts_compare_properties_action(self, monkeypatch: pytest.MonkeyPatch):
+    def test_accepts_compare_properties_tool(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(
             lm.litellm, "completion",
-            lambda **kw: _make_completion('{"lead_info": {}, "action": "compare_properties"}'),
+            lambda **kw: _make_completion('{"lead_info": {}, "tool": "compare_properties", "arguments": {}}'),
         )
-        result = lm.extract_and_route("qual a diferença entre 1 e 2?", {}, "recommendation", api_key="k")
-        assert result["action"] == "compare_properties"
+        result = lm.extract_and_route("qual a diferença entre 1 e 2?", {}, "conversation", api_key="k")
+        assert result["tool"] == "compare_properties"
 
-    def test_accepts_visit_interest_action(self, monkeypatch: pytest.MonkeyPatch):
+    def test_accepts_express_visit_interest_tool(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(
             lm.litellm, "completion",
-            lambda **kw: _make_completion('{"lead_info": {}, "action": "visit_interest"}'),
+            lambda **kw: _make_completion(
+                '{"lead_info": {}, "tool": "express_visit_interest", "arguments": {}, '
+                '"memory_updates": {"visit_interest": false}}'
+            ),
         )
-        result = lm.extract_and_route("quero visitar a Torre Nova", {}, "recommendation", api_key="k")
-        assert result["action"] == "visit_interest"
+        result = lm.extract_and_route("gostei da Torre Nova", {}, "conversation", api_key="k")
+        assert result["tool"] == "express_visit_interest"
+        assert "visit_interest" not in lm.VALID_TOOLS
 
 
-def test_router_prompt_documents_new_actions():
-    assert "refine_search" in lm._ROUTER_SYSTEM_PROMPT
-    assert "compare_properties" in lm._ROUTER_SYSTEM_PROMPT
-    assert "visit_interest" in lm._ROUTER_SYSTEM_PROMPT
-    assert "SÓ com verbo explícito" in lm._ROUTER_SYSTEM_PROMPT
+def test_router_prompt_documents_tools():
+    assert "express_visit_interest" in lm._ROUTER_SYSTEM_PROMPT
+    assert "property_detail" in lm._ROUTER_SYSTEM_PROMPT
+    assert "memory_updates" in lm._ROUTER_SYSTEM_PROMPT
+    assert "list_scope" in lm._ROUTER_SYSTEM_PROMPT
+    assert "APENAS com verbo explícito" in lm._ROUTER_SYSTEM_PROMPT
+    assert '"tool"' in lm._ROUTER_SYSTEM_PROMPT
 
 
-def test_router_prompt_splits_attribute_detail_vs_list_more():
+def test_router_prompt_splits_property_detail_vs_list_more():
     prompt = lm._ROUTER_SYSTEM_PROMPT
     segments = {}
     for chunk in prompt.split("   - ")[1:]:
         key = chunk.split(":", 1)[0].strip()
         segments[key] = chunk
-    provide = segments.get("provide_info", "")
+    detail = segments.get("property_detail", "")
     options = segments.get("request_options", "")
-    assert "estacionamento" in provide
-    assert "vaga" in provide
-    assert "andar" in provide
-    assert "quanto custa a Torre Nova" in provide
+    assert "estacionamento" in detail
+    assert "vaga" in detail
+    assert "andar" in detail
+    assert "quanto custa" in detail
     assert "tem mais opções" in options
-    assert "me envie mais detalhes" in options
-    assert "mais imóveis" in options
-    assert "pedir mais detalhes = request_options" not in prompt
-    assert "detalhe de um imóvel" in prompt or "detalhe de imóvel" in prompt
-    assert "'tem mais?'" not in prompt
+    assert "list_scope" in options
+    assert "property_ref" in detail

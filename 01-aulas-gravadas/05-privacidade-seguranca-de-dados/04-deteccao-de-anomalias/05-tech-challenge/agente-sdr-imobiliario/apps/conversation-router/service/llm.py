@@ -341,20 +341,21 @@ def _parse(raw: str) -> tuple[str | None, float | None]:
     return intent, max(0.0, min(1.0, confidence))
 
 
-# --- Roteamento agentic (ADR-011) --------------------------------------------
-# O LLM nunca escolhe o próximo nó do grafo diretamente — apenas classifica a
-# ação pretendida do lead num enum fixo. O código (sales_flow.py) mapeia
-# (estado_atual, action, gates de negócio) -> próximo nó, sempre determinístico.
+# --- Roteamento tool-agent (spec 2026-09-23; evolução ADR-011) ---------------
+# O LLM decide a estratégia comercial (tool + arguments) numa única chamada;
+# o código valida enum/memória, executa a tool de forma pura e mapeia para o
+# FSM de 5 estados. `thought` é só log — nunca controla o fluxo.
 
-VALID_ACTIONS = (
-    "provide_info",
+VALID_TOOLS = (
     "request_options",
-    "refine_search",
+    "property_detail",
     "compare_properties",
-    "visit_interest",
+    "refine_search",
+    "express_visit_interest",
     "request_schedule",
     "request_human",
     "decline",
+    "provide_info",
     "unclear",
 )
 
@@ -362,33 +363,38 @@ _KNOWN_LEAD_FIELDS = ("area", "region", "budget", "deadline", "people_count", "d
 
 _ROUTER_SYSTEM_PROMPT = (
     "Você é o roteador de conversa de um SDR imobiliário B2B. A cada mensagem do lead, "
-    "faça duas coisas:\n"
-    "1. EXTRAIA os dados de negócio citados na mensagem (só os que aparecerem): "
+    "faça três coisas:\n"
+    "1. EXTRAIA dados de negócio citados (só os que aparecerem): "
     "area, region, budget, deadline, people_count (inteiro), decision_maker ('yes'/'no').\n"
-    "2. CLASSIFIQUE a ação pretendida do lead, escolhendo UMA destas: "
-    f"{', '.join(VALID_ACTIONS)}.\n"
-    "   - provide_info: está respondendo com dados, perguntando detalhe de um imóvel "
-    "específico já mostrado ('a Torre Nova tem estacionamento?', 'tem vaga?', "
-    "'qual o andar?', 'quanto custa a Torre Nova?') ou padrão sem pedido claro\n"
-    "   - request_options: quer VER/RECEBER mais imóveis ou listar opções "
-    "('cadê as opções', 'me envie mais detalhes', 'tem mais opções?', "
-    "'quero ver mais imóveis', 'manda as opções', 'envie detalhes')\n"
-    "   - refine_search: quer AJUSTAR critérios da busca ('mais barato', 'menor', 'outra região', "
-    "'sem estacionamento?', filtros novos)\n"
-    "   - compare_properties: quer COMPARAR opções já mostradas ('diferença entre 1 e 2', "
-    "'compara as duas', 'qual é melhor')\n"
-    "   - visit_interest: demonstra INTERESSE em visitar ou em um imóvel específico "
-    "('quero visitar', 'gostei da 2', 'essa me interessa') SEM verbo de agendamento explícito\n"
-    "   - request_schedule: quer agendar visita APENAS com verbo explícito de agendamento "
-    "('agendar', 'marcar visita', 'reserve', 'agende', 'quero marcar')\n"
-    "   - request_human: QUER FALAR COM UM CORRETOR/HUMANO AGORA (ex: 'quero um corretor', "
-    "'fala com alguém', 'preciso de um humano', 'atendente')\n"
-    "   - decline: quer parar/recusar/desistir\n"
-    "   - unclear: ambígua, sem ação clara\n"
-    "REGRA DE OURO: perguntar detalhe de um imóvel = provide_info; listar/ver mais imóveis = "
-    "request_options; ajustar filtros = refine_search; visitar/gostei = visit_interest; "
-    "agendar = SÓ com verbo explícito (request_schedule). Pedir um corretor = request_human.\n"
-    'Responda APENAS com JSON: {"lead_info": {...}, "action": "<uma das opções>"}.'
+    "2. ATUALIZE memória comercial em memory_updates: "
+    "favorite_property (string|null — só imóveis já mostrados), "
+    "visit_interest (bool — true SOMENTE com verbo de visita explícito: "
+    "'quero visitar','vamos marcar','posso conhecer','tem agenda').\n"
+    "3. ESCOLHA UMA tool: " + ", ".join(VALID_TOOLS) + ".\n"
+    "   - request_options: quer VER/RECEBER imóveis ou listar opções "
+    "('cadê as opções','mostra tudo','lista todas','tem mais opções?'); "
+    "arguments.list_scope='all' se pedir tudo/catálogo completo, senão 'filtered'.\n"
+    "   - property_detail: pergunta detalhe de imóvel já mostrado "
+    "('quanto custa?','tem estacionamento?','qual andar?','quantas vagas?','condomínio quanto?'); "
+    "arguments.property_ref opcional.\n"
+    "   - compare_properties: quer COMPARAR opções já mostradas "
+    "('diferença entre 1 e 2','compara as duas'); arguments.property_a/property_b opcionais.\n"
+    "   - refine_search: AJUSTAR critérios ('mais barato','outra região','sem estacionamento?').\n"
+    "   - express_visit_interest: demonstra INTERESSE em visitar SEM verbo de agendamento "
+    "('gostei da 2','essa me interessa'). NÃO confunda com favorito.\n"
+    "   - request_schedule: quer agendar APENAS com verbo explícito "
+    "('agendar','marcar visita','reserve','quero marcar').\n"
+    "   - request_human: quer corretor/humano AGORA ('quero um corretor','fala com alguém').\n"
+    "   - decline: parar/recusar/desistir.\n"
+    "   - provide_info: fallback genérico quando não há tool melhor.\n"
+    "   - unclear: ambígua, sem ação clara.\n"
+    "thought: 1 frase sobre seu raciocínio (apenas para log).\n"
+    "REGRA: favorito ≠ visita. 'Gostei da Torre Nova' → favorite_property='Torre Nova', "
+    "visit_interest=false. 'Quero conhecer a Torre Nova' → favorite + visit_interest=true.\n"
+    "favorite_property só pode apontar para imóveis já EXIBIDOS ao lead.\n"
+    'Responda APENAS com JSON: {"thought":"...","tool":"<tool>",'
+    '"arguments":{},"lead_info":{},"memory_updates":'
+    '{"favorite_property":null,"visit_interest":false}}.'
 )
 
 
@@ -399,12 +405,14 @@ def extract_and_route(
     api_key: str,
     model: str | None = None,
 ) -> dict[str, Any]:
-    """Uma chamada LLM (Tier 1): extrai deltas de lead_info + classifica a ação
-    do lead num enum fixo (VALID_ACTIONS). O próximo nó do grafo é decidido em
-    código (sales_flow.py), nunca pelo LLM — ver ADR-011.
+    """Uma chamada LLM (Tier 1): extrai deltas de lead_info + escolhe UMA tool
+    do enum fixo (VALID_TOOLS) com arguments/memory_updates. A validação de
+    memória (fuzzy em shown, evidência de visita) e a execução da tool ficam
+    em código (validation.py / tools.py / sales_flow.py).
 
-    Levanta ValueError se a resposta não for JSON válido ou a ação estiver fora
-    do enum; o caller deve tratar como falha e cair no fallback determinístico.
+    Levanta ValueError se a resposta não for JSON válido ou a tool estiver
+    fora do enum; o caller deve tratar como falha e cair no fallback
+    determinístico (regex + FSM).
     """
     primary = resolve_model(TIER_PRIMARY, explicit_model=model)
     fallback = resolve_model(TIER_FALLBACK)
@@ -419,7 +427,7 @@ def extract_and_route(
         api_key=api_key,
         primary_model=primary,
         fallback_model=fallback,
-        max_tokens=200,
+        max_tokens=300,
         temperature=0,
         response_format={"type": "json_object"},
     )
@@ -433,11 +441,29 @@ def _parse_extract_and_route(raw: str) -> dict[str, Any]:
         data = json.loads(raw)
     except json.JSONDecodeError as exc:
         raise ValueError("Resposta LLM não é JSON válido") from exc
-    action = data.get("action")
-    if action not in VALID_ACTIONS:
-        raise ValueError(f"Ação fora do enum válido: {action!r}")
+    tool = data.get("tool")
+    if tool not in VALID_TOOLS:
+        raise ValueError(f"Tool fora do enum válido: {tool!r}")
+    arguments = data.get("arguments")
+    if not isinstance(arguments, dict):
+        arguments = {}
     extracted = data.get("lead_info")
     if not isinstance(extracted, dict):
         extracted = {}
     clean = {k: v for k, v in extracted.items() if k in _KNOWN_LEAD_FIELDS and v not in (None, "")}
-    return {"lead_info": clean, "action": action}
+    memory = data.get("memory_updates")
+    if not isinstance(memory, dict):
+        memory = {}
+    mem_clean: dict[str, Any] = {}
+    if "favorite_property" in memory:
+        fp = memory.get("favorite_property")
+        mem_clean["favorite_property"] = str(fp) if fp not in (None, "") else None
+    if "visit_interest" in memory:
+        mem_clean["visit_interest"] = bool(memory.get("visit_interest"))
+    return {
+        "thought": str(data.get("thought") or ""),
+        "tool": tool,
+        "arguments": arguments,
+        "lead_info": clean,
+        "memory_updates": mem_clean,
+    }
