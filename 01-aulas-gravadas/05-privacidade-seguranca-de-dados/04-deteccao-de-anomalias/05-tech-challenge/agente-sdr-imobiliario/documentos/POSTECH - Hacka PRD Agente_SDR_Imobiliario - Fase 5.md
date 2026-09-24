@@ -354,16 +354,18 @@ resource "aws_api_gateway_rest_api" "sdr" {
 - **Interface natural-first — nunca URA**: a mentoria deixou explícito ("não é digite 1/digite 2, é uma conversa muito fluida" — Leonardo, 1952s; "conversa humanizada", 1801s). Entrada livre sempre aceita; os **botões inline são só atalhos** (escolher entre 2–3 imóveis, confirmar data de visita, "falar com um corretor") — o fluxo funciona igualmente com texto livre. Consentimento LGPD contextualizado na primeira mensagem, sem checkbox. Primeira abordagem: **coletar dados + propor reunião**, não apresentar imóvel (decisão do cliente).
 - **Guardrails aplicados em código (LiteLLM)**: masking de PII no pré-envio, validação de saída (regex de contato), denied topics e detecção de prompt injection — ver §8.8.
 
-### 8.1.1 Roteamento conversacional agentic (ADR-011)
+### 8.1.1 Roteamento conversacional tool-agent (evolução do ADR-011)
 
-O grafo LangGraph do `sales-flow` usa um nó `router` acionado por LLM para decidir a transição de estado a cada turno — substitui a extração/detecção de intenção por regex hardcoded (uma expressão por variação de frase), que não generalizava para novas formas de o usuário se expressar.
+O `sales-flow` evoluiu do ADR-011 (enum de ações) para um **agente single-step com tool-calling** (spec `2026-09-23-tool-agent-sdr-design`): uma única chamada LLM classifica a intenção comercial e devolve um contrato estruturado; o **código** valida, executa a tool e decide o próximo estado.
 
-- **Extração estruturada via LLM**: uma chamada LLM (Tier 1 do ADR-010) retorna os campos de `lead_info` (área, região, orçamento, prazo, nº de pessoas, decisor) extraídos da mensagem livre — sem depender de padrão fixo de frase.
-- **Gates de negócio permanecem 100% em código, nunca no LLM**: consentimento LGPD obrigatório; score de qualificação (`LeadQualifier`, determinístico e inalterado) obrigatório ≥70 antes de `recommendation`; verificação de restrição de agendamento; recusa sempre terminal.
-- **Nó `router`**: recebe a mensagem, o histórico e um **enum de transições válidas** computado em código a partir dos gates acima, e escolhe uma delas. Transição fora do enum ou falha do LLM cai no fallback determinístico (regex + FSM), que continua existindo como rede de segurança.
-- **Por que não delegar o score ao LLM**: a qualificação com score explicável é diferencial competitivo sustentável frente a Lais.ai/Maya (ver análise competitiva) — não pode virar caixa-preta.
+- **Contrato single-step**: `{thought, tool, arguments, lead_info, memory_updates}`. `VALID_TOOLS` (10): `request_options, property_detail, compare_properties, refine_search, express_visit_interest, request_schedule, request_human, decline, provide_info, unclear`.
+- **Validação em código** (`validate_router_output`): fuzzy de favorito apenas sobre imóveis já exibidos; gate de evidência de visita; drop de chaves de memória/lead desconhecidas; `thought` é só log.
+- **5 estados no grafo**: `greeting | conversation | scheduling | handoff | followup` (mais `elicitation`/`preprocess`/`postprocess` internos). O nó `conversation` despacha por tool; o path legado ADR-011 (`_router_action`) permanece como fallback de compatibilidade.
+- **Gates 100% em código** (nunca no LLM): consentimento LGPD; `LeadQualifier` ≥70; restrição de agendamento; gate de visita sem exigir `favorite_property` (só `shown>=3` + interesse de visita + ready).
+- **Fallback**: tool inválida / exceção do LLM → regex + FSM determinístico (red de segurança ADR-011 retida).
+- **`generate_reply`**: kwargs `visit_interest`, `rejected_properties`, `last_tool` + cap de tokens (800 p/ lista longa, 280 caso contrário).
 
-Decisão completa e alternativas rejeitadas em `aidlc/.../inception/domain-design/decisions.md` (ADR-011).
+Decisão completa e alternativas rejeitadas em `aidlc/.../inception/domain-design/decisions.md` (ADR-011) + spec tool-agent.
 
 ### 8.2 RAG — duas bases (imóveis + clientes)
 
@@ -703,6 +705,7 @@ O desenvolvimento será conduzido com a metodologia **AI-DLC (AWS)** — 5 fases
 
 ## 16. Roadmap pós-POC (se a POC for aprovada)
 
+- **Loop agêntico multi-step (opção B)**: o contrato `ToolResult`/`execute_tool` já está estável e pronto para evoluir de single-step para um loop com N tools por turno; **não implementado nesta iteração**.
 - **ADRs** das decisões técnicas (docs/adr/): canal (Telegram), RAG (FAISS→KB), **provedor de LLM: OpenRouter na POC (custo/velocidade) → Bedrock em produção (guardrails nativos, residência de dados, integração CloudWatch)**.
 - **Canal WhatsApp Business** (via provedor autorizado) no mesmo `conversation-router`.
 - **Omnichannel real**: Instagram, LinkedIn, Facebook e site convergindo no mesmo fluxo (insight da mentoria).
