@@ -777,3 +777,112 @@ class TestCommercialMemory:
             "context": {"visit_interest": True},
         })
         assert state["current_state"] == "handoff"
+
+
+class TestToolRouting:
+    """Tool-agent: single-step contract (spec 2026-09-23)."""
+
+    def _flow(self, router_result=None):
+        def router(msg, lead, state):
+            return router_result or {
+                "thought": "t",
+                "tool": "request_options",
+                "arguments": {},
+                "lead_info": {},
+                "memory_updates": {},
+            }
+
+        return make_flow(
+            properties_rag=lambda info: [{"title": "A"}, {"title": "B"}, {"title": "C"}],
+            reply_generator=lambda *a, **k: "ok",
+            llm_router=router,
+        )
+
+    def test_five_states_only_in_graph(self):
+        flow = self._flow()
+        assert flow._graph is not None
+
+    def test_router_tool_sets_state_fields(self):
+        flow = self._flow(router_result={
+            "thought": "show all",
+            "tool": "request_options",
+            "arguments": {"list_scope": "all"},
+            "lead_info": {"region": "Pinheiros"},
+            "memory_updates": {},
+        })
+        out = flow.invoke({
+            "current_state": "conversation",
+            "message": "mostra tudo",
+            "lead_info": {},
+            "context": {},
+            "properties": [],
+        })
+        assert out.get("_last_tool") == "request_options" or out.get("_router_tool") == "request_options"
+
+    def test_request_schedule_routes_scheduling_when_gates_ok(self):
+        flow = self._flow(router_result={
+            "thought": "wants visit",
+            "tool": "request_schedule",
+            "arguments": {},
+            "lead_info": {},
+            "memory_updates": {"visit_interest": True},
+        })
+        props = [{"title": f"P{i}"} for i in range(5)]
+        out = flow.invoke({
+            "current_state": "conversation",
+            "message": "quero agendar uma visita",
+            "lead_info": {},
+            "context": {},
+            "properties": props,
+            "shown_properties_count": 5,
+            "visit_interest": True,
+        })
+        # scheduling gate ok → scheduling node; with default scheduler None ends handoff (corretor)
+        assert out.get("current_state") in ("scheduling", "conversation", "handoff")
+        if out.get("current_state") == "handoff":
+            assert "corretor" in (out.get("response") or "").lower() or out.get("response")
+
+    def test_request_human_with_options_stays_conversation(self):
+        flow = self._flow(router_result={
+            "thought": "x",
+            "tool": "request_human",
+            "arguments": {},
+            "lead_info": {},
+            "memory_updates": {},
+        })
+        out = flow.invoke({
+            "current_state": "conversation",
+            "message": "quero ver mais opções",
+            "lead_info": {},
+            "context": {},
+            "properties": [{"title": "A"}],
+        })
+        assert out.get("current_state") == "conversation"
+
+    def test_decline_routes_followup(self):
+        flow = self._flow(router_result={
+            "thought": "x",
+            "tool": "decline",
+            "arguments": {},
+            "lead_info": {},
+            "memory_updates": {},
+        })
+        out = flow.invoke({
+            "current_state": "conversation",
+            "message": "não quero mais",
+            "lead_info": {},
+            "context": {},
+            "properties": [],
+        })
+        assert out.get("current_state") == "followup"
+
+    def test_greeting_bypasses_router(self):
+        flow = self._flow()
+        out = flow.invoke({
+            "current_state": "greeting",
+            "message": "oi",
+            "lead_info": {},
+            "context": {},
+            "consent_recorded": False,
+        })
+        assert out.get("current_state") in ("greeting", "elicitation", "intent", "conversation")

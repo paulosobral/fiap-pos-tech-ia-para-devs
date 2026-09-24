@@ -89,7 +89,11 @@ class FlowState(TypedDict, total=False):
     visit_interest: bool
     rejected_properties: list[str]
     interests: list[str]
-    _router_action: str | None  # ADR-011: ação classificada pelo llm_router (enum VALID_ACTIONS)
+    _router_action: str | None  # legacy ADR-011 enum action (compat)
+    _router_tool: str | None  # tool-agent contract (spec 2026-09-23)
+    _tool_result: Any  # ToolResult from execute_tool
+    _last_tool: str | None
+    _legacy_subnode: str
 
 
 def extract_lead_structure(message: str) -> dict[str, Any]:
@@ -164,10 +168,7 @@ class SalesFlow:
         g.add_node("preprocess", self._node_preprocess)
         g.add_node("greeting", self._node_greeting)
         g.add_node("elicitation", self._node_elicitation)
-        g.add_node("intent", self._node_intent)
-        g.add_node("qualification", self._node_qualification)
-        g.add_node("discovery", self._node_discovery)
-        g.add_node("recommendation", self._node_recommendation)
+        g.add_node("conversation", self._node_conversation)
         g.add_node("scheduling", self._node_scheduling)
         g.add_node("handoff", self._node_handoff)
         g.add_node("followup", self._node_followup)
@@ -175,8 +176,8 @@ class SalesFlow:
 
         g.set_entry_point("preprocess")
         g.add_conditional_edges("preprocess", self._route_state)
-        for node in ("greeting", "elicitation", "intent", "qualification", "discovery",
-                      "recommendation", "scheduling", "handoff", "followup"):
+        for node in ("greeting", "elicitation", "conversation", "scheduling",
+                      "handoff", "followup"):
             g.add_edge(node, "postprocess")
         g.add_edge("postprocess", END)
         return g.compile()
@@ -185,9 +186,24 @@ class SalesFlow:
         current = state.get("current_state", "greeting")
         if current in ("greeting", "elicitation"):
             return current  # LGPD: consentimento sempre determinístico, nunca via LLM
+        tool = state.get("_router_tool")
+        if tool is not None:
+            hint = None
+            tr = state.get("_tool_result")
+            if tr is not None:
+                hint = getattr(tr, "current_state_hint", None)
+            if tool == "request_human":
+                return hint or "handoff"
+            if tool == "decline":
+                return "followup"
+            if tool == "request_schedule":
+                return hint or "conversation"
+            return "conversation"
+        # Legacy ADR-011 action path — destinations only; conversation derives subnode itself
+        # (LangGraph may drop mutations made during conditional-edge routing).
         action = state.get("_router_action")
         if action == "request_human" and _OPTIONS_REQUEST_RE.search(state.get("message", "")):
-            return current  # usuário quer opções, não humano
+            return "conversation"
         if action == "request_human":
             return "handoff"
         if action == "decline":
@@ -197,21 +213,50 @@ class SalesFlow:
             and current in ("recommendation", "discovery")
             and re.search(r"\b(?:estacionamento|vagas?|andar|pre[çc]o|valor|quanto|detalhes?|tem|possui)\b", state.get("message", ""), re.IGNORECASE)
         ):
-            return "discovery"
+            return "conversation"
         if action == "visit_interest":
             if self.ready_for_scheduling(state):
                 shown = max(state.get("shown_properties_count", 0) or 0, len(state.get("properties") or []))
                 if shown >= 3:
                     return "scheduling"
-            return current  # keep current node; preprocess already flagged interest
+            return "conversation"
         if action in ("refine_search", "compare_properties"):
-            return "recommendation"
+            return "conversation"
+        if current in ("intent", "qualification", "discovery", "recommendation", "conversation"):
+            return "conversation"
         return current
 
+    def _legacy_subnode_for(self, state: FlowState) -> str:
+        """Deriva sub-nó legado dentro do conversation (não confiar em mutação do router)."""
+        current = state.get("current_state") or "recommendation"
+        action = state.get("_router_action")
+        message = state.get("message", "")
+        if action == "refine_search" or action == "compare_properties":
+            return "recommendation"
+        if (
+            action in (None, "provide_info", "unclear")
+            and current in ("recommendation", "discovery")
+            and re.search(r"\b(?:estacionamento|vagas?|andar|pre[çc]o|valor|quanto|detalhes?|tem|possui)\b", message, re.IGNORECASE)
+        ):
+            return "discovery"
+        if action == "request_human" and _OPTIONS_REQUEST_RE.search(message):
+            return current if current in (
+                "intent", "qualification", "discovery", "recommendation", "conversation"
+            ) else "recommendation"
+        if action == "visit_interest":
+            return current if current in (
+                "intent", "qualification", "discovery", "recommendation", "conversation"
+            ) else "recommendation"
+        if current in ("intent", "qualification", "discovery", "recommendation", "conversation"):
+            return current
+        return "recommendation"
+
     def _wants_options(self, state: FlowState) -> bool:
-        """ADR-011: se o router LLM rodou, confie nele; senão cai no regex (rede de segurança).
-        Safety net: se o LLM classificou como request_human mas a mensagem pede opções,
-        sobrescreva para mostrar recomendações."""
+        """Tool-agent: confia em _router_tool; ADR-011: confia em _router_action;
+        senão cai no regex (rede de segurança)."""
+        tool = state.get("_router_tool")
+        if tool is not None:
+            return tool == "request_options"
         action = state.get("_router_action")
         if action == "request_human" and _OPTIONS_REQUEST_RE.search(state.get("message", "")):
             return True
@@ -257,16 +302,64 @@ class SalesFlow:
             )
 
         state["_router_action"] = None
+        state["_router_tool"] = None
+        state["_tool_result"] = None
+        state["_last_tool"] = None
         if self.llm_router is not None:
             try:
                 result = self.llm_router(message, merged, state.get("current_state", "greeting"))
-                llm_deltas = result.get("lead_info") or {}
-                merged = {**merged, **llm_deltas}
-                context["lead_info"] = {**(context.get("lead_info") or {}), **llm_deltas}
-                state["_router_action"] = result.get("action")
-                if state["_router_action"] == "visit_interest":
-                    state["visit_interest"] = True
-                    context["visit_interest"] = True
+                if isinstance(result, dict) and "tool" in result:
+                    from service.tools import execute_tool
+                    from service.validation import validate_router_output
+
+                    validated = validate_router_output(result, state, message=message)
+                    state["_router_tool"] = validated["tool"]
+                    state["_last_tool"] = validated["tool"]
+                    llm_deltas = validated.get("lead_info") or {}
+                    merged = {**merged, **llm_deltas}
+                    context["lead_info"] = {**(context.get("lead_info") or {}), **llm_deltas}
+                    mem = validated.get("memory_updates") or {}
+                    if mem.get("favorite_property"):
+                        state["favorite_property"] = mem["favorite_property"]
+                        context["favorite_property"] = mem["favorite_property"]
+                    if mem.get("visit_interest"):
+                        state["visit_interest"] = True
+                        context["visit_interest"] = True
+                    args = validated.get("arguments") or {}
+
+                    def _search_fn(info, top_k=9):
+                        if self.properties_rag is None:
+                            return []
+                        scope = args.get("list_scope", "filtered")
+                        try:
+                            from service.properties_catalog import search_properties
+
+                            return search_properties(info, top_k=top_k, list_scope=scope)
+                        except Exception:
+                            props = self.properties_rag(info) or []
+                            return list(props)[:top_k]
+
+                    tr = execute_tool(
+                        validated["tool"],
+                        args,
+                        state,
+                        search_fn=_search_fn if self.properties_rag is not None else None,
+                        memory_updates=mem,
+                        message=message,
+                    )
+                    state["_tool_result"] = tr
+                    if tr.properties:
+                        state["properties"] = tr.properties
+                        self._remember_shown(state)
+                else:
+                    # Legacy action contract (ADR-011)
+                    llm_deltas = (result or {}).get("lead_info") or {}
+                    merged = {**merged, **llm_deltas}
+                    context["lead_info"] = {**(context.get("lead_info") or {}), **llm_deltas}
+                    state["_router_action"] = (result or {}).get("action")
+                    if state["_router_action"] == "visit_interest":
+                        state["visit_interest"] = True
+                        context["visit_interest"] = True
             except Exception:
                 logger.warning(
                     "llm_router falhou; usando extração regex + FSM determinístico (fallback ADR-011)",
@@ -317,6 +410,108 @@ class SalesFlow:
             if token_l and token_l in title.lower():
                 return title
         return None
+
+    def _node_conversation(self, state: FlowState) -> FlowState:
+        """Dispatcher: tool-agent path OR legacy sub-node (intent/qualification/discovery/recommendation)."""
+        if state.get("_router_tool") is not None:
+            return self._conversation_from_tool(state)
+        sub = state.get("_legacy_subnode") or self._legacy_subnode_for(state)
+        if sub == "intent":
+            return self._node_intent(state)
+        if sub == "qualification":
+            return self._node_qualification(state)
+        if sub == "discovery":
+            return self._node_discovery(state)
+        return self._node_recommendation(state)
+
+    def _conversation_from_tool(self, state: FlowState) -> FlowState:
+        tool = state.get("_router_tool")
+        tr = state.get("_tool_result")
+        state["current_state"] = "conversation"
+        if tool == "property_detail":
+            if tr is not None and tr.needs_clarification:
+                state["response"] = (
+                    "Qual imóvel específico você quer que eu detalhe? "
+                    "Posso comparar as opções que já mostrei."
+                )
+            elif tr is not None and tr.detail:
+                p = tr.detail
+                price = p.get("price_text") or p.get("price") or "sob consulta"
+                state["response"] = (
+                    f"{p.get('title', 'Imóvel')} — {p.get('region', '')}, "
+                    f"{p.get('area_util', '')} m², {price}. "
+                    "Quer que eu compare com outra opção?"
+                )
+            else:
+                state["response"] = "Qual imóvel específico você quer que eu detalhe?"
+            return state
+        if tool == "compare_properties":
+            if tr is not None and tr.comparison:
+                a = tr.comparison.get("a") or {}
+                b = tr.comparison.get("b") or {}
+                lines = [
+                    f"- {p.get('title', 'Imóvel')}: {p.get('region', '')}, "
+                    f"{p.get('area_util', '')} m², {p.get('price_text') or p.get('price', 'sob consulta')}"
+                    for p in (a, b)
+                ]
+                state["response"] = (
+                    "Comparativo das opções:\n" + "\n".join(lines) + "\n\n"
+                    "Quer que eu detalhe alguma ou ajuste algum critério?"
+                )
+            elif tr is not None and tr.needs_clarification:
+                state["response"] = (
+                    "Preciso de dois imóveis já mostrados para comparar. "
+                    "Quer que eu mostre mais opções?"
+                )
+            else:
+                state["response"] = "Preciso de dois imóveis já mostrados para comparar."
+            return state
+        if tool in ("request_options", "refine_search"):
+            if tr is not None and tr.properties:
+                state["properties"] = tr.properties
+                if not state.get("shown_properties_count"):
+                    state["shown_properties_count"] = len(tr.properties)
+                self._remember_shown(state)
+                listed = "\n".join(
+                    f"{i + 1}. {p.get('title', 'Imóvel')} — {p.get('region', '')}, {p.get('area_util', '')} m²"
+                    for i, p in enumerate(state["properties"][:9] if tool == "request_options" else state["properties"][:3])
+                )
+                state["response"] = (
+                    f"Separei algumas opções:\n{listed}\n\n"
+                    "Alguma chamou atenção? Posso refinar por metragem, orçamento ou região."
+                )
+                return state
+            if self.properties_rag is not None:
+                return self._node_recommendation(state)
+            state["response"] = (
+                "Não encontrei opções com esses filtros agora. "
+                "Posso ajudar com outra busca?"
+            )
+            return state
+        if tool == "express_visit_interest":
+            state["response"] = (
+                "Ótimo! Fico à vontade pra ajudar a agendar uma visita "
+                "quando você quiser."
+            )
+            return state
+        if tool == "request_schedule":
+            if tr is not None and not tr.ok:
+                state["current_state"] = "conversation"
+                state["response"] = (
+                    "Antes de agendar, me diga qual imóvel mais te interessou "
+                    "ou se quer refinar a busca. Assim consigo preparar a visita ideal."
+                )
+                return state
+            state["response"] = "Vamos escolher um horário pra visita?"
+            return state
+        if tool == "unclear":
+            state["response"] = (
+                "Não entendi bem. Pode reformular? "
+                "Também posso mostrar opções ou comparar imóveis já vistos."
+            )
+            return state
+        # provide_info / fallback
+        return self._node_recommendation(state)
 
     def _node_greeting(self, state: FlowState) -> FlowState:
         from service.security_layer import CONSENT_MESSAGE, REFUSAL_MESSAGE
@@ -477,7 +672,9 @@ class SalesFlow:
         return state
 
     def _node_recommendation(self, state: FlowState) -> FlowState:
-        if state.get("_router_action") == "compare_properties" and state.get("properties"):
+        tool = state.get("_router_tool")
+        action = state.get("_router_action")
+        if (tool == "compare_properties" or action == "compare_properties") and state.get("properties"):
             props = state["properties"][:3]
             lines = [
                 f"- {p.get('title', 'Imóvel')}: {p.get('region', '')}, "
@@ -647,11 +844,14 @@ class SalesFlow:
         return self._invoke_fsm(state)
 
     def _invoke_fsm(self, state: dict[str, Any]) -> dict[str, Any]:
-        """Fallback manual (sem LangGraph) — mesmo contrato, mesmo router agentic (ADR-011)."""
+        """Fallback manual (sem LangGraph) — mesmo contrato, mesmo router tool-agent/ADR-011."""
         state = self._node_preprocess(state)
         resolved = self._route_state(state)
         message = state.get("message", "")
-        method = getattr(self, f"_handle_{resolved}", None)
+        if resolved == "conversation":
+            method = self._node_conversation
+        else:
+            method = getattr(self, f"_handle_{resolved}", None)
         if method is None:
             state["response"] = "Como posso ajudar?"
             return state
@@ -666,17 +866,20 @@ class SalesFlow:
     def _handle_elicitation(self, state, message):
         return self._node_elicitation(state)
 
+    def _handle_conversation(self, state, message):
+        return self._node_conversation(state)
+
     def _handle_intent(self, state, message):
-        return self._node_intent(state)
+        return self._node_conversation(state)
 
     def _handle_qualification(self, state, message):
-        return self._node_qualification(state)
+        return self._node_conversation(state)
 
     def _handle_discovery(self, state, message):
-        return self._node_discovery(state)
+        return self._node_conversation(state)
 
     def _handle_recommendation(self, state, message):
-        return self._node_recommendation(state)
+        return self._node_conversation(state)
 
     def _handle_scheduling(self, state, message):
         return self._node_scheduling(state)
