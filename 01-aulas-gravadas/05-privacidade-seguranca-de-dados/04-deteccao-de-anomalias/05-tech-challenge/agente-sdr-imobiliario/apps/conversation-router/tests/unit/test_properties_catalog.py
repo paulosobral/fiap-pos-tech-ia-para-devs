@@ -66,13 +66,38 @@ def test_search_prefers_purchase_when_intent_purchase():
     assert result[0]["id"] == "p3"
 
 
-def test_search_filters_budget_out_of_range():
+def test_search_strict_budget_when_enough_in_budget_candidates():
+    catalog = [
+        {"id": "a", "title": "A", "region": "Moema", "mode": "rent", "price": 4_000},
+        {"id": "b", "title": "B", "region": "Moema", "mode": "rent", "price": 5_000},
+        {"id": "c", "title": "C", "region": "Moema", "mode": "rent", "price": 6_000},
+        {"id": "d", "title": "D", "region": "Moema", "mode": "rent", "price": 15_000},
+        {"id": "e", "title": "E", "region": "Moema", "mode": "rent", "price": 20_000},
+    ]
     result = pc.search_properties(
-        {"intent": "rent", "budget": "R$ 5 mil"}, catalog=PROPERTIES
+        {"intent": "rent", "budget": "R$ 5 mil"}, catalog=catalog, top_k=3
     )
     ids = [p["id"] for p in result]
-    assert "p1" not in ids
-    assert "p4" not in ids
+    assert "d" not in ids
+    assert "e" not in ids
+    assert len(result) == 3
+
+
+def test_search_soft_budget_when_few_in_budget_candidates():
+    catalog = [
+        {"id": "cheap", "title": "Barato", "region": "Moema", "mode": "rent", "price": 4_000},
+        {"id": "mid", "title": "Médio", "region": "Moema", "mode": "rent", "price": 9_000},
+        {"id": "high", "title": "Alto", "region": "Moema", "mode": "rent", "price": 20_000},
+        {"id": "lux", "title": "Luxo", "region": "Moema", "mode": "rent", "price": 40_000},
+    ]
+    result = pc.search_properties(
+        {"intent": "rent", "region": "Moema", "budget": "R$ 5 mil"},
+        catalog=catalog,
+        top_k=3,
+    )
+    ids = [p["id"] for p in result]
+    assert len(result) >= 3
+    assert ids[0] == "cheap"
 
 
 def test_search_empty_catalog_returns_empty():

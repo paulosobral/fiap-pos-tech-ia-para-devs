@@ -210,6 +210,28 @@ class TestSalesFlow:
         assert "todas as opções" in second["response"]
         assert second["current_state"] == "scheduling"
 
+    def test_more_options_uses_context_persisted_properties_without_explicit_state(self):
+        """Handler only persists context across turns — not top-level properties."""
+        catalog = [
+            {"title": f"Imóvel {i}", "region": "Moema", "area_util": 100} for i in range(2)
+        ]
+        flow = make_flow(properties_rag=lambda info: catalog)
+        first = flow.invoke(
+            {"current_state": "recommendation", "message": "quero ver", "lead_info": {"region": "Moema"}}
+        )
+        assert first.get("context", {}).get("properties")
+        second = flow.invoke(
+            {
+                "current_state": "recommendation",
+                "message": "me traga todos os imóveis",
+                "lead_info": {"region": "Moema"},
+                "context": first.get("context", {}),
+                "lead_info": first.get("lead_info", {}),
+            }
+        )
+        assert "todas as opções" in second["response"]
+        assert "Imóvel 0" in first["response"]
+
     def test_extracts_budget_from_rent_ceiling_wording(self):
         assert extract_lead_structure("aluguel até 5000 reais")["budget"] == "até 5000 reais"
 

@@ -249,6 +249,12 @@ class SalesFlow:
             state["rejected_properties"] = list(context["rejected_properties"])
         if context.get("interests"):
             state["interests"] = list(context["interests"])
+        # Imóveis já exibidos vivem só no context (handler não reenvia properties).
+        if context.get("properties") and not state.get("properties"):
+            state["properties"] = list(context["properties"])
+            state["shown_properties_count"] = int(
+                context.get("shown_properties_count") or len(state["properties"])
+            )
 
         state["_router_action"] = None
         if self.llm_router is not None:
@@ -374,6 +380,7 @@ class SalesFlow:
                     f"Já tenho uma ideia do que você procura. Separei algumas opções:\n{listed}\n\n"
                     "Alguma chamou atenção? Posso refinar por metragem, orçamento ou região."
                 )
+                self._remember_shown(state)
                 return state
         result = self.qualifier.calculate_score(info)
         state["score"] = result["score"]
@@ -425,6 +432,7 @@ class SalesFlow:
         )
         state["properties"] = top
         state["shown_properties_count"] = len(top)
+        self._remember_shown(state)
         return (
             f"Tenho algumas opções pra você:\n{listed}\n"
             "Alguma chamou atenção? Posso refinar por metragem, orçamento ou localização."
@@ -496,6 +504,8 @@ class SalesFlow:
             )
             return state
         state["properties"] = properties[:3]
+        if not state.get("shown_properties_count"):
+            state["shown_properties_count"] = len(state["properties"])
         listed = "\n".join(
             f"{i + 1}. {p.get('title', 'Imóvel')} — {p.get('region', '')}, {p.get('area_util', '')} m²"
             for i, p in enumerate(state["properties"])
@@ -505,6 +515,7 @@ class SalesFlow:
             "Alguma delas chamou atenção? "
             "Posso também ajustar por metragem, orçamento ou localização."
         )
+        self._remember_shown(state)
         return state
 
     def _node_scheduling(self, state: FlowState) -> FlowState:
@@ -559,6 +570,7 @@ class SalesFlow:
             )
             return state
         state["properties"] = (state.get("properties") or []) + fresh
+        state["shown_properties_count"] = len(state["properties"])
         listed = "\n".join(
             f"- {p.get('title', 'Imóvel')} — {p.get('region', '')}, {p.get('area_util', '')} m²"
             for p in fresh
@@ -567,7 +579,17 @@ class SalesFlow:
             f"Separei mais algumas opções que parecem próximas do que você procura:\n{listed}\n\n"
             "Alguma chamou atenção? Posso também refinar por metragem, orçamento ou localização."
         )
+        self._remember_shown(state)
         return state
+
+    def _remember_shown(self, state: FlowState) -> None:
+        """Persiste imóveis exibidos no context entre turnos (handler não reenvia properties)."""
+        props = state.get("properties") or []
+        if not props:
+            return
+        ctx = state.setdefault("context", {})
+        ctx["properties"] = list(props)
+        ctx["shown_properties_count"] = int(state.get("shown_properties_count") or len(props))
 
     def _node_handoff(self, state: FlowState) -> FlowState:
         if self.handoff_builder is not None:

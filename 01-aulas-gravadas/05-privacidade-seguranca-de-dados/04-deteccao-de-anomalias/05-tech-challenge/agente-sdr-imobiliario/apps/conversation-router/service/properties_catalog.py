@@ -214,8 +214,11 @@ def search_properties(
             continue
         candidates.append(prop)
 
-    if not candidates:
-        candidates = items  # fail-open: sem filtro de orçamento
+    # fail-open: sem candidatos OU poucos no orçamento (soft budget).
+    # Sem soft, budget R$5k deixa 1 de 120 → bot repete o mesmo imóvel.
+    min_for_strict = max(top_k, 3)
+    if len(candidates) < min_for_strict:
+        candidates = items
 
     # 2. FAISS: similaridade vetorial da query contra descrições
     query_text = " ".join(str(v) for v in lead_info.values() if v)
