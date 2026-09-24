@@ -45,10 +45,9 @@ def validate_router_output(
 ) -> dict[str, Any]:
     """Validate single-step tool-call output. LLM never writes state directly.
 
-    Rules (spec §4.3):
-    - favorite_property: fuzzy match ONLY against shown_properties (context list)
-    - visit_interest: persist only with explicit visit evidence in message
-    - unknown memory keys dropped; thought kept for log only
+    favorite_property: fuzzy match ONLY against shown_properties (never catalog).
+    visit_interest: persists only with explicit visit evidence in message.
+    thought is log-only; unknown memory keys dropped.
     """
     shown = list(state.get("properties") or [])
     if not shown:
