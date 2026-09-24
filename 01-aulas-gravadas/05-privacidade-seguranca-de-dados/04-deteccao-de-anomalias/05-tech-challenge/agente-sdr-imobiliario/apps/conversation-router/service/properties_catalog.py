@@ -195,8 +195,14 @@ def search_properties(
     lead_info: dict[str, Any],
     catalog: list[dict[str, Any]] | None = None,
     top_k: int = 3,
+    list_scope: str = "filtered",
 ) -> list[dict[str, Any]]:
-    """Retorna até top_k imóveis ranqueados por RAG (FAISS) + filtros do lead."""
+    """Retorna até top_k imóveis ranqueados por RAG (FAISS) + filtros do lead.
+
+    list_scope="all" eleva top_k para >= 50 (pedido "mostra tudo").
+    """
+    if list_scope == "all":
+        top_k = max(top_k, 50)
     items = catalog if catalog is not None else _load()
     if not items:
         return []

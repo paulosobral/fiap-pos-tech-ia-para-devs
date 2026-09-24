@@ -155,3 +155,31 @@ def test_norm_region():
     assert pc._norm_region("  Faria Lima ") == "faria lima"
     assert pc._norm_region(None) is None
     assert pc._norm_region("") is None
+
+
+def test_search_list_scope_all_returns_more():
+    from service.properties_catalog import search_properties
+
+    props = search_properties({"region": "Moema"}, top_k=3, list_scope="all")
+    assert len(props) >= 3
+
+
+def test_search_list_scope_filtered_default():
+    from service.properties_catalog import search_properties
+
+    props = search_properties({"region": "Moema"}, top_k=3)
+    assert len(props) <= 3
+
+
+def test_search_list_scope_all_returns_more():
+    from service.properties_catalog import search_properties
+
+    props = search_properties({"region": "Moema"}, top_k=3, list_scope="all")
+    assert len(props) >= 3
+
+
+def test_search_list_scope_filtered_default():
+    from service.properties_catalog import search_properties
+
+    props = search_properties({"region": "Moema"}, top_k=3)
+    assert len(props) <= 3
