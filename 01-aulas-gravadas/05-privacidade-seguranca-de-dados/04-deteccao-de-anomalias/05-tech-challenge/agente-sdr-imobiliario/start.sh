@@ -22,6 +22,14 @@ echo "== [2/6] compileall"
 "$PY" -m compileall -q apps || { echo "FALHA: compile"; exit 1; }
 echo "compileall OK"
 
+# Catálogo sintético de imóveis/clientes (FR-11): precisa ANTES dos gates, porque os
+# testes de conversation-router leem data/*.json (data/ é gitignored, então é gerado
+# aqui). Gerar depois do pytest fazia o gate falhar em clone limpo.
+mkdir -p apps/conversation-router/data
+"$PY" scripts/seed_properties.py > apps/conversation-router/data/properties.json
+"$PY" scripts/seed_clients.py > apps/conversation-router/data/clients.json
+echo "RAG seed: $("$PY" -c 'import json;print(len(json.load(open("apps/conversation-router/data/properties.json"))["properties"]))') imóveis + $("$PY" -c 'import json;print(len(json.load(open("apps/conversation-router/data/clients.json"))["clients"]))') clientes sintéticos"
+
 echo "== [3/6] Gates (pytest por unit — mesmos comandos de test-results.md)"
 for u in conversation-router voice-adapter crm-adapter contact-ingest anomaly-detector followup; do
   COVERAGE_FILE="/tmp/.cov-$u" "$PY" -m pytest "apps/$u/tests" \
@@ -34,11 +42,6 @@ echo "Gates OK"
 
 echo "== [4/6] Build dist/*.zip (7 Lambdas; dashboard-ui = container via ECR)"
 mkdir -p dist dist/archive
-# Catálogo sintético de imóveis (FR-11): gerado no build, data/ é gitignored
-mkdir -p apps/conversation-router/data
-"$PY" scripts/seed_properties.py > apps/conversation-router/data/properties.json
-"$PY" scripts/seed_clients.py > apps/conversation-router/data/clients.json
-echo "RAG seed: $(python3 -c 'import json;print(len(json.load(open("apps/conversation-router/data/properties.json"))["properties"]))') imóveis + $(python3 -c 'import json;print(len(json.load(open("apps/conversation-router/data/clients.json"))["clients"]))') clientes sintéticos"
 for a in voice-adapter crm-adapter contact-ingest anomaly-detector followup dashboard-api; do
   if [ -f "dist/$a.zip" ]; then
     cp "dist/$a.zip" "dist/archive/$a-$(date +%Y%m%d%H%M%S).zip"
