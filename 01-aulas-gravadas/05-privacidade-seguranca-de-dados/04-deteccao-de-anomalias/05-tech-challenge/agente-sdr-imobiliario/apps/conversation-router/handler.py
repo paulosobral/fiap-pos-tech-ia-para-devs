@@ -224,6 +224,15 @@ class ConversationRouter:
                     }
                 ),
             )
+            if self.telegram:
+                try:
+                    self.telegram.send_message(
+                        chat.get("id"),
+                        "Recebi seu áudio e coloquei na fila para transcrição. "
+                        "Assim que for processado, retorno por aqui.",
+                    )
+                except Exception:
+                    logger.warning("Voice queued but Telegram acknowledgement failed", exc_info=True)
             return {
                 "statusCode": 200,
                 "body": json.dumps({"ok": True, "state": conversation.current_state}),

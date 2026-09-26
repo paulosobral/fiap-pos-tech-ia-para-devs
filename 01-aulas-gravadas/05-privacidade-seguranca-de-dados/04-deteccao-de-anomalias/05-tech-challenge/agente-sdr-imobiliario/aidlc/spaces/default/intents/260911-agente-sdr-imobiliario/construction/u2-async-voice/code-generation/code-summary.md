@@ -13,7 +13,7 @@
 - `service/pii.py` — PiiMasker espelhando a SecurityLayer oficial da U1 (mesmos regexes NOME/EMAIL/CNPJ + lista controlada `COMMON_FIRST_NAMES` para nome único; TELEFONE estendido a formatos locais sem +55)
 - `infra/session_store.py` — SessionLookup (leitor Contract 5): resolve o lead pela GSI `telegram-user-index` e lê a conversa pela chave composta `LEAD#<lead_id>/CONV#<session_id>` — acesso real da U1, sem GSI inventada
 
-**Testes:** `tests/unit/test_voice_adapter.py` (13), `test_telegram_gateway.py` (10), `test_transcriber.py` (13), `test_router_gateway.py` (6), `test_session_store.py` (7), `test_pii.py` (13), `tests/integration/test_voice_adapter_pipeline.py` (13)
+**Testes:** `tests/unit/test_voice_adapter.py` (13), `test_telegram_gateway.py` (10), `test_transcriber.py` (13), `test_router_gateway.py` (6), `test_session_store.py` (7), `test_pii.py` (13), `test_sqs_worker.py` (7), `tests/integration/test_voice_adapter_pipeline.py` (13) — total 82.
 
 **Config:** `apps/voice-adapter/requirements.txt`, `tests/conftest.py` (bootstrap de path). `pyproject.toml` da raiz e `apps/conversation-router/**` intocados; nenhuma outra config de raiz modificada.
 
@@ -23,15 +23,16 @@
 - Semântica SQS partial-batch: `retry` → `batchItemFailures` (redrive SQS → DLQ, Contract 3); `drop` explícito (schema inválido, sessão ausente, áudio inacessível, conversão falha, transcript vazio) sai do lote **sem** falha; exceção inesperada → `retry` (o lote nunca quebra — NFR4.1).
 - PII: transcript mascarado antes da re-injeção e antes de qualquer log (NFR2.1/NFR2.2 em profundidade); o PiiMasker espelha a SecurityLayer oficial da U1 (mesmos regexes + lista controlada de nomes) para os dois lados evoluírem juntos; mascaramento é idempotente em relação ao re-mascaramento da U1 no fluxo.
 - Import de faster-whisper protegido no nível de módulo; modelo carregado lazy no primeiro uso; `model_factory` injetável para testes/POC; o transcriber é singleton de nível de módulo no `handler.py` (`get_transcriber()`) para sobreviver entre invocações warm (R-03).
-- Classificação de falhas da transcrição: erro de ÁUDIO (`AudioConversionError`) → drop + fallback; erro de AMBIENTE/TRANSIENTE (ffmpeg ausente `OSError`, ffmpeg travado `TimeoutExpired`) → `TranscriptionError` com causa raiz → retry/redrive → DLQ (NFR4.1, R-06); `subprocess.run` do ffmpeg roda com `timeout` configurável (default 20s, dentro da visibility timeout de 30s do Contract 3).
+- Classificação de falhas da transcrição: erro de ÁUDIO (`AudioConversionError`) → drop + fallback; erro de AMBIENTE/TRANSIENTE (ffmpeg ausente `OSError`, ffmpeg travado `TimeoutExpired`) → `TranscriptionError` com causa raiz → retry/redrive → DLQ (NFR4.1, R-06); `subprocess.run` do ffmpeg roda com `timeout` configurável (default 20s, dentro da visibility timeout de 300s definida em `infra/sqs.tf`).
 - Re-injeção desacoplada: `RouterGateway` injetado — nenhum import de internals de `apps/conversation-router`; o shape HTTP segue exatamente o contrato interno real da U1 (rota, header e body documentados em "Superfície de contrato interno (real)" do code-summary da U1).
 - Fallback de voz: mensagem amigável via Telegram para áudio inválido/inacessível, transcript vazio e sessão ausente (constraint da unidade: nunca derrubar o lote, sempre responder).
 - Logs estruturados JSON (`log_event`) sem texto bruto do transcript — apenas contagens/ids (NFR5.1 + PII-safe).
 
 ## Test coverage summary
 
-- 75 testes (62 unit + 13 integração) — todos verdes.
-- Cobertura `apps/voice-adapter`: **99.88%** (piso 80% ✓). Única linha não coberta: `service/transcriber.py:15` (import protegido de `faster_whisper` — exige o pacote pesado instalado).
+- 82 testes (69 unit + 13 integração) — todos verdes na medição de 2026-09-25.
+- Cobertura `apps/voice-adapter`: **99.38%** (piso de 80% cumprido), medida pelo comando registrado em `unit-test-instructions.md`.
+- Latência de aceitação: o router confirma o recebimento depois do `SendMessage` à SQS. O p90 do STT sob a carga/hardware definidos em AC1.3.5 **não foi medido** pela suíte unitária/integrada; permanece pendente de validação operacional.
 - Comando unit-scoped registrado em `unit-test-instructions.md`.
 
 ## Deviations from the plan

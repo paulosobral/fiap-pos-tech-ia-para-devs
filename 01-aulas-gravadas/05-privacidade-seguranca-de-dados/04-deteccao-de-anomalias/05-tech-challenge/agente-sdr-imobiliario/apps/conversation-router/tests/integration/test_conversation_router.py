@@ -63,7 +63,21 @@ class TestConversationRouter:
         body = json.loads(sqs.send_message.call_args.kwargs["MessageBody"])
         assert body["voice_file_id"] == "f1"
         assert body["session_id"]
-        telegram.send_message.assert_not_called()
+        telegram.send_message.assert_called_once_with(
+            7,
+            "Recebi seu áudio e coloquei na fila para transcrição. "
+            "Assim que for processado, retorno por aqui.",
+        )
+
+    def test_voice_ack_failure_does_not_undo_queued_message(self):
+        router, sqs, telegram = make_router()
+        telegram.send_message.side_effect = RuntimeError("Telegram indisponível")
+
+        result = router.handle(update(None, voice={"file_id": "f1", "duration": 5}))
+
+        assert result["statusCode"] == 200
+        sqs.send_message.assert_called_once()
+        telegram.send_message.assert_called_once()
 
     def test_qualified_lead_enqueued_to_crm(self):
         router, sqs, _ = make_router()

@@ -13,13 +13,13 @@
 .venv/bin/python -m pytest apps/voice-adapter/tests --cov=apps/voice-adapter --cov-report=term-missing --cov-fail-under=80
 ```
 
-- Escopo: apenas `apps/voice-adapter/tests` (58 testes no momento da gravação; comando jamais dispara a suíte do u1).
+- Escopo: apenas `apps/voice-adapter/tests` (82 testes na validação de 2026-09-25; comando jamais dispara a suíte do u1).
 - Comando de compilação de validação: `.venv/bin/python -m compileall apps/voice-adapter`.
 
 ## Cobertura esperada
 
 - Piso obrigatório (Testing Contract, escopo `feature`): **80% de linhas** sobre `apps/voice-adapter` — `--cov-fail-under=80` no comando.
-- Resultado atual: **99.86%**. Única linha não coberta: `service/transcriber.py:15` (import protegido `from faster_whisper import WhisperModel` — só executa com o pacote pesado instalado).
+- Resultado medido em 2026-09-25: **99.38%** (82 testes; seis statements não cobertos). O piso de 80% é cumprido; esta medição não comprova o p90 de transcrição em execução real.
 
 ## Mocking/stubbing
 

@@ -50,8 +50,8 @@
 - AC1.3.1: Sistema recebe voice message do Telegram via webhook
 - AC1.3.2: Sistema baixa arquivo e converte para WAV (ffmpeg)
 - AC1.3.3: Sistema transcreve áudio para texto (faster-whisper PT-BR)
-- AC1.3.4: Texto transcrito entra no fluxo conversacional como mensagem digitada; ao usuário é mostrado o texto transcrito para revisão antes de ações sensíveis
-- AC1.3.5: Transcrição acontece em < 15s (p90, amostra mínima, condições de carga/hardware definidas) para áudios < 30s, com feedback imediato de processamento e fallback assíncrono quando exceder limite
+- AC1.3.4: Texto transcrito entra no fluxo conversacional como mensagem digitada, sem exigir confirmação/revisão separada; ações sensíveis continuam sujeitas aos gates normais do fluxo
+- AC1.3.5: O webhook envia confirmação ao Telegram em < 10s p90 após aceitar o áudio na SQS. Para medir STT, usar 100 áudios de até 30s, worker ECS ativo com 1 vCPU/4 GiB, `WHISPER_MODEL_SIZE=small` e fila sem backlog prévio; medir de `ReceiveMessage` até a transcrição reinjetada no router, com p90 < 15s. Fora da janela do worker (09:00–18:00 BRT), a mensagem permanece na fila e o lead recebe confirmação de recebimento; essa espera não entra na métrica de STT
 - AC1.3.6: Decisão de POC: **voice-in/text-out** — sem TTS/retorno por voz nesta fase
 - AC1.3.7: Áudios inválidos, sem fala, ruído, idioma diferente ou falha de ffmpeg/STT têm fallback definido (pedir texto/retry sem perder contexto)
 

@@ -24,7 +24,7 @@ Obrigações: 5-8 testes por componente; testes de unidade + integração para b
 
 - [x] **Step 1** — Estrutura do projeto e configuração de produção (layout `apps/voice-adapter/{handler.py, service/, infra/, tests/, requirements.txt}` conforme PRD §7.4). *(História: setup da unidade U2)*
 - [x] **Step 2** — Bootstrap do runner de testes (pytest + pytest-cov já no `.venv` da raiz; path bootstrap via `tests/conftest.py`, pyproject da raiz intocado) e registro do comando exato com escopo da unidade. *(Testing Contract: runner antes do primeiro teste)*
-- [x] **Step 3** — Camada de dados/segurança: `infra/session_store.py` SessionLookup (leitor do Contract 5, GSI `session-index`) e `service/pii.py` PiiMasker (NFR2.1/NFR2.2). *(Contract 5, NFR2.1, NFR2.2, NFR2.5)*
+- [x] **Step 3** — Camada de dados/segurança: `infra/session_store.py` SessionLookup (leitor do Contract 5: resolve `lead_id` pela GSI `telegram-user-index` e consulta a conversa pela chave composta `PK`/`SK`) e `service/pii.py` PiiMasker (NFR2.1/NFR2.2). *(Contract 5, NFR2.1, NFR2.2, NFR2.5)*
 - [x] **Step 4** — Testes das camadas de dados/segurança (test-after). *(Testing Contract)*
 - [x] **Step 5** — Lógica de negócio: `service/transcriber.py` WhisperTranscriber (ffmpeg→WAV 16k mono, faster-whisper PT-BR, import protegido, `model_factory` injetável), `service/telegram_gateway.py` (getFile/download/sendMessage com http injetado) e `service/router_gateway.py` (re-injeção via gateway injetado). *(FR1.2, NFR2.1)*
 - [x] **Step 6** — Testes da lógica de negócio (test-after). *(Testing Contract)*

@@ -169,7 +169,7 @@ flowchart TD
 
     subgraph ASYNC["AWS — Assíncrono: SQS desacopla, SES ingere, EventBridge agenda"]
         SQSV["Amazon SQS — fila de áudio<br/>desacopla a transcrição (lenta)"]
-        VOICE["AWS Lambda — voice-adapter<br/>ffmpeg + faster-whisper (layer) — STT PT-BR"]
+        VOICE["AWS ECS Fargate — voice-adapter worker<br/>SQS + ffmpeg + faster-whisper — STT PT-BR<br/>janela 09:00–18:00 BRT"]
         SQSC["Amazon SQS — fila CRM (com DLQ)<br/>lead qualificado → CRM"]
         CRMAD["AWS Lambda — crm-adapter<br/>escreve/consulta lead via MCP"]
         EB["Amazon EventBridge Scheduler<br/>cadências + job diário"]
@@ -195,6 +195,7 @@ flowchart TD
     TG --> GW
     GW --> ROUTER
     ROUTER -->|"msg de áudio"| SQSV
+    ROUTER -->|"confirma recebimento"| TG
     SQSV --> VOICE
     VOICE -->|"texto transcrito"| ROUTER
     ROUTER <--> MEM
@@ -226,7 +227,7 @@ flowchart TD
 
 ### 7.2 Componentes e responsabilidade (decomposição)
 
-> Componentes são **módulos lógicos**, não necessariamente Lambdas separadas. Os síncronos (2–7, 10, 12–13) rodam como módulos/bibliotecas dentro da Lambda `conversation-router` — **sem chamada Lambda→Lambda síncrona** (antipattern: custo dobrado, timeout em cascata, acoplamento). Os assíncronos (8, 9, 14–16) são Lambdas próprias, acionadas por SQS/SES/EventBridge — nunca em cadeia direta.
+> Componentes são **módulos lógicos**, não necessariamente Lambdas separadas. Os síncronos (2–7, 10, 12–13) rodam como módulos/bibliotecas dentro da Lambda `conversation-router` — **sem chamada Lambda→Lambda síncrona** (antipattern: custo dobrado, timeout em cascata, acoplamento). Os assíncronos de voz (15) rodam no worker ECS Fargate, que consome SQS; 8, 9 e 14 são Lambdas acionadas por EventBridge/SES. Nenhum componente assíncrono chama outra Lambda em cadeia direta.
 
 1. **Canal (Telegram) — `telegram-adapter`**: webhook autenticado (secret), normaliza texto/áudio/envios de botão -> payload interno.
 2. **Router / sessões — `conversation-router` (API Gateway + Lambda)**: valida, recupera estado da sessão (DynamoDB), chama a engine de fluxo.
@@ -242,7 +243,7 @@ flowchart TD
 12. **Segurança/Priv — `security-layer`**: máscara de PII antes do LLM (nomes, telefone, e-mail, CNPJ), registro de consentimento, guardrails de tópicos, validação de entrada (prompt-injection check).
 13. **Roleta de distribuição — `lead-router`** (insight da mentoria): distribui o lead qualificado para o corretor certo por **regras configuráveis** (ex.: até 500 m² → rodízio dos consultores; acima → diretor/especialista); registra a rota no DynamoDB.
 14. **Ingestão de contato — `contact-ingest`** (cenário 2 da mentoria): captura dados que chegam por e-mail/portais (nome, e-mail, telefone) e abre sessão no chatbot sem digitação manual.
-15. **Áudio/STT — `voice-adapter`** (Telegram voice): baixa o `file_id` via `getFile`, converte para WAV (ffmpeg) e transcreve com **faster-whisper (PT-BR)** — reaproveita o projeto `transcribe_videos`; o texto entra no `sales-flow` como se fosse mensagem digitada.
+15. **Áudio/STT — `voice-adapter`** (Telegram voice): o webhook coloca o `file_id` na SQS e confirma o recebimento ao lead; um worker **ECS Fargate**, ativo na janela configurada de 09:00–18:00 BRT, consome a fila, baixa o arquivo via `getFile`, converte para WAV (ffmpeg) e transcreve com **faster-whisper (PT-BR)**. Fora da janela, a mensagem permanece na fila até o worker voltar; o texto mascarado entra em `/internal/inbound-text` e segue o mesmo `sales-flow` das mensagens digitadas.
 16. **CRM via MCP — `crm-adapter`**: camada MCP genérica para ler/gravar leads no CRM (HubSpot, Kenlo, Facilita) sem acoplar o fluxo ao vendedor; na POC roda contra o CRM simulado (CSV/Excel) — ver §8.9.
 
 ### 7.3 Fluxo de dados (visão simplificada)
@@ -257,7 +258,7 @@ flowchart TD
 8. `anomaly-detector` roda diariamente sobre as conversas e emite alertas se houver padrão anômalo.
 9. `followup` retoma leads paralisados por N dias (sem spam).
 10. `contact-ingest` (cenário e-mail/portal) importa nome/e-mail/telefone e abre sessão no bot automaticamente.
-11. **Áudio**: `telegram-adapter` recebe voice → `voice-adapter` baixa/transcreve (faster-whisper) → texto entra no `sales-flow` (mesmo fluxo do texto digitado).
+11. **Áudio**: `telegram-adapter` recebe voice → `conversation-router` enfileira o `file_id` na SQS e confirma o recebimento → worker ECS Fargate processa a fila na janela ativa → baixa/transcreve (faster-whisper), mascara o texto e o reinjeta no `sales-flow` (mesmo fluxo do texto digitado). Fora da janela, o áudio permanece na fila e o lead já recebeu confirmação de recebimento.
 12. **CRM**: `crm-adapter` (MCP) sincroniza o lead qualificado com o CRM (HubSpot/Kenlo/Facilita) e devolve o status da esteira Kanban.
 
 ### 7.4 Repositório e deploy (IaC — Terraform + `start.sh`)
@@ -492,11 +493,13 @@ Por serem leads **reais**, não existe anonimização total da operação; o obj
 
 **Resposta:** sim — e o `transcribe_videos` é a base certa. Fluxo:
 1. Usuário envia **voice message** → Telegram envia `update` com `voice.file_id`.
-2. `telegram-adapter` chama `GET /bot<token>/getFile?file_id=…` → baixa o arquivo (S3 temporário).
-3. `voice-adapter` converte para WAV (ffmpeg) e transcreve com **faster-whisper (modelo PT-BR)** — o mesmo motor do `transcribe_videos` — gerando o texto.
-4. O texto entra no `sales-flow` como se fosse mensagem digitada (mesma pipeline: masking, intenção, RAG, resposta).
+2. `conversation-router` envia o `file_id` à SQS e confirma imediatamente ao lead que o áudio foi recebido e colocado na fila.
+3. Durante a janela ativa configurada, o worker ECS Fargate chama `GET /bot<token>/getFile?file_id=…`, baixa o arquivo, converte para WAV (ffmpeg) e transcreve com **faster-whisper (modelo PT-BR)** — o mesmo motor do `transcribe_videos`.
+4. O transcript é mascarado e reinjetado por `/internal/inbound-text`; entra no `sales-flow` como mensagem digitada (mesma pipeline: masking, intenção, RAG, resposta). Fora da janela do worker, a mensagem permanece na fila até a próxima execução.
 
-> Nota: o `transcribe_videos` roda **offline/local** hoje (faster-whisper ~150 MB). Na POC serverless, o modelo pode rodar num Lambda (camada com o modelo) para não inflar a função. O reaproveitamento é do **motor** (faster-whisper) e do código de extração de áudio (ffmpeg), não do script de vídeo em si.
+**Critério operacional:** confirmação de recebimento pelo webhook em < 10s p90. Para áudio < 30s enfileirado durante a janela ativa, medir < 15s p90 entre o worker receber a mensagem e o transcript ser reinjetado; usar worker com 1 vCPU/4 GiB, modelo `small` e fila sem backlog prévio. O p90 real ainda precisa ser demonstrado com uma amostra operacional; cobertura de testes unitários não comprova essa métrica.
+
+> Nota: o `transcribe_videos` roda **offline/local** hoje (faster-whisper ~150 MB). Na POC, o worker ECS Fargate suporta o tamanho das dependências de áudio sem o limite de pacote de uma Lambda. O reaproveitamento é do **motor** (faster-whisper) e do código de extração de áudio (ffmpeg), não do script de vídeo em si.
 
 ---
 
