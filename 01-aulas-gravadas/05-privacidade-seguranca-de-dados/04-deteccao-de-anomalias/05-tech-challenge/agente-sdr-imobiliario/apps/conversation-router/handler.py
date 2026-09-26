@@ -205,6 +205,30 @@ class ConversationRouter:
             return {"statusCode": 400, "body": json.dumps({"error": "invalid payload"})}
 
         lead, conversation, _ = self.store.get_or_create(telegram_user_id)
+        if message.get("voice"):
+            voice = message["voice"]
+            if not voice.get("file_id"):
+                return {"statusCode": 400, "body": json.dumps({"error": "invalid voice payload"})}
+            if not self.sqs or not self.voice_queue_url:
+                logger.error("Voice processing unavailable: SQS queue is not configured")
+                return {"statusCode": 503, "body": json.dumps({"error": "voice processing unavailable"})}
+            self.sqs.send_message(
+                QueueUrl=self.voice_queue_url,
+                MessageBody=json.dumps(
+                    {
+                        "message_id": message.get("message_id"),
+                        "telegram_user_id": telegram_user_id,
+                        "voice_file_id": voice["file_id"],
+                        "session_id": conversation.session_id,
+                        "timestamp": utc_now_iso(),
+                    }
+                ),
+            )
+            return {
+                "statusCode": 200,
+                "body": json.dumps({"ok": True, "state": conversation.current_state}),
+            }
+
         response, state = self._process_lead_message(lead, conversation, text)
 
         conversation.current_state = state
@@ -213,20 +237,6 @@ class ConversationRouter:
             {"role": "agent", "text": response, "at": utc_now_iso()}
         )
         self.store.save(lead, conversation)
-
-        if message.get("voice") and self.sqs and self.voice_queue_url:
-            self.sqs.send_message(
-                QueueUrl=self.voice_queue_url,
-                MessageBody=json.dumps(
-                    {
-                        "message_id": message.get("message_id"),
-                        "telegram_user_id": telegram_user_id,
-                        "voice_file_id": message["voice"].get("file_id"),
-                        "session_id": conversation.session_id,
-                        "timestamp": utc_now_iso(),
-                    }
-                ),
-            )
 
         if self.telegram:
             self.telegram.send_message(chat.get("id"), response)

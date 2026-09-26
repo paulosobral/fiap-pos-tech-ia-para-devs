@@ -20,9 +20,26 @@ def test_env_default():
 
 def test_session_lookup_found(monkeypatch):
     client = MagicMock()
-    client.query.return_value = {"Items": [{"SK": {"S": "CONV#s1"}}]}
+    client.query.return_value = {"Items": [{"lead_id": {"S": "l1"}}]}
+    client.get_item.return_value = {
+        "Item": {
+            "PK": {"S": "LEAD#l1"},
+            "SK": {"S": "CONV#s1"},
+            "session_id": {"S": "s1"},
+            "lead_id": {"S": "l1"},
+        }
+    }
     lookup = sqs_worker.SessionLookup(client, "sessions")
-    assert lookup.get_session("s1", 42) == {"session_id": "s1", "telegram_user_id": 42}
+    assert lookup.get_session("s1", 42) == {
+        "PK": "LEAD#l1",
+        "SK": "CONV#s1",
+        "session_id": "s1",
+        "lead_id": "l1",
+    }
+    client.get_item.assert_called_once_with(
+        TableName="sessions",
+        Key={"PK": {"S": "LEAD#l1"}, "SK": {"S": "CONV#s1"}},
+    )
 
 
 def test_session_lookup_missing(monkeypatch):

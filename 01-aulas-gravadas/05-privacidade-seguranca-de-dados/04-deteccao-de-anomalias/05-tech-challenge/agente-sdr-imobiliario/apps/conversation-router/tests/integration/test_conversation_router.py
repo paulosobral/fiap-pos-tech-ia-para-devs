@@ -53,13 +53,17 @@ class TestConversationRouter:
         assert "joao@empresa.com" not in sent
 
     def test_voice_enqueued_to_sqs(self):
-        router, sqs, _ = make_router()
-        event = update("olá", voice={"file_id": "f1", "duration": 5})
-        router.handle(event)
+        router, sqs, telegram = make_router()
+        router.flow.invoke = MagicMock()
+        event = update(None, voice={"file_id": "f1", "duration": 5})
+        result = router.handle(event)
+        assert result["statusCode"] == 200
+        router.flow.invoke.assert_not_called()
         sqs.send_message.assert_called_once()
         body = json.loads(sqs.send_message.call_args.kwargs["MessageBody"])
         assert body["voice_file_id"] == "f1"
         assert body["session_id"]
+        telegram.send_message.assert_not_called()
 
     def test_qualified_lead_enqueued_to_crm(self):
         router, sqs, _ = make_router()

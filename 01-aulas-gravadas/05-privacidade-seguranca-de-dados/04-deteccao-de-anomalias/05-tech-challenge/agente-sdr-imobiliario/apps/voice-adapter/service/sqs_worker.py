@@ -33,6 +33,7 @@ from typing import Any
 
 import boto3
 
+from infra.session_store import SessionLookup
 from service.pii import PiiMasker
 from service.router_gateway import HttpRouterGateway
 from service.telegram_gateway import TelegramGateway
@@ -72,31 +73,6 @@ def _build_adapter() -> VoiceAdapter:
         sessions=sessions,
         masker=PiiMasker(),
     )
-
-
-class SessionLookup:
-    """Adapter DynamoDB para validar sessões (mesma lógica do handler Lambda)."""
-
-    def __init__(self, client: Any, table_name: str) -> None:
-        self._client = client
-        self._table = table_name
-
-    def get_session(self, session_id: str, telegram_user_id: int) -> dict[str, Any] | None:
-        try:
-            resp = self._client.query(
-                TableName=self._table,
-                IndexName="telegram-user-index",
-                KeyConditionExpression="telegram_user_id = :uid",
-                ExpressionAttributeValues={":uid": {"N": str(telegram_user_id)}},
-            )
-            for item in resp.get("Items", []):
-                sk = item.get("SK", {}).get("S", "")
-                if sk == f"CONV#{session_id}":
-                    return {"session_id": session_id, "telegram_user_id": telegram_user_id}
-            return None
-        except Exception:
-            logger.warning("session lookup failed", exc_info=True)
-            return None
 
 
 def main() -> None:
