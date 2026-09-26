@@ -11,6 +11,10 @@ module "lambda_contact_ingest" {
   timeout                = 60
   memory_size            = 256
 
+  use_existing_cloudwatch_log_group  = true
+  attach_create_log_group_permission = false
+  depends_on                         = [aws_cloudwatch_log_group.lambda_contact_ingest]
+
   attach_policies    = true
   number_of_policies = 1
   policies           = [aws_iam_policy.sdr_lambda.arn]

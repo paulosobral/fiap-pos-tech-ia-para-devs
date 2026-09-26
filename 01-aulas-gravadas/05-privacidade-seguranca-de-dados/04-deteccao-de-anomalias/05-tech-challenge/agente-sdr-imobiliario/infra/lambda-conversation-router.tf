@@ -16,6 +16,9 @@ module "lambda_conversation_router" {
   timeout                = 60
   memory_size            = 256
 
+  use_existing_cloudwatch_log_group  = true
+  attach_create_log_group_permission = false
+
   attach_policies    = true
   number_of_policies = 1
   policies           = [aws_iam_policy.sdr_lambda.arn]

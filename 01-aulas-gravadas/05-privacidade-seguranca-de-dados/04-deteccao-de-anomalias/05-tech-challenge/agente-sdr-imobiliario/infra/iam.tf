@@ -54,7 +54,7 @@ resource "aws_iam_policy" "sdr_lambda" {
         Sid    = "CloudWatchLogs"
         Effect = "Allow"
         Action = [
-          "logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents",
+          "logs:CreateLogStream", "logs:PutLogEvents",
         ]
         Resource = "arn:aws:logs:${var.region}:*:*"
       },

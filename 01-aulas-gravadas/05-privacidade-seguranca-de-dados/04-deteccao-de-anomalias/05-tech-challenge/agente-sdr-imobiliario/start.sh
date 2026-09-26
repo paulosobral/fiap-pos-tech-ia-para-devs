@@ -76,6 +76,21 @@ if ! terraform init -upgrade -input=false >/tmp/td-init.log 2>&1; then
   echo "FALHA: terraform init"; tail -20 /tmp/td-init.log; exit 1
 fi
 
+# Limpeza de segurança de log groups órfãos que possam ter sobrado de execuções anteriores
+echo "Verificando log groups órfãos antes do apply..."
+CLEANUP_REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}"
+for prefix in "/aws/lambda/sdr-" "/ecs/sdr-"; do
+  groups=$(aws logs describe-log-groups --region "$CLEANUP_REGION" --log-group-name-prefix "$prefix" --query "logGroups[].logGroupName" --output text 2>/dev/null || true)
+  if [ -n "$groups" ]; then
+    for lg in $groups; do
+      # Só apaga se não estiver gerenciado no state atual
+      if ! terraform state list 2>/dev/null | grep -q "aws_cloudwatch_log_group"; then
+        aws logs delete-log-group --region "$CLEANUP_REGION" --log-group-name "$lg" 2>/dev/null && echo "  removido órfão: $lg" || true
+      fi
+    done
+  fi
+done
+
 # apply 1: cria o ECR e a infra base (as tasks ainda sem imagem)
 if ! terraform apply -auto-approve -input=false -var="telegram_bot_token=${TELEGRAM_BOT_TOKEN:-}" \
      -var="llm_api_key=${LLM_API_KEY:-}" \

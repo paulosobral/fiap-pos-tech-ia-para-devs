@@ -17,6 +17,10 @@ module "lambda_voice_adapter" {
   memory_size            = 2048
   ephemeral_storage_size = 1024
 
+  use_existing_cloudwatch_log_group  = true
+  attach_create_log_group_permission = false
+  depends_on                         = [aws_cloudwatch_log_group.lambda_voice_adapter]
+
   attach_policies    = true
   number_of_policies = 1
   policies           = [aws_iam_policy.sdr_lambda.arn]

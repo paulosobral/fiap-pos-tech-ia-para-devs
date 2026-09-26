@@ -79,13 +79,15 @@ resource "aws_ecs_task_definition" "dashboard_ui" {
       logConfiguration = {
         logDriver = "awslogs"
         options = {
-          "awslogs-group"         = "/ecs/sdr-dashboard-ui"
+          "awslogs-group"         = aws_cloudwatch_log_group.dashboard_ui.name
           "awslogs-region"        = var.region
           "awslogs-stream-prefix" = "dashboard-ui"
         }
       }
     }
   ])
+
+  depends_on = [aws_cloudwatch_log_group.dashboard_ui]
 }
 
 resource "aws_ecs_service" "dashboard_ui" {
@@ -135,11 +137,6 @@ resource "aws_appautoscaling_scheduled_action" "scale_in" {
     min_capacity = 0
     max_capacity = 0
   }
-}
-
-resource "aws_cloudwatch_log_group" "dashboard_ui" {
-  name              = "/ecs/sdr-dashboard-ui"
-  retention_in_days = 7
 }
 
 resource "aws_iam_role" "ecs_execution" {
@@ -207,11 +204,6 @@ output "voice_ecr_repo" {
   value = aws_ecr_repository.voice_adapter.repository_url
 }
 
-resource "aws_cloudwatch_log_group" "voice_adapter" {
-  name              = "/ecs/sdr-voice-adapter"
-  retention_in_days = 7
-}
-
 resource "aws_security_group" "voice_adapter" {
   name        = "sdr-voice-adapter"
   description = "Voice adapter worker (sem ingress, consome SQS)"
@@ -253,13 +245,15 @@ resource "aws_ecs_task_definition" "voice_adapter" {
       logConfiguration = {
         logDriver = "awslogs"
         options = {
-          "awslogs-group"         = "/ecs/sdr-voice-adapter"
+          "awslogs-group"         = aws_cloudwatch_log_group.voice_adapter.name
           "awslogs-region"        = var.region
           "awslogs-stream-prefix" = "voice-adapter"
         }
       }
     }
   ])
+
+  depends_on = [aws_cloudwatch_log_group.voice_adapter]
 }
 
 resource "aws_ecs_service" "voice_adapter" {
@@ -386,11 +380,6 @@ output "router_ecr_repo" {
   value = aws_ecr_repository.conversation_router.repository_url
 }
 
-resource "aws_cloudwatch_log_group" "conversation_router" {
-  name              = "/ecs/sdr-conversation-router"
-  retention_in_days = 7
-}
-
 resource "aws_security_group" "conversation_router" {
   name        = "sdr-conversation-router"
   description = "Conversation router container (HTTP 8080 do API Gateway e interno)"
@@ -452,13 +441,15 @@ resource "aws_ecs_task_definition" "conversation_router" {
       logConfiguration = {
         logDriver = "awslogs"
         options = {
-          "awslogs-group"         = "/ecs/sdr-conversation-router"
+          "awslogs-group"         = aws_cloudwatch_log_group.conversation_router.name
           "awslogs-region"        = var.region
           "awslogs-stream-prefix" = "conversation-router"
         }
       }
     }
   ])
+
+  depends_on = [aws_cloudwatch_log_group.conversation_router]
 }
 
 resource "aws_ecs_service" "conversation_router" {
