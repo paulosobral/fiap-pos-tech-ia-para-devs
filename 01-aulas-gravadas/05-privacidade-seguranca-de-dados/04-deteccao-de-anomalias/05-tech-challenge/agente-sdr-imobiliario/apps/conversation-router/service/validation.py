@@ -11,7 +11,76 @@ _VISIT_EVIDENCE_RE = re.compile(
 )
 _FUZZY_THRESHOLD = 0.55
 _MEMORY_KEYS = ("favorite_property", "visit_interest")
-_KNOWN_LEAD_FIELDS = ("area", "region", "budget", "deadline", "people_count", "decision_maker")
+_KNOWN_LEAD_FIELDS = (
+    "area",
+    "region",
+    "budget",
+    "deadline",
+    "people_count",
+    "decision_maker",
+)
+
+# Ordinais em PT-BR → índice (0-based). Inclui dígitos, "segunda opção", "segundo imóvel", etc.
+_ORDINAL_MAP = {
+    "primeiro": 0,
+    "primeira": 0,
+    "1": 0,
+    "primeira opcao": 0,
+    "primeira opçao": 0,
+    "segundo": 1,
+    "segunda": 1,
+    "2": 1,
+    "segunda opcao": 1,
+    "segunda opçao": 1,
+    "terceiro": 2,
+    "terceira": 2,
+    "3": 2,
+    "terceira opcao": 2,
+    "terceira opçao": 2,
+    "quarto": 3,
+    "quarta": 3,
+    "4": 3,
+    "quinto": 4,
+    "quinta": 4,
+    "5": 4,
+    "sexto": 5,
+    "sexta": 5,
+    "6": 5,
+    "setimo": 6,
+    "setima": 6,
+    "sétimo": 6,
+    "sétima": 6,
+    "7": 6,
+    "oitavo": 7,
+    "oitava": 7,
+    "8": 7,
+    "nono": 8,
+    "nona": 8,
+    "9": 8,
+    "decimo": 9,
+    "decima": 9,
+    "décimo": 9,
+    "décima": 9,
+    "10": 9,
+}
+
+
+def _resolve_ordinal(name: str, shown: list[dict[str, Any]]) -> str | None:
+    """Resolve referências ordinais ('segunda opção', 'o terceiro', 'opção 2') em índice da lista shown."""
+    if not name or not shown:
+        return None
+    target = _norm(name)
+    if not target:
+        return None
+    # Match direto: "segunda opção", "segundo", "2", "opção 2"
+    idx = _ORDINAL_MAP.get(target)
+    if idx is not None and idx < len(shown):
+        return str(shown[idx].get("title") or "")
+    # Match parcial: "segunda opcao", "o segundo", "essa segunda"
+    for key, val in _ORDINAL_MAP.items():
+        if key in target and val < len(shown):
+            return str(shown[val].get("title") or "")
+    return None
 
 
 def _norm(s: str) -> str:
@@ -24,6 +93,11 @@ def _fuzzy_shown(name: str | None, shown: list[dict[str, Any]]) -> str | None:
     target = _norm(name)
     if not target:
         return None
+    # 1. Tentar resolução ordinal primeiro ("segunda opção", "2", "o segundo", etc.)
+    ordinal_hit = _resolve_ordinal(name, shown)
+    if ordinal_hit:
+        return ordinal_hit
+    # 2. Fuzzy match por similaridade de texto
     best, best_score = None, 0.0
     for p in shown:
         title = _norm(str(p.get("title") or ""))

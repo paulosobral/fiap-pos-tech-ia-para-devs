@@ -53,7 +53,11 @@ def _llm_api_key() -> str | None:
         value = boto3.client("secretsmanager").get_secret_value(SecretId=secret_id)
         return value.get("SecretString") or None
     except Exception:
-        logger.warning("Falha ao ler a chave LLM no Secrets Manager (%s); IA desativada", secret_id, exc_info=True)
+        logger.warning(
+            "Falha ao ler a chave LLM no Secrets Manager (%s); IA desativada",
+            secret_id,
+            exc_info=True,
+        )
         return None
 
 
@@ -80,7 +84,9 @@ class TelegramApi:
         import urllib.request
 
         data = urllib.parse.urlencode({"chat_id": chat_id, "text": text}).encode()
-        urllib.request.urlopen(urllib.request.Request(self._url, data=data), timeout=self._timeout)
+        urllib.request.urlopen(
+            urllib.request.Request(self._url, data=data), timeout=self._timeout
+        )
 
 
 class ConversationRouter:
@@ -108,7 +114,9 @@ class ConversationRouter:
         self.pii_store = pii_store
         self.internal_secret_token = internal_secret_token
 
-    def validate_secret(self, headers: dict[str, str] | None, expected: str | None = None) -> bool:
+    def validate_secret(
+        self, headers: dict[str, str] | None, expected: str | None = None
+    ) -> bool:
         expected = (
             expected
             or self.secret_token
@@ -139,11 +147,23 @@ class ConversationRouter:
     def _internal_auth_error(self, event: dict[str, Any]) -> dict[str, Any] | None:
         """401 (secret inválido), 405 (método) e 503 (sem INTERNAL_SECRET_TOKEN configurada)."""
         if not self.internal_secret:
-            logger.warning("Internal endpoint unavailable: INTERNAL_SECRET_TOKEN not configured")
-            return {"statusCode": 503, "body": json.dumps({"error": "internal endpoint not configured"})}
-        method = event.get("httpMethod") or (event.get("requestContext") or {}).get("http", {}).get("method") or "POST"
+            logger.warning(
+                "Internal endpoint unavailable: INTERNAL_SECRET_TOKEN not configured"
+            )
+            return {
+                "statusCode": 503,
+                "body": json.dumps({"error": "internal endpoint not configured"}),
+            }
+        method = (
+            event.get("httpMethod")
+            or (event.get("requestContext") or {}).get("http", {}).get("method")
+            or "POST"
+        )
         if method != "POST":
-            return {"statusCode": 405, "body": json.dumps({"error": "method not allowed"})}
+            return {
+                "statusCode": 405,
+                "body": json.dumps({"error": "method not allowed"}),
+            }
         normalized = {k.lower(): v for k, v in (event.get("headers") or {}).items()}
         if normalized.get("x-internal-secret") != self.internal_secret:
             logger.warning("Internal endpoint rejected: invalid secret")
@@ -189,7 +209,9 @@ class ConversationRouter:
 
         conversation.current_state = state
         conversation.pii_masked = True
-        conversation.messages.append({"role": "agent", "text": response, "at": utc_now_iso()})
+        conversation.messages.append(
+            {"role": "agent", "text": response, "at": utc_now_iso()}
+        )
         self.store.save(lead, conversation)
 
         if message.get("voice") and self.sqs and self.voice_queue_url:
@@ -209,7 +231,10 @@ class ConversationRouter:
         if self.telegram:
             self.telegram.send_message(chat.get("id"), response)
 
-        return {"statusCode": 200, "body": json.dumps({"ok": True, "state": conversation.current_state})}
+        return {
+            "statusCode": 200,
+            "body": json.dumps({"ok": True, "state": conversation.current_state}),
+        }
 
     def handle_internal_inbound_text(self, event: dict[str, Any]) -> dict[str, Any]:
         """Re-injeção de texto (u2/u4): POST {telegram_user_id, session_id, text}.
@@ -239,18 +264,25 @@ class ConversationRouter:
             return {
                 "statusCode": 400,
                 "body": json.dumps(
-                    {"error": "invalid body: telegram_user_id (int), session_id (str) e text (str) obrigatórios"}
+                    {
+                        "error": "invalid body: telegram_user_id (int), session_id (str) e text (str) obrigatórios"
+                    }
                 ),
             }
 
         lead, conversation = self.store.get_by_telegram_user(telegram_user_id)
-        if lead is not None and conversation is not None and conversation.session_id != session_id:
+        if (
+            lead is not None
+            and conversation is not None
+            and conversation.session_id != session_id
+        ):
             stored = self.store.get_conversation(lead.lead_id, session_id)
             if stored is not None:
                 conversation = stored
             else:
                 logger.info(
-                    "internal inbound-text: session_id=%s not found; using stored session", session_id
+                    "internal inbound-text: session_id=%s not found; using stored session",
+                    session_id,
                 )
         if lead is None or conversation is None:
             lead, conversation, _ = self.store.get_or_create(telegram_user_id)
@@ -258,7 +290,9 @@ class ConversationRouter:
         response, state = self._process_lead_message(lead, conversation, text)
         conversation.current_state = state
         conversation.pii_masked = True
-        conversation.messages.append({"role": "agent", "text": response, "at": utc_now_iso()})
+        conversation.messages.append(
+            {"role": "agent", "text": response, "at": utc_now_iso()}
+        )
         self.store.save(lead, conversation)
         return {
             "statusCode": 200,
@@ -299,17 +333,26 @@ class ConversationRouter:
             return {
                 "statusCode": 400,
                 "body": json.dumps(
-                    {"error": "invalid body: lead_id (str), session_id (str) e stage (str) obrigatórios"}
+                    {
+                        "error": "invalid body: lead_id (str), session_id (str) e stage (str) obrigatórios"
+                    }
                 ),
             }
         if stage not in KANBAN_STAGE_ORDER:
-            return {"statusCode": 400, "body": json.dumps({"error": f"invalid stage: {stage}"})}
+            return {
+                "statusCode": 400,
+                "body": json.dumps({"error": f"invalid stage: {stage}"}),
+            }
         lead = self.store.get_lead(lead_id)
         if lead is None:
             return {"statusCode": 404, "body": json.dumps({"error": "lead not found"})}
 
         current_stage = KANBAN_STATUS_MAP.get(lead.status, lead.status)
-        current_idx = KANBAN_STAGE_ORDER.index(current_stage) if current_stage in KANBAN_STAGE_ORDER else -1
+        current_idx = (
+            KANBAN_STAGE_ORDER.index(current_stage)
+            if current_stage in KANBAN_STAGE_ORDER
+            else -1
+        )
         new_idx = KANBAN_STAGE_ORDER.index(stage)
         if new_idx >= current_idx:
             lead.status = stage
@@ -324,16 +367,23 @@ class ConversationRouter:
                 stage,
             )
             applied = current_stage
-        return {"statusCode": 200, "body": json.dumps({"ok": True, "lead_id": lead_id, "stage": applied})}
+        return {
+            "statusCode": 200,
+            "body": json.dumps({"ok": True, "lead_id": lead_id, "stage": applied}),
+        }
 
-    def _process_lead_message(self, lead: Any, conversation: Any, text: str) -> tuple[str, str]:
+    def _process_lead_message(
+        self, lead: Any, conversation: Any, text: str
+    ) -> tuple[str, str]:
         """Guard → máscara → fluxo → handoff do CRM. Retorna (resposta, estado)."""
         violation, reason = self.security.guard(text)
         if violation:
             logger.warning("Guardrail violation: %s", reason)
             return FALLBACK_MESSAGE, conversation.current_state
         masked = self.security.mask(text, session_id=conversation.session_id)
-        conversation.messages.append({"role": "lead", "text": masked, "at": utc_now_iso()})
+        conversation.messages.append(
+            {"role": "lead", "text": masked, "at": utc_now_iso()}
+        )
         flow_state = {
             "session_id": conversation.session_id,
             "lead_id": lead.lead_id,
@@ -347,7 +397,9 @@ class ConversationRouter:
         response = flow_state.get("response", "")
         state = flow_state.get("current_state", conversation.current_state)
         # Consentimento só é gravado a partir da decisão do lead no fluxo (LGPD R6).
-        conversation.consent_recorded = flow_state.get("consent_recorded", conversation.consent_recorded)
+        conversation.consent_recorded = flow_state.get(
+            "consent_recorded", conversation.consent_recorded
+        )
         lead.intent = flow_state.get("intent", lead.intent)
         score = flow_state.get("score")
         if score is not None:
@@ -364,7 +416,9 @@ class ConversationRouter:
         conversation.context = flow_state.get("context", conversation.context)
         return response, state
 
-    def _enqueue_crm(self, lead: Any, conversation: Any, flow_state: dict[str, Any] | None = None) -> None:
+    def _enqueue_crm(
+        self, lead: Any, conversation: Any, flow_state: dict[str, Any] | None = None
+    ) -> None:
         if not self.sqs or not self.crm_queue_url:
             return
         contact: dict[str, list[str]] = {}
@@ -417,7 +471,10 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
     pii_store = None
     if key_id := os.environ.get("PII_KMS_KEY_ID"):
         pii_store = KmsPiiRegistry(
-            dynamodb, os.environ.get("PII_TABLE", "sdr-pii"), boto3.client("kms"), key_id
+            dynamodb,
+            os.environ.get("PII_TABLE", "sdr-pii"),
+            boto3.client("kms"),
+            key_id,
         )
 
     security = SecurityLayer(pii_store=pii_store)
@@ -427,11 +484,14 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
     llm_key = _llm_api_key() if _HAS_LLM else None
     llm_classifier = None
     if llm_key:
+
         def llm_classify(message: str) -> tuple[str, float]:
             try:
                 return _llm_classify_intent(message, api_key=llm_key)
             except Exception:
-                logger.warning("LLM classify falhou; usando regex como fallback", exc_info=True)
+                logger.warning(
+                    "LLM classify falhou; usando regex como fallback", exc_info=True
+                )
                 return SalesFlow._default_classify(message)
 
         llm_classifier = llm_classify
@@ -439,12 +499,20 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
     llm_reply = None
     llm_router = None
     if llm_key and _HAS_LLM:
+
         def llm_reply(
-            message: str, canned: str, lead_info: dict[str, Any], properties: list[dict[str, Any]], **kwargs: Any
+            message: str,
+            canned: str,
+            lead_info: dict[str, Any],
+            properties: list[dict[str, Any]],
+            **kwargs: Any,
         ) -> str:
             try:
                 return _llm_generate_reply(
-                    message, canned, lead_info, properties,
+                    message,
+                    canned,
+                    lead_info,
+                    properties,
                     api_key=llm_key,
                     favorite_property=kwargs.get("favorite_property"),
                     conversation_stage=kwargs.get("conversation_stage"),
@@ -454,14 +522,25 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
                     last_tool=kwargs.get("last_tool"),
                 )
             except Exception:
-                logger.warning("LLM reply falhou; usando resposta oficial como fallback", exc_info=True)
+                logger.warning(
+                    "LLM reply falhou; usando resposta oficial como fallback",
+                    exc_info=True,
+                )
                 return canned
 
         def llm_route(
-            message: str, lead_info: dict[str, Any], current_state: str
+            message: str,
+            lead_info: dict[str, Any],
+            current_state: str,
+            **kwargs: Any,
         ) -> dict[str, Any]:
             return _llm_extract_and_route(
-                message, lead_info, current_state, api_key=llm_key
+                message,
+                lead_info,
+                current_state,
+                api_key=llm_key,
+                shown_properties=kwargs.get("shown_properties"),
+                favorite_property=kwargs.get("favorite_property"),
             )
 
         llm_router = llm_route
@@ -471,10 +550,18 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
         llm_classify_intent=llm_classifier,
         reply_generator=llm_reply,
         llm_router=llm_router,
-        properties_rag=(lambda info: _search_properties(info, top_k=9)) if _HAS_LLM else None,
-        specialist_rotation=[s.strip() for s in os.environ.get("SPECIALIST_ROTATION", "").split(",") if s.strip()],
+        properties_rag=(lambda info: _search_properties(info, top_k=9))
+        if _HAS_LLM
+        else None,
+        specialist_rotation=[
+            s.strip()
+            for s in os.environ.get("SPECIALIST_ROTATION", "").split(",")
+            if s.strip()
+        ],
         specialist_fallback=os.environ.get("SPECIALIST_FALLBACK", "diretor"),
-        restriction_check=DynamoRestrictionCheck(dynamodb, os.environ.get("ALERTS_TABLE", "sdr-alerts")),
+        restriction_check=DynamoRestrictionCheck(
+            dynamodb, os.environ.get("ALERTS_TABLE", "sdr-alerts")
+        ),
     )
     router = ConversationRouter(
         store=store,

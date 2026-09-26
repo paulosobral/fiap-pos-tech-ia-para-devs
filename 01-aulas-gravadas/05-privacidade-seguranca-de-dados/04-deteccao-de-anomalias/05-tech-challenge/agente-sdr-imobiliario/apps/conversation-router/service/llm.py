@@ -15,6 +15,7 @@ Config (env, injetadas no deploy):
   LLM_API_KEY               chave do OpenRouter
   LLM_TIMEOUT               timeout da chamada em segundos (default 8)
 """
+
 from __future__ import annotations
 
 import json
@@ -73,7 +74,10 @@ def resolve_model(
     if ssm_param:
         try:
             import boto3
-            ssm = boto3.client("ssm", region_name=os.environ.get("AWS_REGION", "us-east-1"))
+
+            ssm = boto3.client(
+                "ssm", region_name=os.environ.get("AWS_REGION", "us-east-1")
+            )
             res = ssm.get_parameter(Name=ssm_param)
             val = res.get("Parameter", {}).get("Value")
             if val and val.strip():
@@ -161,7 +165,9 @@ def _completion(
             kwargs["response_format"] = response_format
         resp = litellm.completion(**kwargs)
         return resp["choices"][0]["message"]["content"]
-    return _urllib_completion(messages, api_key, model, max_tokens, temperature, response_format)
+    return _urllib_completion(
+        messages, api_key, model, max_tokens, temperature, response_format
+    )
 
 
 def _completion_with_fallback(
@@ -174,13 +180,19 @@ def _completion_with_fallback(
     response_format: dict[str, str] | None = None,
 ) -> str:
     try:
-        return _completion(messages, api_key, primary_model, max_tokens, temperature, response_format)
+        return _completion(
+            messages, api_key, primary_model, max_tokens, temperature, response_format
+        )
     except Exception:
         logger.warning(
             "Modelo primário %s falhou; tentando fallback %s",
-            primary_model, fallback_model, exc_info=True,
+            primary_model,
+            fallback_model,
+            exc_info=True,
         )
-        return _completion(messages, api_key, fallback_model, max_tokens, temperature, response_format)
+        return _completion(
+            messages, api_key, fallback_model, max_tokens, temperature, response_format
+        )
 
 
 def _urllib_completion(
@@ -211,12 +223,15 @@ def _urllib_completion(
         },
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=float(os.environ.get("LLM_TIMEOUT", "8"))) as resp:
+    with urllib.request.urlopen(
+        req, timeout=float(os.environ.get("LLM_TIMEOUT", "8"))
+    ) as resp:
         body = json.loads(resp.read().decode())
     return (body.get("choices") or [{}])[0].get("message", {}).get("content", "")
 
 
 # --- API pública -------------------------------------------------------------
+
 
 def classify_intent(
     message: str,
@@ -244,7 +259,9 @@ def classify_intent(
     intent, confidence = _parse(raw)
     if intent is None or confidence is None:
         raise ValueError("Resposta LLM sem intenção válida")
-    logger.info("LLM classify: intent=%s confidence=%.2f model=%s", intent, confidence, primary)
+    logger.info(
+        "LLM classify: intent=%s confidence=%.2f model=%s", intent, confidence, primary
+    )
     return intent, confidence
 
 
@@ -265,7 +282,11 @@ def generate_reply(
     rejected_properties: list[str] | None = None,
     last_tool: str | None = None,
 ) -> str:
-    primary = resolve_model(TIER_PRIMARY, explicit_model=model) if not force_complex else resolve_model(TIER_PRIMARY)
+    primary = (
+        resolve_model(TIER_PRIMARY, explicit_model=model)
+        if not force_complex
+        else resolve_model(TIER_PRIMARY)
+    )
     fallback = resolve_model(TIER_FALLBACK)
     complex_model = resolve_model(TIER_COMPLEX)
 
@@ -282,15 +303,35 @@ def generate_reply(
     lead = json.dumps(lead_info, ensure_ascii=False, default=str)[:800]
     props = json.dumps(
         [
-            {k: p.get(k) for k in ("title", "type", "class", "region", "area_util",
-                                   "price", "price_text", "vagas", "disponibilidade")}
+            {
+                k: p.get(k)
+                for k in (
+                    "title",
+                    "type",
+                    "class",
+                    "region",
+                    "area_util",
+                    "price",
+                    "price_text",
+                    "vagas",
+                    "disponibilidade",
+                )
+            }
             for p in properties
         ],
         ensure_ascii=False,
         default=str,
     )[:1500]
-    stage_line = f"ESTÁGIO DA CONVERSA: {conversation_stage}" if conversation_stage else "ESTÁGIO DA CONVERSA: (desconhecido)"
-    fav_line = f"IMÓVEL FAVORITO DO LEAD: {favorite_property}" if favorite_property else "IMÓVEL FAVORITO DO LEAD: (nenhum)"
+    stage_line = (
+        f"ESTÁGIO DA CONVERSA: {conversation_stage}"
+        if conversation_stage
+        else "ESTÁGIO DA CONVERSA: (desconhecido)"
+    )
+    fav_line = (
+        f"IMÓVEL FAVORITO DO LEAD: {favorite_property}"
+        if favorite_property
+        else "IMÓVEL FAVORITO DO LEAD: (nenhum)"
+    )
     shown_line = (
         f"IMÓVEIS JÁ EXIBIDOS: {shown_properties_count}"
         if shown_properties_count is not None
@@ -374,7 +415,14 @@ VALID_TOOLS = (
     "unclear",
 )
 
-_KNOWN_LEAD_FIELDS = ("area", "region", "budget", "deadline", "people_count", "decision_maker")
+_KNOWN_LEAD_FIELDS = (
+    "area",
+    "region",
+    "budget",
+    "deadline",
+    "people_count",
+    "decision_maker",
+)
 
 _ROUTER_SYSTEM_PROMPT = (
     "Você é o roteador de conversa de um SDR imobiliário B2B. A cada mensagem do lead, "
@@ -390,8 +438,9 @@ _ROUTER_SYSTEM_PROMPT = (
     "('cadê as opções','mostra tudo','lista todas','tem mais opções?'); "
     "arguments.list_scope='all' se pedir tudo/catálogo completo, senão 'filtered'.\n"
     "   - property_detail: pergunta detalhe de imóvel já mostrado "
-    "('quanto custa?','tem estacionamento?','qual andar?','quantas vagas?','condomínio quanto?'); "
-    "arguments.property_ref opcional.\n"
+    "('quanto custa?','tem estacionamento?','qual andar?','quantas vagas?','condomínio quanto?',"
+    "'checa a disponibilidade','disponível?','reservado?'); "
+    "arguments.property_ref opcional — use o título do imóvel se souber qual é.\n"
     "   - compare_properties: quer COMPARAR opções já mostradas "
     "('diferença entre 1 e 2','compara as duas'); arguments.property_a/property_b opcionais.\n"
     "   - refine_search: AJUSTAR critérios ('mais barato','outra região','sem estacionamento?').\n"
@@ -407,6 +456,12 @@ _ROUTER_SYSTEM_PROMPT = (
     "REGRA: favorito ≠ visita. 'Gostei da Torre Nova' → favorite_property='Torre Nova', "
     "visit_interest=false. 'Quero conhecer a Torre Nova' → favorite + visit_interest=true.\n"
     "favorite_property só pode apontar para imóveis já EXIBIDOS ao lead.\n"
+    "REFERÊNCIAS: o lead pode dizer 'a segunda opção', 'o segundo', 'dele', 'desse'. "
+    "Se há IMÓVEIS JÁ EXIBIDOS na lista abaixo, resolva a referência ao título correto. "
+    "Se há um IMÓVEL FAVORITO marcado e o lead diz 'dele'/'desse'/'desse imóvel', "
+    "favorite_property já está resolvido — use o título do favorito em property_ref.\n"
+    "DISPONIBILIDADE: perguntas como 'checa a disponibilidade', 'está disponível?', "
+    "'reservado?' usam tool property_detail — nunca unclear quando há favorito.\n"
     'Responda APENAS com JSON: {"thought":"...","tool":"<tool>",'
     '"arguments":{},"lead_info":{},"memory_updates":'
     '{"favorite_property":null,"visit_interest":false}}.'
@@ -419,6 +474,8 @@ def extract_and_route(
     current_state: str,
     api_key: str,
     model: str | None = None,
+    shown_properties: list[dict[str, Any]] | None = None,
+    favorite_property: str | None = None,
 ) -> dict[str, Any]:
     """Uma chamada LLM (Tier 1): extrai deltas de lead_info + escolhe UMA tool
     do enum fixo (VALID_TOOLS) com arguments/memory_updates. A validação de
@@ -431,13 +488,27 @@ def extract_and_route(
     """
     primary = resolve_model(TIER_PRIMARY, explicit_model=model)
     fallback = resolve_model(TIER_FALLBACK)
-    context = json.dumps(
-        {"lead_info_atual": lead_info, "estado_atual": current_state}, ensure_ascii=False, default=str
-    )[:600]
+    context_data: dict[str, Any] = {
+        "lead_info_atual": lead_info,
+        "estado_atual": current_state,
+    }
+    # Incluir imóveis exibidos e favorito para o LLM resolver referências
+    # anafóricas ("dele", "a segunda", "desse imóvel") e escolher property_detail.
+    if shown_properties:
+        context_data["imoveis_exibidos"] = [
+            {"index": i + 1, "title": p.get("title"), "region": p.get("region")}
+            for i, p in enumerate(shown_properties[:9])
+        ]
+    if favorite_property:
+        context_data["imovel_favorito"] = favorite_property
+    context = json.dumps(context_data, ensure_ascii=False, default=str)[:1200]
     raw = _completion_with_fallback(
         messages=[
             {"role": "system", "content": _ROUTER_SYSTEM_PROMPT},
-            {"role": "user", "content": f"CONTEXTO: {context}\n\nMENSAGEM DO LEAD: {message}"},
+            {
+                "role": "user",
+                "content": f"CONTEXTO: {context}\n\nMENSAGEM DO LEAD: {message}",
+            },
         ],
         api_key=api_key,
         primary_model=primary,
@@ -465,7 +536,11 @@ def _parse_extract_and_route(raw: str) -> dict[str, Any]:
     extracted = data.get("lead_info")
     if not isinstance(extracted, dict):
         extracted = {}
-    clean = {k: v for k, v in extracted.items() if k in _KNOWN_LEAD_FIELDS and v not in (None, "")}
+    clean = {
+        k: v
+        for k, v in extracted.items()
+        if k in _KNOWN_LEAD_FIELDS and v not in (None, "")
+    }
     memory = data.get("memory_updates")
     if not isinstance(memory, dict):
         memory = {}

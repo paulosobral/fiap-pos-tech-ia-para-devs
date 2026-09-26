@@ -26,7 +26,9 @@ INTENT_CONFIRM_QUESTION = "Você está buscando compra, locação ou investiment
 # Extração sobre texto JÁ MASCARADO (placeholders [NOME]/[EMAIL] não colidem com os padrões).
 _BUDGET_NUMBER_RE = r"\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:[.,]\d+)?"
 _BUDGET_UNIT_RE_TEXT = r"mil(?:h[õo]es|h[ãa]o)?|k"
-_AREA_RE = re.compile(r"\b(\d+(?:[.,]\d+)?)\s*(?:m²|m2|metros quadrados|metro quadrado)", re.IGNORECASE)
+_AREA_RE = re.compile(
+    r"\b(\d+(?:[.,]\d+)?)\s*(?:m²|m2|metros quadrados|metro quadrado)", re.IGNORECASE
+)
 _BUDGET_PREFIXED_RE = re.compile(
     rf"(?:r\$\s*|orçamento\s*(?:de|:)?\s*)({_BUDGET_NUMBER_RE})\s*({_BUDGET_UNIT_RE_TEXT})?",
     re.IGNORECASE,
@@ -39,19 +41,43 @@ _BUDGET_CEILING_RE = re.compile(
     rf"(?:at[ée]|até\s+r\$?)\s*({_BUDGET_NUMBER_RE})\s*(?:reais|r\$)?",
     re.IGNORECASE,
 )
-_DEADLINE_RE = re.compile(r"(?:prazo\s*(?:de|:)?\s*)?(\d+)\s*(m[êe]s(?:es)?|semanas?|dias?)", re.IGNORECASE)
-_PEOPLE_RE = re.compile(r"(\d+)\s*(?:pessoas|colaboradores|usuários|usuarios|funcionários|funcionarios)", re.IGNORECASE)
-_REGION_RE = re.compile(
-    r"(?:regi[ãa]o|bairro|zona)\s+(?:d[oa]s?|de|em)?\s*([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)*)", re.IGNORECASE
+_DEADLINE_RE = re.compile(
+    r"(?:prazo\s*(?:de|:)?\s*)?(\d+)\s*(m[êe]s(?:es)?|semanas?|dias?)", re.IGNORECASE
 )
-_REGION_CONTEXT_RE = re.compile(r"\b(?:em|na|no)\s+([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)?)", re.IGNORECASE)
+_PEOPLE_RE = re.compile(
+    r"(\d+)\s*(?:pessoas|colaboradores|usuários|usuarios|funcionários|funcionarios)",
+    re.IGNORECASE,
+)
+_REGION_RE = re.compile(
+    r"(?:regi[ãa]o|bairro|zona)\s+(?:d[oa]s?|de|em)?\s*([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)*)",
+    re.IGNORECASE,
+)
+_REGION_CONTEXT_RE = re.compile(
+    r"\b(?:em|na|no)\s+([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)?)", re.IGNORECASE
+)
 _DECISOR_YES_RE = re.compile(
     r"sou\s+(?:o\s+)?(?:decisor|propriet[aá]rio)|eu\s+(?:que\s+)?decido|quem\s+decide\s+sou\s+eu",
     re.IGNORECASE,
 )
-_DECISOR_NO_RE = re.compile(r"n[ãa]o\s+(?:sou\s+(?:o\s+)?decisor|decido)", re.IGNORECASE)
-_OPTIONS_REQUEST_RE = re.compile(r"\b(?:opç(?:ão|ões)|imóveis|imoveis|mostrar|mostre|cad[êe])\b", re.IGNORECASE)
-_REGION_STOP_WORDS = ("com", "e", "para", "pra", "no", "na", "do", "da", "até", "por", "ou")
+_DECISOR_NO_RE = re.compile(
+    r"n[ãa]o\s+(?:sou\s+(?:o\s+)?decisor|decido)", re.IGNORECASE
+)
+_OPTIONS_REQUEST_RE = re.compile(
+    r"\b(?:opç(?:ão|ões)|imóveis|imoveis|mostrar|mostre|cad[êe])\b", re.IGNORECASE
+)
+_REGION_STOP_WORDS = (
+    "com",
+    "e",
+    "para",
+    "pra",
+    "no",
+    "na",
+    "do",
+    "da",
+    "até",
+    "por",
+    "ou",
+)
 
 _FAVORITE_LIKE_RE = re.compile(
     r"(?:gostei\s+da?s?\s+|quero\s+a\s+|prefiro\s+a\s+)(\d+|[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9 \-]+)",
@@ -65,6 +91,7 @@ _REJECT_LIKE_RE = re.compile(
 
 class FlowState(TypedDict, total=False):
     """Estado do grafo LangGraph — um turno por invocação."""
+
     current_state: str
     message: str
     context: dict[str, Any]
@@ -100,7 +127,11 @@ def extract_lead_structure(message: str) -> dict[str, Any]:
     info: dict[str, Any] = {}
     if area := _AREA_RE.search(message):
         info["area"] = area.group(0)
-    if budget := (_BUDGET_PREFIXED_RE.search(message) or _BUDGET_UNIT_RE.search(message) or _BUDGET_CEILING_RE.search(message)):
+    if budget := (
+        _BUDGET_PREFIXED_RE.search(message)
+        or _BUDGET_UNIT_RE.search(message)
+        or _BUDGET_CEILING_RE.search(message)
+    ):
         info["budget"] = budget.group(0)
     if deadline := _DEADLINE_RE.search(message):
         info["deadline"] = deadline.group(0)
@@ -176,8 +207,14 @@ class SalesFlow:
 
         g.set_entry_point("preprocess")
         g.add_conditional_edges("preprocess", self._route_state)
-        for node in ("greeting", "elicitation", "conversation", "scheduling",
-                      "handoff", "followup"):
+        for node in (
+            "greeting",
+            "elicitation",
+            "conversation",
+            "scheduling",
+            "handoff",
+            "followup",
+        ):
             g.add_edge(node, "postprocess")
         g.add_edge("postprocess", END)
         return g.compile()
@@ -202,7 +239,9 @@ class SalesFlow:
         # Legacy ADR-011 action path — destinations only; conversation derives subnode itself
         # (LangGraph may drop mutations made during conditional-edge routing).
         action = state.get("_router_action")
-        if action == "request_human" and _OPTIONS_REQUEST_RE.search(state.get("message", "")):
+        if action == "request_human" and _OPTIONS_REQUEST_RE.search(
+            state.get("message", "")
+        ):
             return "conversation"
         if action == "request_human":
             return "handoff"
@@ -211,18 +250,31 @@ class SalesFlow:
         if (
             action in (None, "provide_info", "unclear")
             and current in ("recommendation", "discovery")
-            and re.search(r"\b(?:estacionamento|vagas?|andar|pre[çc]o|valor|quanto|detalhes?|tem|possui)\b", state.get("message", ""), re.IGNORECASE)
+            and re.search(
+                r"\b(?:estacionamento|vagas?|andar|pre[çc]o|valor|quanto|detalhes?|tem|possui)\b",
+                state.get("message", ""),
+                re.IGNORECASE,
+            )
         ):
             return "conversation"
         if action == "visit_interest":
             if self.ready_for_scheduling(state):
-                shown = max(state.get("shown_properties_count", 0) or 0, len(state.get("properties") or []))
+                shown = max(
+                    state.get("shown_properties_count", 0) or 0,
+                    len(state.get("properties") or []),
+                )
                 if shown >= 3:
                     return "scheduling"
             return "conversation"
         if action in ("refine_search", "compare_properties"):
             return "conversation"
-        if current in ("intent", "qualification", "discovery", "recommendation", "conversation"):
+        if current in (
+            "intent",
+            "qualification",
+            "discovery",
+            "recommendation",
+            "conversation",
+        ):
             return "conversation"
         return current
 
@@ -236,18 +288,46 @@ class SalesFlow:
         if (
             action in (None, "provide_info", "unclear")
             and current in ("recommendation", "discovery")
-            and re.search(r"\b(?:estacionamento|vagas?|andar|pre[çc]o|valor|quanto|detalhes?|tem|possui)\b", message, re.IGNORECASE)
+            and re.search(
+                r"\b(?:estacionamento|vagas?|andar|pre[çc]o|valor|quanto|detalhes?|tem|possui)\b",
+                message,
+                re.IGNORECASE,
+            )
         ):
             return "discovery"
         if action == "request_human" and _OPTIONS_REQUEST_RE.search(message):
-            return current if current in (
-                "intent", "qualification", "discovery", "recommendation", "conversation"
-            ) else "recommendation"
+            return (
+                current
+                if current
+                in (
+                    "intent",
+                    "qualification",
+                    "discovery",
+                    "recommendation",
+                    "conversation",
+                )
+                else "recommendation"
+            )
         if action == "visit_interest":
-            return current if current in (
-                "intent", "qualification", "discovery", "recommendation", "conversation"
-            ) else "recommendation"
-        if current in ("intent", "qualification", "discovery", "recommendation", "conversation"):
+            return (
+                current
+                if current
+                in (
+                    "intent",
+                    "qualification",
+                    "discovery",
+                    "recommendation",
+                    "conversation",
+                )
+                else "recommendation"
+            )
+        if current in (
+            "intent",
+            "qualification",
+            "discovery",
+            "recommendation",
+            "conversation",
+        ):
             return current
         return "recommendation"
 
@@ -258,7 +338,9 @@ class SalesFlow:
         if tool is not None:
             return tool == "request_options"
         action = state.get("_router_action")
-        if action == "request_human" and _OPTIONS_REQUEST_RE.search(state.get("message", "")):
+        if action == "request_human" and _OPTIONS_REQUEST_RE.search(
+            state.get("message", "")
+        ):
             return True
         if action is not None:
             return action == "request_options"
@@ -277,7 +359,9 @@ class SalesFlow:
     def _node_preprocess(self, state: FlowState) -> FlowState:
         message = state.get("message", "")
         context = state.setdefault("context", {})
-        extracted = extract_lead_structure(message)  # baseline regex — rede de segurança
+        extracted = extract_lead_structure(
+            message
+        )  # baseline regex — rede de segurança
         if extracted:
             stored = dict(context.get("lead_info") or {})
             stored.update(extracted)
@@ -307,7 +391,13 @@ class SalesFlow:
         state["_last_tool"] = None
         if self.llm_router is not None:
             try:
-                result = self.llm_router(message, merged, state.get("current_state", "greeting"))
+                result = self.llm_router(
+                    message,
+                    merged,
+                    state.get("current_state", "greeting"),
+                    shown_properties=state.get("properties") or [],
+                    favorite_property=state.get("favorite_property"),
+                )
                 if isinstance(result, dict) and "tool" in result:
                     from service.tools import execute_tool
                     from service.validation import validate_router_output
@@ -317,7 +407,10 @@ class SalesFlow:
                     state["_last_tool"] = validated["tool"]
                     llm_deltas = validated.get("lead_info") or {}
                     merged = {**merged, **llm_deltas}
-                    context["lead_info"] = {**(context.get("lead_info") or {}), **llm_deltas}
+                    context["lead_info"] = {
+                        **(context.get("lead_info") or {}),
+                        **llm_deltas,
+                    }
                     mem = validated.get("memory_updates") or {}
                     if mem.get("favorite_property"):
                         state["favorite_property"] = mem["favorite_property"]
@@ -334,7 +427,9 @@ class SalesFlow:
                         try:
                             from service.properties_catalog import search_properties
 
-                            return search_properties(info, top_k=top_k, list_scope=scope)
+                            return search_properties(
+                                info, top_k=top_k, list_scope=scope
+                            )
                         except Exception:
                             props = self.properties_rag(info) or []
                             return list(props)[:top_k]
@@ -343,7 +438,9 @@ class SalesFlow:
                         validated["tool"],
                         args,
                         state,
-                        search_fn=_search_fn if self.properties_rag is not None else None,
+                        search_fn=_search_fn
+                        if self.properties_rag is not None
+                        else None,
                         memory_updates=mem,
                         message=message,
                     )
@@ -355,7 +452,10 @@ class SalesFlow:
                     # Legacy action contract (ADR-011)
                     llm_deltas = (result or {}).get("lead_info") or {}
                     merged = {**merged, **llm_deltas}
-                    context["lead_info"] = {**(context.get("lead_info") or {}), **llm_deltas}
+                    context["lead_info"] = {
+                        **(context.get("lead_info") or {}),
+                        **llm_deltas,
+                    }
                     state["_router_action"] = (result or {}).get("action")
                     if state["_router_action"] == "visit_interest":
                         state["visit_interest"] = True
@@ -397,12 +497,26 @@ class SalesFlow:
                 context["rejected_properties"] = rejected
 
     @staticmethod
-    def _match_property_token(token: str, properties: list[dict[str, Any]]) -> str | None:
-        if token.isdigit():
-            idx = int(token) - 1
-            if 0 <= idx < len(properties):
-                return properties[idx].get("title") or f"Imóvel {token}"
-        token_l = token.lower()
+    def _match_property_token(
+        token: str, properties: list[dict[str, Any]]
+    ) -> str | None:
+        token_l = token.lower().strip()
+        # 1. Resolução ordinal ("segunda opção", "2", "o segundo")
+        from service.validation import _ORDINAL_MAP as _ORD, _norm as _vnorm
+
+        norm_token = _vnorm(token_l)
+        idx = _ORD.get(norm_token)
+        if idx is not None and idx < len(properties):
+            return properties[idx].get("title") or f"Imóvel {idx + 1}"
+        for key, val in _ORD.items():
+            if key in norm_token and val < len(properties):
+                return properties[val].get("title") or f"Imóvel {val + 1}"
+        # 2. Dígito direto ("1", "2", "3")
+        if token_l.isdigit():
+            i = int(token_l) - 1
+            if 0 <= i < len(properties):
+                return properties[i].get("title") or f"Imóvel {token_l}"
+        # 3. Substring no título
         for p in properties:
             title = str(p.get("title") or "")
             if title and title.lower() in token_l:
@@ -437,9 +551,11 @@ class SalesFlow:
             elif tr is not None and tr.detail:
                 p = tr.detail
                 price = p.get("price_text") or p.get("price") or "sob consulta"
+                disp = p.get("disponibilidade", "")
+                disp_line = f" Disponibilidade: {disp}." if disp else ""
                 state["response"] = (
                     f"{p.get('title', 'Imóvel')} — {p.get('region', '')}, "
-                    f"{p.get('area_util', '')} m², {price}. "
+                    f"{p.get('area_util', '')} m², {price}.{disp_line} "
                     "Quer que eu compare com outra opção?"
                 )
             else:
@@ -464,7 +580,9 @@ class SalesFlow:
                     "Quer que eu mostre mais opções?"
                 )
             else:
-                state["response"] = "Preciso de dois imóveis já mostrados para comparar."
+                state["response"] = (
+                    "Preciso de dois imóveis já mostrados para comparar."
+                )
             return state
         if tool in ("request_options", "refine_search"):
             if tr is not None and tr.properties:
@@ -474,7 +592,11 @@ class SalesFlow:
                 self._remember_shown(state)
                 listed = "\n".join(
                     f"{i + 1}. {p.get('title', 'Imóvel')} — {p.get('region', '')}, {p.get('area_util', '')} m²"
-                    for i, p in enumerate(state["properties"][:9] if tool == "request_options" else state["properties"][:3])
+                    for i, p in enumerate(
+                        state["properties"][:9]
+                        if tool == "request_options"
+                        else state["properties"][:3]
+                    )
                 )
                 state["response"] = (
                     f"Separei algumas opções:\n{listed}\n\n"
@@ -537,7 +659,9 @@ class SalesFlow:
             return state
         state["current_state"] = "intent"
         state["consent_recorded"] = True
-        state["response"] = "Para indicar as melhores opções, você busca compra, locação ou investimento?"
+        state["response"] = (
+            "Para indicar as melhores opções, você busca compra, locação ou investimento?"
+        )
         return state
 
     def _node_intent(self, state: FlowState) -> FlowState:
@@ -584,7 +708,9 @@ class SalesFlow:
             state["current_state"] = "recommendation"
             state["lead_qualified"] = True
             state["route"] = self.qualifier.route(
-                self._area_m2(info.get("area")), self.specialist_rotation, self.specialist_fallback
+                self._area_m2(info.get("area")),
+                self.specialist_rotation,
+                self.specialist_fallback,
             )
             state["response"] = self.qualifier.explain(result)
         else:
@@ -616,7 +742,11 @@ class SalesFlow:
     def _build_early_recommendation(self, state: FlowState, region: str) -> str:
         """Mostra imóveis imediatamente quando a intenção é clara — SDR consultivo."""
         if self.properties_rag is None:
-            return f"Perfeito! Tenho opções em {region}. Posso te mostrar agora?" if region else "Perfeito! Posso te mostrar as opções."
+            return (
+                f"Perfeito! Tenho opções em {region}. Posso te mostrar agora?"
+                if region
+                else "Perfeito! Posso te mostrar as opções."
+            )
         properties = self.properties_rag(state.get("lead_info", {}))
         if not properties:
             return "Perfeito! Vou buscar as melhores opções pra você."
@@ -637,12 +767,18 @@ class SalesFlow:
         if self._wants_options(state) and self.properties_rag is not None:
             return self._show_more_options(state)
         focus = state.get("favorite_property") or (
-            (state.get("properties") or [{}])[0].get("title") if state.get("properties") else None
+            (state.get("properties") or [{}])[0].get("title")
+            if state.get("properties")
+            else None
         )
         message = state.get("message", "").lower()
         props = state.get("properties") or []
         focus_prop = next(
-            (p for p in props if focus and str(p.get("title", "")).lower() == str(focus).lower()),
+            (
+                p
+                for p in props
+                if focus and str(p.get("title", "")).lower() == str(focus).lower()
+            ),
             props[0] if props else None,
         )
         if focus_prop:
@@ -650,14 +786,27 @@ class SalesFlow:
             if "estacionamento" in message or "vaga" in message:
                 vagas = focus_prop.get("vagas")
                 detail_bits.append(
-                    f"estacionamento com {vagas} vaga(s)" if vagas is not None else "estacionamento sob consulta"
+                    f"estacionamento com {vagas} vaga(s)"
+                    if vagas is not None
+                    else "estacionamento sob consulta"
                 )
             if "andar" in message:
-                detail_bits.append(f"andar: {focus_prop.get('andar') or 'sob consulta'}")
+                detail_bits.append(
+                    f"andar: {focus_prop.get('andar') or 'sob consulta'}"
+                )
             if "preço" in message or "valor" in message or "quanto" in message:
-                detail_bits.append(f"valor: {focus_prop.get('price_text') or focus_prop.get('price') or 'sob consulta'}")
-            detail = "; ".join(detail_bits) if detail_bits else (
-                f"{focus_prop.get('title')} — {focus_prop.get('region', '')}, {focus_prop.get('area_util', '')} m²"
+                detail_bits.append(
+                    f"valor: {focus_prop.get('price_text') or focus_prop.get('price') or 'sob consulta'}"
+                )
+            if "disponi" in message or "reservad" in message or "livre" in message:
+                disp = focus_prop.get("disponibilidade", "sob consulta")
+                detail_bits.append(f"disponibilidade: {disp}")
+            detail = (
+                "; ".join(detail_bits)
+                if detail_bits
+                else (
+                    f"{focus_prop.get('title')} — {focus_prop.get('region', '')}, {focus_prop.get('area_util', '')} m²"
+                )
             )
             state["response"] = (
                 f"Sobre {focus_prop.get('title', 'o imóvel')}: {detail}. "
@@ -674,7 +823,9 @@ class SalesFlow:
     def _node_recommendation(self, state: FlowState) -> FlowState:
         tool = state.get("_router_tool")
         action = state.get("_router_action")
-        if (tool == "compare_properties" or action == "compare_properties") and state.get("properties"):
+        if (
+            tool == "compare_properties" or action == "compare_properties"
+        ) and state.get("properties"):
             props = state["properties"][:3]
             lines = [
                 f"- {p.get('title', 'Imóvel')}: {p.get('region', '')}, "
@@ -726,7 +877,10 @@ class SalesFlow:
                 "ou se quer refinar a busca. Assim consigo preparar a visita ideal."
             )
             return state
-        shown_count = max(state.get("shown_properties_count", 0) or 0, len(state.get("properties") or []))
+        shown_count = max(
+            state.get("shown_properties_count", 0) or 0,
+            len(state.get("properties") or []),
+        )
         if shown_count < 3 and not state.get("lead_id"):
             state["current_state"] = "recommendation"
             state["response"] = (
@@ -737,13 +891,19 @@ class SalesFlow:
         if self._is_restricted(state.get("lead_id")):
             state["scheduling_restricted"] = True
             state["current_state"] = "handoff"
-            state["response"] = "O agendamento da visita precisa de confirmação do corretor; em breve ele fará contato."
+            state["response"] = (
+                "O agendamento da visita precisa de confirmação do corretor; em breve ele fará contato."
+            )
             return state
         if self.scheduler is None:
             state["current_state"] = "handoff"
-            state["response"] = "Agendamento registrado. Vou repassar seu perfil ao corretor."
+            state["response"] = (
+                "Agendamento registrado. Vou repassar seu perfil ao corretor."
+            )
             return state
-        result = self.scheduler({"lead_info": state.get("lead_info", {}), "when": message})
+        result = self.scheduler(
+            {"lead_info": state.get("lead_info", {}), "when": message}
+        )
         if not result.get("confirmed"):
             state["response"] = "Data/hora indisponível. Podemos tentar outro horário?"
             return state
@@ -752,7 +912,9 @@ class SalesFlow:
         ics = _build_ics(result)
         if ics:
             state["ics_invite"] = ics
-        state["response"] = "Agendamento confirmado! Enviarei o convite e o resumo ao corretor."
+        state["response"] = (
+            "Agendamento confirmado! Enviarei o convite e o resumo ao corretor."
+        )
         return state
 
     def _show_more_options(self, state: FlowState) -> FlowState:
@@ -786,14 +948,18 @@ class SalesFlow:
             return
         ctx = state.setdefault("context", {})
         ctx["properties"] = list(props)
-        ctx["shown_properties_count"] = int(state.get("shown_properties_count") or len(props))
+        ctx["shown_properties_count"] = int(
+            state.get("shown_properties_count") or len(props)
+        )
 
     def _node_handoff(self, state: FlowState) -> FlowState:
         if self.handoff_builder is not None:
             state["handoff_summary"] = self.handoff_builder(state)
         state["current_state"] = "handoff"
         state["done"] = True
-        state.setdefault("response", "Resumo enviado ao corretor. Obrigado pelo contato!")
+        state.setdefault(
+            "response", "Resumo enviado ao corretor. Obrigado pelo contato!"
+        )
         return state
 
     def _node_followup(self, state: FlowState) -> FlowState:
@@ -803,7 +969,9 @@ class SalesFlow:
             state["followup_deferred"] = True
             state["current_state"] = "followup"
             state["done"] = True
-            state["response"] = "Anotado! Seu atendimento seguirá com o corretor responsável."
+            state["response"] = (
+                "Anotado! Seu atendimento seguirá com o corretor responsável."
+            )
             return state
         state["current_state"] = "followup"
         state["done"] = True
@@ -835,7 +1003,9 @@ class SalesFlow:
             if generated and generated.strip():
                 state["response"] = generated.strip()
         except Exception:
-            logger.warning("LLM reply falhou; mantendo resposta oficial (fallback)", exc_info=True)
+            logger.warning(
+                "LLM reply falhou; mantendo resposta oficial (fallback)", exc_info=True
+            )
         return state
 
     # --- Invocação ---
@@ -904,7 +1074,9 @@ class SalesFlow:
         try:
             return bool(self.restriction_check(lead_id))
         except Exception:
-            logger.warning("restriction check failed; treating as unrestricted (fail-open)")
+            logger.warning(
+                "restriction check failed; treating as unrestricted (fail-open)"
+            )
             return False
 
     @staticmethod
@@ -920,6 +1092,7 @@ class SalesFlow:
 
 
 # --- ICS convite (FR-05) -----------------------------------------------------
+
 
 def _build_ics(appointment: dict[str, Any]) -> str | None:
     """Gera convite .ics (RFC 5545) a partir do dict de agendamento."""

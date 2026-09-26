@@ -15,8 +15,12 @@ def test_llm_key_env_override(monkeypatch: pytest.MonkeyPatch):
 
 def test_llm_key_from_secret_manager(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("LLM_API_KEY", raising=False)
-    monkeypatch.setenv("LLM_API_SECRET_ID", "arn:aws:secretsmanager:us-east-1::secret/sdr/llm-api-key")
-    sm = types.SimpleNamespace(get_secret_value=lambda SecretId: {"SecretString": "sk-or-123"})
+    monkeypatch.setenv(
+        "LLM_API_SECRET_ID", "arn:aws:secretsmanager:us-east-1::secret/sdr/llm-api-key"
+    )
+    sm = types.SimpleNamespace(
+        get_secret_value=lambda SecretId: {"SecretString": "sk-or-123"}
+    )
     fake = types.ModuleType("boto3")
     fake.client = lambda service: sm
     monkeypatch.setitem(sys.modules, "boto3", fake)
@@ -31,7 +35,9 @@ def test_llm_key_absent(monkeypatch: pytest.MonkeyPatch):
 
 def test_llm_key_secret_failure_returns_none(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("LLM_API_KEY", raising=False)
-    monkeypatch.setenv("LLM_API_SECRET_ID", "arn:aws:secretsmanager:us-east-1::secret/sdr/llm-api-key")
+    monkeypatch.setenv(
+        "LLM_API_SECRET_ID", "arn:aws:secretsmanager:us-east-1::secret/sdr/llm-api-key"
+    )
     fake = types.ModuleType("boto3")
 
     def boom(service):
@@ -42,7 +48,9 @@ def test_llm_key_secret_failure_returns_none(monkeypatch: pytest.MonkeyPatch):
     assert handler._llm_api_key() is None
 
 
-def test_handler_function_wires_llm_router_when_key_present(monkeypatch: pytest.MonkeyPatch):
+def test_handler_function_wires_llm_router_when_key_present(
+    monkeypatch: pytest.MonkeyPatch,
+):
     monkeypatch.setenv("LLM_API_KEY", "sk-or-test-key")
     monkeypatch.setenv("INTERNAL_SECRET_TOKEN", "test-token")
     captured: dict = {}
@@ -58,7 +66,11 @@ def test_handler_function_wires_llm_router_when_key_present(monkeypatch: pytest.
     monkeypatch.setitem(sys.modules, "boto3", fake_boto3)
 
     monkeypatch.setattr(handler, "SalesFlow", fake_sales_flow)
-    monkeypatch.setattr(handler, "ConversationRouter", lambda **kwargs: MagicMock(handle=lambda e: {"statusCode": 200}))
+    monkeypatch.setattr(
+        handler,
+        "ConversationRouter",
+        lambda **kwargs: MagicMock(handle=lambda e: {"statusCode": 200}),
+    )
     monkeypatch.setattr(handler, "SessionStore", lambda *args, **kwargs: MagicMock())
     monkeypatch.setattr(handler, "SecurityLayer", lambda **kwargs: MagicMock())
 
@@ -67,8 +79,11 @@ def test_handler_function_wires_llm_router_when_key_present(monkeypatch: pytest.
     assert captured.get("reply_generator") is not None
 
     monkeypatch.setattr(
-        handler, "_llm_generate_reply",
-        lambda *a, **k: f"ok:{k.get('favorite_property')}:{k.get('conversation_stage')}:{k.get('shown_properties_count')}",
+        handler,
+        "_llm_generate_reply",
+        lambda *a, **k: (
+            f"ok:{k.get('favorite_property')}:{k.get('conversation_stage')}:{k.get('shown_properties_count')}"
+        ),
     )
     reply = captured["reply_generator"]
     out = reply(
@@ -83,7 +98,9 @@ def test_handler_function_wires_llm_router_when_key_present(monkeypatch: pytest.
     assert out == "ok:Torre Nova:discovery:1"
 
 
-def test_handler_function_leaves_llm_router_none_without_key(monkeypatch: pytest.MonkeyPatch):
+def test_handler_function_leaves_llm_router_none_without_key(
+    monkeypatch: pytest.MonkeyPatch,
+):
     monkeypatch.delenv("LLM_API_KEY", raising=False)
     monkeypatch.delenv("LLM_API_SECRET_ID", raising=False)
     monkeypatch.setenv("INTERNAL_SECRET_TOKEN", "test-token")
@@ -100,7 +117,11 @@ def test_handler_function_leaves_llm_router_none_without_key(monkeypatch: pytest
     monkeypatch.setitem(sys.modules, "boto3", fake_boto3)
 
     monkeypatch.setattr(handler, "SalesFlow", fake_sales_flow)
-    monkeypatch.setattr(handler, "ConversationRouter", lambda **kwargs: MagicMock(handle=lambda e: {"statusCode": 200}))
+    monkeypatch.setattr(
+        handler,
+        "ConversationRouter",
+        lambda **kwargs: MagicMock(handle=lambda e: {"statusCode": 200}),
+    )
     monkeypatch.setattr(handler, "SessionStore", lambda *args, **kwargs: MagicMock())
     monkeypatch.setattr(handler, "SecurityLayer", lambda **kwargs: MagicMock())
 
@@ -126,13 +147,17 @@ def test_llm_route_returns_tool_contract(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setitem(sys.modules, "boto3", fake_boto3)
 
     monkeypatch.setattr(handler, "SalesFlow", fake_sales_flow)
-    monkeypatch.setattr(handler, "ConversationRouter", lambda **kwargs: MagicMock(handle=lambda e: {"statusCode": 200}))
+    monkeypatch.setattr(
+        handler,
+        "ConversationRouter",
+        lambda **kwargs: MagicMock(handle=lambda e: {"statusCode": 200}),
+    )
     monkeypatch.setattr(handler, "SessionStore", lambda *args, **kwargs: MagicMock())
     monkeypatch.setattr(handler, "SecurityLayer", lambda **kwargs: MagicMock())
     monkeypatch.setattr(
         handler,
         "_llm_extract_and_route",
-        lambda message, lead_info, current_state, api_key: {
+        lambda message, lead_info, current_state, api_key, **kw: {
             "thought": "x",
             "tool": "request_options",
             "arguments": {"list_scope": "all"},
@@ -167,7 +192,11 @@ def test_reply_generator_forwards_tool_agent_kwargs(monkeypatch: pytest.MonkeyPa
     monkeypatch.setitem(sys.modules, "boto3", fake_boto3)
 
     monkeypatch.setattr(handler, "SalesFlow", fake_sales_flow)
-    monkeypatch.setattr(handler, "ConversationRouter", lambda **kwargs: MagicMock(handle=lambda e: {"statusCode": 200}))
+    monkeypatch.setattr(
+        handler,
+        "ConversationRouter",
+        lambda **kwargs: MagicMock(handle=lambda e: {"statusCode": 200}),
+    )
     monkeypatch.setattr(handler, "SessionStore", lambda *args, **kwargs: MagicMock())
     monkeypatch.setattr(handler, "SecurityLayer", lambda **kwargs: MagicMock())
 

@@ -25,7 +25,9 @@ class TestSalesFlow:
 
     def test_elicitation_records_consent_granted(self):
         flow = make_flow()
-        state = flow.invoke({"current_state": "elicitation", "message": "sim, pode continuar"})
+        state = flow.invoke(
+            {"current_state": "elicitation", "message": "sim, pode continuar"}
+        )
         assert state["consent_recorded"] is True
         assert state["current_state"] == "intent"
 
@@ -37,7 +39,9 @@ class TestSalesFlow:
 
     def test_intent_high_confidence_advances(self):
         flow = make_flow()
-        state = flow.invoke({"current_state": "intent", "message": "quero alugar uma sala"})
+        state = flow.invoke(
+            {"current_state": "intent", "message": "quero alugar uma sala"}
+        )
         assert state["intent"] == "rent"
         assert state["current_state"] == "qualification"
 
@@ -54,8 +58,12 @@ class TestSalesFlow:
                 "current_state": "qualification",
                 "message": "ok",
                 "lead_info": {
-                    "area": "1000 m²", "region": "B", "budget": "R$ 50k/mês",
-                    "deadline": "3 meses", "people_count": 50, "decision_maker": "yes",
+                    "area": "1000 m²",
+                    "region": "B",
+                    "budget": "R$ 50k/mês",
+                    "deadline": "3 meses",
+                    "people_count": 50,
+                    "decision_maker": "yes",
                 },
             }
         )
@@ -70,8 +78,12 @@ class TestSalesFlow:
                 "current_state": "qualification",
                 "message": "ok",
                 "lead_info": {
-                    "area": "1000 m²", "region": "B", "budget": "R$ 50k/mês",
-                    "deadline": "3 meses", "people_count": 50, "decision_maker": "yes",
+                    "area": "1000 m²",
+                    "region": "B",
+                    "budget": "R$ 50k/mês",
+                    "deadline": "3 meses",
+                    "people_count": 50,
+                    "decision_maker": "yes",
                 },
             }
         )
@@ -84,8 +96,12 @@ class TestSalesFlow:
                 "current_state": "qualification",
                 "message": "ok",
                 "lead_info": {
-                    "area": "400 m²", "region": "B", "budget": "R$ 50k/mês",
-                    "deadline": "3 meses", "people_count": 50, "decision_maker": "yes",
+                    "area": "400 m²",
+                    "region": "B",
+                    "budget": "R$ 50k/mês",
+                    "deadline": "3 meses",
+                    "people_count": 50,
+                    "decision_maker": "yes",
                 },
             }
         )
@@ -97,7 +113,9 @@ class TestSalesFlow:
             "sala de 100 m² na região de Pinheiros, orçamento R$ 60 mil, "
             "prazo de 2 meses, 20 pessoas, sou o decisor"
         )
-        state = flow.invoke({"current_state": "elicitation", "message": message, "context": {}})
+        state = flow.invoke(
+            {"current_state": "elicitation", "message": message, "context": {}}
+        )
         info = state["context"]["lead_info"]
         assert info["area"] == "100 m²"
         assert info["region"] == "Pinheiros"
@@ -107,22 +125,41 @@ class TestSalesFlow:
         assert info["decision_maker"] == "yes"
 
     def test_extract_budget_keeps_multiple_thousands_separators(self):
-        assert extract_lead_structure("orçamento R$ 1.500.000")["budget"] == "R$ 1.500.000"
+        assert (
+            extract_lead_structure("orçamento R$ 1.500.000")["budget"] == "R$ 1.500.000"
+        )
 
     def test_extract_budget_millions_singular_and_plural(self):
-        assert extract_lead_structure("tenho 1,5 milhão para investir")["budget"] == "1,5 milhão"
-        assert extract_lead_structure("tenho 1,5 milhões para investir")["budget"] == "1,5 milhões"
+        assert (
+            extract_lead_structure("tenho 1,5 milhão para investir")["budget"]
+            == "1,5 milhão"
+        )
+        assert (
+            extract_lead_structure("tenho 1,5 milhões para investir")["budget"]
+            == "1,5 milhões"
+        )
 
     def test_extract_budget_mixed_form_is_not_truncated(self):
-        assert extract_lead_structure("orçamento de R$ 1.500.000")["budget"] == "R$ 1.500.000"
+        assert (
+            extract_lead_structure("orçamento de R$ 1.500.000")["budget"]
+            == "R$ 1.500.000"
+        )
 
     def test_invoke_merges_partial_info_across_turns(self):
         flow = make_flow()
         first = flow.invoke(
-            {"current_state": "elicitation", "message": "sala de 100 m² na região de Pinheiros", "context": {}}
+            {
+                "current_state": "elicitation",
+                "message": "sala de 100 m² na região de Pinheiros",
+                "context": {},
+            }
         )
         second = flow.invoke(
-            {"current_state": "intent", "message": "orçamento R$ 60 mil", "context": first["context"]}
+            {
+                "current_state": "intent",
+                "message": "orçamento R$ 60 mil",
+                "context": first["context"],
+            }
         )
         info = second["context"]["lead_info"]
         assert info["area"] == "100 m²"
@@ -130,47 +167,66 @@ class TestSalesFlow:
 
     def test_qualification_low_score_keeps_collecting_information(self):
         flow = make_flow()
-        state = flow.invoke({"current_state": "qualification", "message": "ok", "lead_info": {}})
+        state = flow.invoke(
+            {"current_state": "qualification", "message": "ok", "lead_info": {}}
+        )
         assert state["current_state"] == "qualification"
         assert state["lead_qualified"] is False
         assert "Ainda precisamos" in state["response"]
 
     def test_extracts_region_and_decision_maker_from_real_chat_wording(self):
-        info = extract_lead_structure("quero aluguel em Pinheiros; quem decide sou eu, proprietário")
+        info = extract_lead_structure(
+            "quero aluguel em Pinheiros; quem decide sou eu, proprietário"
+        )
         assert info["region"] == "Pinheiros"
         assert info["decision_maker"] == "yes"
 
     def test_options_request_recovers_from_previous_followup_and_uses_rag(self):
-        rag = lambda info: [{"title": "Pinheiros Office", "region": "Pinheiros", "area_util": 100}]
+        rag = lambda info: [
+            {"title": "Pinheiros Office", "region": "Pinheiros", "area_util": 100}
+        ]
         flow = make_flow(properties_rag=rag)
         state = flow.invoke(
             {
                 "current_state": "followup",
                 "message": "cadê as opções?",
-                "lead_info": {"region": "Pinheiros", "area": "100 m²", "budget": "R$ 5000"},
+                "lead_info": {
+                    "region": "Pinheiros",
+                    "area": "100 m²",
+                    "budget": "R$ 5000",
+                },
             }
         )
         assert state["current_state"] == "followup"
         assert "Pinheiros Office" in state["response"]
 
     def test_options_request_uses_rag_before_lead_is_fully_qualified(self):
-        rag = lambda info: [{"title": "Pinheiros Office", "region": "Pinheiros", "area_util": 100}]
+        rag = lambda info: [
+            {"title": "Pinheiros Office", "region": "Pinheiros", "area_util": 100}
+        ]
         flow = make_flow(properties_rag=rag)
         state = flow.invoke(
             {
                 "current_state": "qualification",
                 "message": "cadê as opções?",
-                "lead_info": {"region": "Pinheiros", "area": "100 m²", "budget": "R$ 5000"},
+                "lead_info": {
+                    "region": "Pinheiros",
+                    "area": "100 m²",
+                    "budget": "R$ 5000",
+                },
             }
         )
         assert "Pinheiros Office" in state["response"]
 
     def test_more_options_request_in_scheduling_shows_new_properties(self):
         catalog = [
-            {"title": f"Imóvel {i}", "region": "Pinheiros", "area_util": 100} for i in range(6)
+            {"title": f"Imóvel {i}", "region": "Pinheiros", "area_util": 100}
+            for i in range(6)
         ]
+
         def rag(info):
             return catalog
+
         flow = make_flow(properties_rag=rag)
         first = flow.invoke(
             {
@@ -194,10 +250,16 @@ class TestSalesFlow:
         assert second["current_state"] == "scheduling"
 
     def test_more_options_request_exhausted_catalog_stays_in_scheduling(self):
-        rag = lambda info: [{"title": "Único Imóvel", "region": "Pinheiros", "area_util": 100}]
+        rag = lambda info: [
+            {"title": "Único Imóvel", "region": "Pinheiros", "area_util": 100}
+        ]
         flow = make_flow(properties_rag=rag)
         first = flow.invoke(
-            {"current_state": "recommendation", "message": "quero ver", "lead_info": {"region": "Pinheiros"}}
+            {
+                "current_state": "recommendation",
+                "message": "quero ver",
+                "lead_info": {"region": "Pinheiros"},
+            }
         )
         second = flow.invoke(
             {
@@ -210,14 +272,21 @@ class TestSalesFlow:
         assert "todas as opções" in second["response"]
         assert second["current_state"] == "scheduling"
 
-    def test_more_options_uses_context_persisted_properties_without_explicit_state(self):
+    def test_more_options_uses_context_persisted_properties_without_explicit_state(
+        self,
+    ):
         """Handler only persists context across turns — not top-level properties."""
         catalog = [
-            {"title": f"Imóvel {i}", "region": "Moema", "area_util": 100} for i in range(2)
+            {"title": f"Imóvel {i}", "region": "Moema", "area_util": 100}
+            for i in range(2)
         ]
         flow = make_flow(properties_rag=lambda info: catalog)
         first = flow.invoke(
-            {"current_state": "recommendation", "message": "quero ver", "lead_info": {"region": "Moema"}}
+            {
+                "current_state": "recommendation",
+                "message": "quero ver",
+                "lead_info": {"region": "Moema"},
+            }
         )
         assert first.get("context", {}).get("properties")
         second = flow.invoke(
@@ -233,10 +302,15 @@ class TestSalesFlow:
         assert "Imóvel 0" in first["response"]
 
     def test_extracts_budget_from_rent_ceiling_wording(self):
-        assert extract_lead_structure("aluguel até 5000 reais")["budget"] == "até 5000 reais"
+        assert (
+            extract_lead_structure("aluguel até 5000 reais")["budget"]
+            == "até 5000 reais"
+        )
 
     def test_recommendation_with_results_lists_top3(self):
-        rag = lambda info: [{"title": f"Imóvel {i}", "region": "B", "area_util": 100} for i in range(5)]
+        rag = lambda info: [
+            {"title": f"Imóvel {i}", "region": "B", "area_util": 100} for i in range(5)
+        ]
         flow = make_flow(properties_rag=rag)
         state = flow.invoke({"current_state": "recommendation", "message": "quero ver"})
         assert len(state["properties"]) == 3
@@ -256,13 +330,23 @@ class TestReplyGenerator:
             return "Claro! {canned}".replace("{canned}", canned.lower())
 
         flow = make_flow(reply_generator=fake_reply)
-        state = flow.invoke({"current_state": "intent", "message": "quero alugar agora"})
+        state = flow.invoke(
+            {"current_state": "intent", "message": "quero alugar agora"}
+        )
         assert calls
-        assert state["response"] != state["response"].upper()  # nunca sobe; mock devolve própria
-        assert state["intent"] == "rent"  # transição de estado preservada apesar do polish
+        assert (
+            state["response"] != state["response"].upper()
+        )  # nunca sobe; mock devolve própria
+        assert (
+            state["intent"] == "rent"
+        )  # transição de estado preservada apesar do polish
 
     def test_reply_generator_failure_keeps_canned(self):
-        flow = make_flow(reply_generator=lambda *a, **k: (_ for _ in ()).throw(RuntimeError("lu fail")))
+        flow = make_flow(
+            reply_generator=lambda *a, **k: (_ for _ in ()).throw(
+                RuntimeError("lu fail")
+            )
+        )
         state = flow.invoke({"current_state": "intent", "message": "quero alugar"})
         assert state["current_state"] == "qualification"
         assert state.get("response")
@@ -286,8 +370,17 @@ class TestSchedulingRestriction:
 
     def test_restricted_scheduling_defers_action(self):
         scheduler = self.scheduler()
-        flow = make_flow(scheduler=scheduler, restriction_check=lambda lead_id: lead_id == "L1")
-        state = flow.invoke({"current_state": "scheduling", "message": "amanhã 10h", "lead_id": "L1", "visit_interest": True})
+        flow = make_flow(
+            scheduler=scheduler, restriction_check=lambda lead_id: lead_id == "L1"
+        )
+        state = flow.invoke(
+            {
+                "current_state": "scheduling",
+                "message": "amanhã 10h",
+                "lead_id": "L1",
+                "visit_interest": True,
+            }
+        )
         scheduler.assert_not_called()
         assert state["scheduling_restricted"] is True
         assert state["current_state"] == "handoff"
@@ -296,7 +389,14 @@ class TestSchedulingRestriction:
     def test_unrestricted_scheduling_calls_scheduler(self):
         scheduler = self.scheduler()
         flow = make_flow(scheduler=scheduler, restriction_check=lambda lead_id: False)
-        state = flow.invoke({"current_state": "scheduling", "message": "amanhã 10h", "lead_id": "L1", "visit_interest": True})
+        state = flow.invoke(
+            {
+                "current_state": "scheduling",
+                "message": "amanhã 10h",
+                "lead_id": "L1",
+                "visit_interest": True,
+            }
+        )
         scheduler.assert_called_once()
         assert state["appointment"]["confirmed"] is True
         assert "scheduling_restricted" not in state
@@ -304,20 +404,41 @@ class TestSchedulingRestriction:
     def test_scheduling_without_checker_runs_normally(self):
         scheduler = self.scheduler()
         flow = make_flow(scheduler=scheduler)
-        state = flow.invoke({"current_state": "scheduling", "message": "amanhã 10h", "lead_id": "L1", "visit_interest": True})
+        state = flow.invoke(
+            {
+                "current_state": "scheduling",
+                "message": "amanhã 10h",
+                "lead_id": "L1",
+                "visit_interest": True,
+            }
+        )
         scheduler.assert_called_once()
         assert state["current_state"] == "handoff"
 
     def test_restriction_check_failure_is_fail_open(self):
         scheduler = self.scheduler()
-        flow = make_flow(scheduler=scheduler, restriction_check=lambda lead_id: (_ for _ in ()).throw(RuntimeError("boom")))
-        state = flow.invoke({"current_state": "scheduling", "message": "amanhã 10h", "lead_id": "L1", "visit_interest": True})
+        flow = make_flow(
+            scheduler=scheduler,
+            restriction_check=lambda lead_id: (_ for _ in ()).throw(
+                RuntimeError("boom")
+            ),
+        )
+        state = flow.invoke(
+            {
+                "current_state": "scheduling",
+                "message": "amanhã 10h",
+                "lead_id": "L1",
+                "visit_interest": True,
+            }
+        )
         scheduler.assert_called_once()
         assert "scheduling_restricted" not in state
 
     def test_restricted_followup_is_deferred(self):
         flow = make_flow(restriction_check=lambda lead_id: lead_id == "L1")
-        state = flow.invoke({"current_state": "followup", "message": "ok", "lead_id": "L1"})
+        state = flow.invoke(
+            {"current_state": "followup", "message": "ok", "lead_id": "L1"}
+        )
         assert state["followup_deferred"] is True
         assert state["current_state"] == "followup"
         assert "corretor" in state["response"]
@@ -329,12 +450,14 @@ class TestSchedulingRestriction:
             restriction_check=lambda lead_id: True,
             properties_rag=lambda info: [{"title": f"Imóvel {i}"} for i in range(5)],
         )
-        state = flow.invoke({
-            "current_state": "scheduling",
-            "message": "amanhã 10h",
-            "shown_properties_count": 3,
-            "visit_interest": True,
-        })
+        state = flow.invoke(
+            {
+                "current_state": "scheduling",
+                "message": "amanhã 10h",
+                "shown_properties_count": 3,
+                "visit_interest": True,
+            }
+        )
         scheduler.assert_called_once()
         assert state["current_state"] == "handoff"
 
@@ -346,12 +469,14 @@ class TestReadyForSchedulingGate:
     def test_gate_blocks_without_signal(self):
         scheduler = self.scheduler()
         flow = make_flow(scheduler=scheduler)
-        state = flow.invoke({
-            "current_state": "scheduling",
-            "message": "amanhã 10h",
-            "lead_id": "L1",
-            "shown_properties_count": 3,
-        })
+        state = flow.invoke(
+            {
+                "current_state": "scheduling",
+                "message": "amanhã 10h",
+                "lead_id": "L1",
+                "shown_properties_count": 3,
+            }
+        )
         scheduler.assert_not_called()
         assert state["current_state"] == "recommendation"
         assert "antes de agendar" in state["response"].lower()
@@ -359,39 +484,45 @@ class TestReadyForSchedulingGate:
     def test_gate_allows_visit_interest(self):
         scheduler = self.scheduler()
         flow = make_flow(scheduler=scheduler)
-        state = flow.invoke({
-            "current_state": "scheduling",
-            "message": "amanhã 10h",
-            "lead_id": "L1",
-            "shown_properties_count": 3,
-            "visit_interest": True,
-        })
+        state = flow.invoke(
+            {
+                "current_state": "scheduling",
+                "message": "amanhã 10h",
+                "lead_id": "L1",
+                "shown_properties_count": 3,
+                "visit_interest": True,
+            }
+        )
         scheduler.assert_called_once()
         assert state["current_state"] == "handoff"
 
     def test_gate_allows_favorite_property(self):
         scheduler = self.scheduler()
         flow = make_flow(scheduler=scheduler)
-        state = flow.invoke({
-            "current_state": "scheduling",
-            "message": "amanhã 10h",
-            "lead_id": "L1",
-            "shown_properties_count": 3,
-            "favorite_property": "Torre Nova",
-        })
+        state = flow.invoke(
+            {
+                "current_state": "scheduling",
+                "message": "amanhã 10h",
+                "lead_id": "L1",
+                "shown_properties_count": 3,
+                "favorite_property": "Torre Nova",
+            }
+        )
         scheduler.assert_called_once()
         assert state["current_state"] == "handoff"
 
     def test_gate_allows_deadline_in_lead_info(self):
         scheduler = self.scheduler()
         flow = make_flow(scheduler=scheduler)
-        state = flow.invoke({
-            "current_state": "scheduling",
-            "message": "amanhã 10h",
-            "lead_id": "L1",
-            "shown_properties_count": 3,
-            "lead_info": {"deadline": "6 meses"},
-        })
+        state = flow.invoke(
+            {
+                "current_state": "scheduling",
+                "message": "amanhã 10h",
+                "lead_id": "L1",
+                "shown_properties_count": 3,
+                "lead_info": {"deadline": "6 meses"},
+            }
+        )
         scheduler.assert_called_once()
         assert state["current_state"] == "handoff"
 
@@ -399,13 +530,15 @@ class TestReadyForSchedulingGate:
         scheduler = self.scheduler()
         props = [{"title": "A"}, {"title": "B"}]
         flow = make_flow(scheduler=scheduler, properties_rag=lambda i: props)
-        state = flow.invoke({
-            "current_state": "scheduling",
-            "message": "amanhã 10h",
-            "visit_interest": True,
-            "shown_properties_count": 2,
-            "properties": props,
-        })
+        state = flow.invoke(
+            {
+                "current_state": "scheduling",
+                "message": "amanhã 10h",
+                "visit_interest": True,
+                "shown_properties_count": 2,
+                "properties": props,
+            }
+        )
         scheduler.assert_not_called()
         assert state["current_state"] == "recommendation"
 
@@ -414,12 +547,18 @@ class TestAgenticRouter:
     """ADR-011: LLM classifica ação (enum fixo); código decide o próximo nó."""
 
     def test_llm_router_merges_extracted_lead_info(self):
-        router = lambda message, lead_info, current_state: {
+        router = lambda message, lead_info, current_state, **kwargs: {
             "lead_info": {"region": "Pinheiros", "decision_maker": "yes"},
             "action": "provide_info",
         }
         flow = make_flow(llm_router=router)
-        state = flow.invoke({"current_state": "qualification", "message": "qualquer frase nova", "lead_info": {}})
+        state = flow.invoke(
+            {
+                "current_state": "qualification",
+                "message": "qualquer frase nova",
+                "lead_info": {},
+            }
+        )
         assert state["lead_info"]["region"] == "Pinheiros"
         assert state["lead_info"]["decision_maker"] == "yes"
 
@@ -429,25 +568,45 @@ class TestAgenticRouter:
 
         flow = make_flow(llm_router=boom)
         state = flow.invoke(
-            {"current_state": "qualification", "message": "100 m² na região de Pinheiros", "lead_info": {}}
+            {
+                "current_state": "qualification",
+                "message": "100 m² na região de Pinheiros",
+                "lead_info": {},
+            }
         )
         assert state["lead_info"]["region"] == "Pinheiros"
         assert state["lead_info"]["area"] == "100 m²"
 
     def test_request_options_action_shows_recommendations_regardless_of_score(self):
-        rag = lambda info: [{"title": "Torre Nova", "region": "Pinheiros", "area_util": 100}]
-        router = lambda message, lead_info, current_state: {"lead_info": {}, "action": "request_options"}
+        rag = lambda info: [
+            {"title": "Torre Nova", "region": "Pinheiros", "area_util": 100}
+        ]
+        router = lambda message, lead_info, current_state, **kwargs: {
+            "lead_info": {},
+            "action": "request_options",
+        }
         flow = make_flow(properties_rag=rag, llm_router=router)
         state = flow.invoke(
-            {"current_state": "qualification", "message": "alguma frase nunca vista antes", "lead_info": {}}
+            {
+                "current_state": "qualification",
+                "message": "alguma frase nunca vista antes",
+                "lead_info": {},
+            }
         )
         assert "Torre Nova" in state["response"]
 
     def test_request_options_action_in_scheduling_shows_more(self):
-        catalog = [{"title": f"Imóvel {i}", "region": "B", "area_util": 100} for i in range(6)]
-        router = lambda message, lead_info, current_state: {"lead_info": {}, "action": "request_options"}
+        catalog = [
+            {"title": f"Imóvel {i}", "region": "B", "area_util": 100} for i in range(6)
+        ]
+        router = lambda message, lead_info, current_state, **kwargs: {
+            "lead_info": {},
+            "action": "request_options",
+        }
         flow = make_flow(properties_rag=lambda info: catalog, llm_router=router)
-        first = flow.invoke({"current_state": "recommendation", "message": "quero ver", "lead_info": {}})
+        first = flow.invoke(
+            {"current_state": "recommendation", "message": "quero ver", "lead_info": {}}
+        )
         second = flow.invoke(
             {
                 "current_state": "scheduling",
@@ -460,53 +619,85 @@ class TestAgenticRouter:
         assert second["current_state"] == "scheduling"
 
     def test_request_human_action_goes_straight_to_handoff_from_any_state(self):
-        router = lambda message, lead_info, current_state: {"lead_info": {}, "action": "request_human"}
+        router = lambda message, lead_info, current_state, **kwargs: {
+            "lead_info": {},
+            "action": "request_human",
+        }
         flow = make_flow(llm_router=router)
         state = flow.invoke(
-            {"current_state": "qualification", "message": "quero falar com uma pessoa de verdade", "lead_info": {}}
+            {
+                "current_state": "qualification",
+                "message": "quero falar com uma pessoa de verdade",
+                "lead_info": {},
+            }
         )
         assert state["current_state"] == "handoff"
 
     def test_request_human_with_options_message_shows_options_not_handoff(self):
-        router = lambda message, lead_info, current_state: {"lead_info": {}, "action": "request_human"}
-        flow = make_flow(properties_rag=lambda info: [{"title": "Opção 1"}], llm_router=router)
+        router = lambda message, lead_info, current_state, **kwargs: {
+            "lead_info": {},
+            "action": "request_human",
+        }
+        flow = make_flow(
+            properties_rag=lambda info: [{"title": "Opção 1"}], llm_router=router
+        )
         state = flow.invoke(
-            {"current_state": "recommendation", "message": "Cadê as opções", "lead_info": {}}
+            {
+                "current_state": "recommendation",
+                "message": "Cadê as opções",
+                "lead_info": {},
+            }
         )
         assert "Opção 1" in state["response"]
         assert "Corretor" not in state["response"]
 
     def test_decline_action_routes_to_followup(self):
-        router = lambda message, lead_info, current_state: {"lead_info": {}, "action": "decline"}
+        router = lambda message, lead_info, current_state, **kwargs: {
+            "lead_info": {},
+            "action": "decline",
+        }
         flow = make_flow(llm_router=router)
         state = flow.invoke(
-            {"current_state": "qualification", "message": "na verdade desisto, não quero mais", "lead_info": {}}
+            {
+                "current_state": "qualification",
+                "message": "na verdade desisto, não quero mais",
+                "lead_info": {},
+            }
         )
         assert state["current_state"] == "followup"
 
     def test_provide_info_action_keeps_default_state_machine_behavior(self):
-        router = lambda message, lead_info, current_state: {"lead_info": {}, "action": "provide_info"}
+        router = lambda message, lead_info, current_state, **kwargs: {
+            "lead_info": {},
+            "action": "provide_info",
+        }
         flow = make_flow(llm_router=router)
-        state = flow.invoke({"current_state": "qualification", "message": "ok", "lead_info": {}})
+        state = flow.invoke(
+            {"current_state": "qualification", "message": "ok", "lead_info": {}}
+        )
         assert state["current_state"] == "qualification"
         assert state["lead_qualified"] is False
 
     def test_refine_search_reruns_rag_with_new_lead_info(self):
         captured = {}
+
         def rag(info):
             captured.update(info)
             return [{"title": "Opção Barata", "region": "Pinheiros", "area_util": 80}]
-        router = lambda message, lead_info, current_state: {
+
+        router = lambda message, lead_info, current_state, **kwargs: {
             "lead_info": {"budget": "R$ 80 mil"},
             "action": "refine_search",
         }
         flow = make_flow(properties_rag=rag, llm_router=router)
-        state = flow.invoke({
-            "current_state": "recommendation",
-            "message": "tem algo mais barato?",
-            "lead_info": {"budget": "R$ 200 mil"},
-            "shown_properties_count": 3,
-        })
+        state = flow.invoke(
+            {
+                "current_state": "recommendation",
+                "message": "tem algo mais barato?",
+                "lead_info": {"budget": "R$ 200 mil"},
+                "shown_properties_count": 3,
+            }
+        )
         assert captured.get("budget") == "R$ 80 mil"
         assert "Opção Barata" in state["response"]
 
@@ -521,90 +712,110 @@ class TestAgenticRouter:
             rag_calls.append(info)
             return catalog
 
-        router = lambda message, lead_info, current_state: {
+        router = lambda message, lead_info, current_state, **kwargs: {
             "lead_info": {},
             "action": "compare_properties",
         }
         flow = make_flow(properties_rag=rag, llm_router=router)
-        state = flow.invoke({
-            "current_state": "recommendation",
-            "message": "qual a diferença entre A e B?",
-            "lead_info": {},
-            "properties": catalog,
-            "shown_properties_count": 2,
-        })
+        state = flow.invoke(
+            {
+                "current_state": "recommendation",
+                "message": "qual a diferença entre A e B?",
+                "lead_info": {},
+                "properties": catalog,
+                "shown_properties_count": 2,
+            }
+        )
         assert state["current_state"] == "recommendation"
         assert "A" in state["response"] and "B" in state["response"]
         assert rag_calls == []
 
     def test_visit_interest_goes_to_scheduling_when_ready(self):
         scheduler = MagicMock(return_value={"confirmed": True, "when": "amanhã 10h"})
-        router = lambda message, lead_info, current_state: {
+        router = lambda message, lead_info, current_state, **kwargs: {
             "lead_info": {},
             "action": "visit_interest",
         }
-        flow = make_flow(scheduler=scheduler, llm_router=router, properties_rag=lambda i: [{"title": "X"}])
-        state = flow.invoke({
-            "current_state": "recommendation",
-            "message": "quero visitar a Torre Nova",
-            "lead_info": {},
-            "shown_properties_count": 3,
-            "properties": [{"title": "X"}],
-        })
+        flow = make_flow(
+            scheduler=scheduler,
+            llm_router=router,
+            properties_rag=lambda i: [{"title": "X"}],
+        )
+        state = flow.invoke(
+            {
+                "current_state": "recommendation",
+                "message": "quero visitar a Torre Nova",
+                "lead_info": {},
+                "shown_properties_count": 3,
+                "properties": [{"title": "X"}],
+            }
+        )
         assert state.get("visit_interest") is True
         scheduler.assert_called_once()
 
     def test_visit_interest_stays_if_not_enough_shown(self):
         scheduler = MagicMock(return_value={"confirmed": True})
-        router = lambda message, lead_info, current_state: {
+        router = lambda message, lead_info, current_state, **kwargs: {
             "lead_info": {},
             "action": "visit_interest",
         }
         flow = make_flow(scheduler=scheduler, llm_router=router)
-        state = flow.invoke({
-            "current_state": "recommendation",
-            "message": "quero visitar",
-            "lead_info": {},
-            "shown_properties_count": 1,
-            "properties": [],
-        })
+        state = flow.invoke(
+            {
+                "current_state": "recommendation",
+                "message": "quero visitar",
+                "lead_info": {},
+                "shown_properties_count": 1,
+                "properties": [],
+            }
+        )
         scheduler.assert_not_called()
         assert state.get("visit_interest") is True
 
     def test_visit_interest_two_shown_same_batch_stays_current(self):
         scheduler = MagicMock(return_value={"confirmed": True})
         props = [{"title": "A"}, {"title": "B"}]
-        router = lambda message, lead_info, current_state: {
+        router = lambda message, lead_info, current_state, **kwargs: {
             "lead_info": {},
             "action": "visit_interest",
         }
         flow = make_flow(scheduler=scheduler, llm_router=router)
-        state = flow.invoke({
-            "current_state": "recommendation",
-            "message": "quero visitar",
-            "lead_info": {},
-            "shown_properties_count": 2,
-            "properties": props,
-        })
+        state = flow.invoke(
+            {
+                "current_state": "recommendation",
+                "message": "quero visitar",
+                "lead_info": {},
+                "shown_properties_count": 2,
+                "properties": props,
+            }
+        )
         scheduler.assert_not_called()
         assert state["current_state"] == "recommendation"
         assert state.get("visit_interest") is True
 
-    def test_visit_interest_lead_id_alone_does_not_open_scheduling_when_shown_below_three(self):
+    def test_visit_interest_lead_id_alone_does_not_open_scheduling_when_shown_below_three(
+        self,
+    ):
         scheduler = MagicMock(return_value={"confirmed": True, "when": "amanhã 10h"})
-        router = lambda message, lead_info, current_state: {
+        router = lambda message, lead_info, current_state, **kwargs: {
             "lead_info": {},
             "action": "visit_interest",
         }
-        flow = make_flow(scheduler=scheduler, llm_router=router, properties_rag=lambda i: [{"title": "X"}])
-        state = flow.invoke({
-            "current_state": "recommendation",
-            "message": "quero visitar",
-            "lead_info": {},
-            "lead_id": "L1",
-            "shown_properties_count": 1,
-            "properties": [{"title": "X"}],
-        })
+        flow = make_flow(
+            scheduler=scheduler,
+            llm_router=router,
+            properties_rag=lambda i: [{"title": "X"}],
+        )
+        state = flow.invoke(
+            {
+                "current_state": "recommendation",
+                "message": "quero visitar",
+                "lead_info": {},
+                "lead_id": "L1",
+                "shown_properties_count": 1,
+                "properties": [{"title": "X"}],
+            }
+        )
         scheduler.assert_not_called()
         assert state.get("visit_interest") is True
         assert state["current_state"] == "recommendation"
@@ -616,17 +827,19 @@ class TestAgenticRouter:
             captured.update(info)
             return [{"title": "Opção Barata", "region": "Pinheiros", "area_util": 80}]
 
-        router = lambda message, lead_info, current_state: {
+        router = lambda message, lead_info, current_state, **kwargs: {
             "lead_info": {"budget": "R$ 80 mil"},
             "action": "refine_search",
         }
         flow = make_flow(properties_rag=rag, llm_router=router)
-        state = flow.invoke({
-            "current_state": "qualification",
-            "message": "tem algo mais barato?",
-            "lead_info": {"budget": "R$ 200 mil"},
-            "score": 40,
-        })
+        state = flow.invoke(
+            {
+                "current_state": "qualification",
+                "message": "tem algo mais barato?",
+                "lead_info": {"budget": "R$ 200 mil"},
+                "score": 40,
+            }
+        )
         # routing discriminates: recommendation node ran RAG with router's new lead_info
         assert captured.get("budget") == "R$ 80 mil"
         assert "Opção Barata" in state["response"]
@@ -634,75 +847,94 @@ class TestAgenticRouter:
 
 class TestDiscoveryState:
     def test_discovery_answers_about_shown_property_and_stays_discovery(self):
-        props = [{"title": "Torre Nova", "region": "Pinheiros", "area_util": 100, "vagas": 2}]
-        router = lambda message, lead_info, current_state: {
+        props = [
+            {"title": "Torre Nova", "region": "Pinheiros", "area_util": 100, "vagas": 2}
+        ]
+        router = lambda message, lead_info, current_state, **kwargs: {
             "lead_info": {},
             "action": "provide_info",
         }
         flow = make_flow(properties_rag=lambda info: props, llm_router=router)
-        state = flow.invoke({
-            "current_state": "recommendation",
-            "message": "a Torre Nova tem estacionamento?",
-            "lead_info": {},
-            "properties": props,
-            "favorite_property": "Torre Nova",
-            "shown_properties_count": 1,
-        })
+        state = flow.invoke(
+            {
+                "current_state": "recommendation",
+                "message": "a Torre Nova tem estacionamento?",
+                "lead_info": {},
+                "properties": props,
+                "favorite_property": "Torre Nova",
+                "shown_properties_count": 1,
+            }
+        )
         assert state["current_state"] == "discovery"
         assert state.get("favorite_property") == "Torre Nova"
-        assert "estacionamento" in state["response"].lower() or "2 vaga" in state["response"]
+        assert (
+            "estacionamento" in state["response"].lower()
+            or "2 vaga" in state["response"]
+        )
 
     def test_discovery_request_options_from_discovery_shows_more(self):
         catalog = [
-            {"title": f"Imóvel {i}", "region": "Pinheiros", "area_util": 100} for i in range(6)
+            {"title": f"Imóvel {i}", "region": "Pinheiros", "area_util": 100}
+            for i in range(6)
         ]
-        router = lambda message, lead_info, current_state: {
+        router = lambda message, lead_info, current_state, **kwargs: {
             "lead_info": {},
             "action": "request_options",
         }
         flow = make_flow(properties_rag=lambda info: catalog, llm_router=router)
-        state = flow.invoke({
-            "current_state": "discovery",
-            "message": "quero ver mais opções",
-            "lead_info": {},
-            "properties": catalog[:3],
-            "favorite_property": "Imóvel 0",
-            "shown_properties_count": 3,
-        })
+        state = flow.invoke(
+            {
+                "current_state": "discovery",
+                "message": "quero ver mais opções",
+                "lead_info": {},
+                "properties": catalog[:3],
+                "favorite_property": "Imóvel 0",
+                "shown_properties_count": 3,
+            }
+        )
         assert "Imóvel 3" in state["response"]
         assert "Sobre Imóvel 0" not in state["response"]
         assert state["current_state"] == "discovery"
 
     def test_discovery_more_options_regex_path_from_discovery(self):
         catalog = [
-            {"title": f"Imóvel {i}", "region": "Pinheiros", "area_util": 100} for i in range(6)
+            {"title": f"Imóvel {i}", "region": "Pinheiros", "area_util": 100}
+            for i in range(6)
         ]
         flow = make_flow(properties_rag=lambda info: catalog)
-        state = flow.invoke({
-            "current_state": "discovery",
-            "message": "mostre mais opções",
-            "lead_info": {},
-            "properties": catalog[:3],
-            "favorite_property": "Imóvel 0",
-            "shown_properties_count": 3,
-        })
+        state = flow.invoke(
+            {
+                "current_state": "discovery",
+                "message": "mostre mais opções",
+                "lead_info": {},
+                "properties": catalog[:3],
+                "favorite_property": "Imóvel 0",
+                "shown_properties_count": 3,
+            }
+        )
         assert "Imóvel 3" in state["response"]
         assert "Sobre Imóvel 0" not in state["response"]
 
     def test_postprocess_passes_rich_kwargs(self):
         captured = {}
+
         def fake_reply(message, canned, lead_info, properties, **kwargs):
             captured.update(kwargs)
             return canned + " (llm)"
-        flow = make_flow(reply_generator=fake_reply, properties_rag=lambda i: [{"title": "X"}])
-        state = flow.invoke({
-            "current_state": "recommendation",
-            "message": "ok",
-            "lead_info": {},
-            "properties": [{"title": "X"}],
-            "favorite_property": "X",
-            "shown_properties_count": 3,
-        })
+
+        flow = make_flow(
+            reply_generator=fake_reply, properties_rag=lambda i: [{"title": "X"}]
+        )
+        state = flow.invoke(
+            {
+                "current_state": "recommendation",
+                "message": "ok",
+                "lead_info": {},
+                "properties": [{"title": "X"}],
+                "favorite_property": "X",
+                "shown_properties_count": 3,
+            }
+        )
         assert captured.get("favorite_property") == "X"
         assert captured.get("conversation_stage") == "recommendation"
         assert captured.get("shown_properties_count") == 3
@@ -716,26 +948,30 @@ class TestCommercialMemory:
             {"title": "Torre Antiga", "region": "Pinheiros", "area_util": 80},
         ]
         flow = make_flow(properties_rag=lambda info: props)
-        state = flow.invoke({
-            "current_state": "recommendation",
-            "message": "gostei da 2",
-            "lead_info": {},
-            "properties": props,
-            "shown_properties_count": 2,
-        })
+        state = flow.invoke(
+            {
+                "current_state": "recommendation",
+                "message": "gostei da 2",
+                "lead_info": {},
+                "properties": props,
+                "shown_properties_count": 2,
+            }
+        )
         assert state.get("favorite_property") == "Torre Antiga"
         assert state.get("context", {}).get("favorite_property") == "Torre Antiga"
 
     def test_detects_favorite_by_title_substring(self):
         props = [{"title": "Torre Nova", "region": "Pinheiros", "area_util": 100}]
         flow = make_flow(properties_rag=lambda info: props)
-        state = flow.invoke({
-            "current_state": "recommendation",
-            "message": "gostei da Torre Nova",
-            "lead_info": {},
-            "properties": props,
-            "shown_properties_count": 1,
-        })
+        state = flow.invoke(
+            {
+                "current_state": "recommendation",
+                "message": "gostei da Torre Nova",
+                "lead_info": {},
+                "properties": props,
+                "shown_properties_count": 1,
+            }
+        )
         assert state.get("favorite_property") == "Torre Nova"
 
     def test_detects_rejection(self):
@@ -744,38 +980,48 @@ class TestCommercialMemory:
             {"title": "Torre Antiga", "region": "Pinheiros", "area_util": 80},
         ]
         flow = make_flow(properties_rag=lambda info: props)
-        state = flow.invoke({
-            "current_state": "recommendation",
-            "message": "não quero a 1",
-            "lead_info": {},
-            "properties": props,
-            "shown_properties_count": 2,
-        })
+        state = flow.invoke(
+            {
+                "current_state": "recommendation",
+                "message": "não quero a 1",
+                "lead_info": {},
+                "properties": props,
+                "shown_properties_count": 2,
+            }
+        )
         assert "Torre Nova" in (state.get("rejected_properties") or [])
         assert state.get("context", {}).get("rejected_properties") is not None
 
     def test_context_seed_restores_favorite_across_invokes(self):
         props = [{"title": "Torre Nova", "region": "Pinheiros", "area_util": 100}]
-        flow = make_flow(scheduler=MagicMock(return_value={"confirmed": True, "when": "x"}))
+        flow = make_flow(
+            scheduler=MagicMock(return_value={"confirmed": True, "when": "x"})
+        )
         # simulate prior turn persisted context
-        state = flow.invoke({
-            "current_state": "scheduling",
-            "message": "amanhã 10h",
-            "lead_id": "L1",
-            "shown_properties_count": 3,
-            "context": {"favorite_property": "Torre Nova"},
-        })
+        state = flow.invoke(
+            {
+                "current_state": "scheduling",
+                "message": "amanhã 10h",
+                "lead_id": "L1",
+                "shown_properties_count": 3,
+                "context": {"favorite_property": "Torre Nova"},
+            }
+        )
         assert state["current_state"] == "handoff"  # gate opens via context seed
 
     def test_visit_interest_flag_from_context_seed(self):
-        flow = make_flow(scheduler=MagicMock(return_value={"confirmed": True, "when": "x"}))
-        state = flow.invoke({
-            "current_state": "scheduling",
-            "message": "amanhã 10h",
-            "lead_id": "L1",
-            "shown_properties_count": 3,
-            "context": {"visit_interest": True},
-        })
+        flow = make_flow(
+            scheduler=MagicMock(return_value={"confirmed": True, "when": "x"})
+        )
+        state = flow.invoke(
+            {
+                "current_state": "scheduling",
+                "message": "amanhã 10h",
+                "lead_id": "L1",
+                "shown_properties_count": 3,
+                "context": {"visit_interest": True},
+            }
+        )
         assert state["current_state"] == "handoff"
 
 
@@ -783,7 +1029,7 @@ class TestToolRouting:
     """Tool-agent: single-step contract (spec 2026-09-23)."""
 
     def _flow(self, router_result=None):
-        def router(msg, lead, state):
+        def router(msg, lead, state, **kwargs):
             return router_result or {
                 "thought": "t",
                 "tool": "request_options",
@@ -793,7 +1039,11 @@ class TestToolRouting:
             }
 
         return make_flow(
-            properties_rag=lambda info: [{"title": "A"}, {"title": "B"}, {"title": "C"}],
+            properties_rag=lambda info: [
+                {"title": "A"},
+                {"title": "B"},
+                {"title": "C"},
+            ],
             reply_generator=lambda *a, **k: "ok",
             llm_router=router,
         )
@@ -803,86 +1053,114 @@ class TestToolRouting:
         assert flow._graph is not None
 
     def test_router_tool_sets_state_fields(self):
-        flow = self._flow(router_result={
-            "thought": "show all",
-            "tool": "request_options",
-            "arguments": {"list_scope": "all"},
-            "lead_info": {"region": "Pinheiros"},
-            "memory_updates": {},
-        })
-        out = flow.invoke({
-            "current_state": "conversation",
-            "message": "mostra tudo",
-            "lead_info": {},
-            "context": {},
-            "properties": [],
-        })
-        assert out.get("_last_tool") == "request_options" or out.get("_router_tool") == "request_options"
+        flow = self._flow(
+            router_result={
+                "thought": "show all",
+                "tool": "request_options",
+                "arguments": {"list_scope": "all"},
+                "lead_info": {"region": "Pinheiros"},
+                "memory_updates": {},
+            }
+        )
+        out = flow.invoke(
+            {
+                "current_state": "conversation",
+                "message": "mostra tudo",
+                "lead_info": {},
+                "context": {},
+                "properties": [],
+            }
+        )
+        assert (
+            out.get("_last_tool") == "request_options"
+            or out.get("_router_tool") == "request_options"
+        )
 
     def test_request_schedule_routes_scheduling_when_gates_ok(self):
-        flow = self._flow(router_result={
-            "thought": "wants visit",
-            "tool": "request_schedule",
-            "arguments": {},
-            "lead_info": {},
-            "memory_updates": {"visit_interest": True},
-        })
+        flow = self._flow(
+            router_result={
+                "thought": "wants visit",
+                "tool": "request_schedule",
+                "arguments": {},
+                "lead_info": {},
+                "memory_updates": {"visit_interest": True},
+            }
+        )
         props = [{"title": f"P{i}"} for i in range(5)]
-        out = flow.invoke({
-            "current_state": "conversation",
-            "message": "quero agendar uma visita",
-            "lead_info": {},
-            "context": {},
-            "properties": props,
-            "shown_properties_count": 5,
-            "visit_interest": True,
-        })
+        out = flow.invoke(
+            {
+                "current_state": "conversation",
+                "message": "quero agendar uma visita",
+                "lead_info": {},
+                "context": {},
+                "properties": props,
+                "shown_properties_count": 5,
+                "visit_interest": True,
+            }
+        )
         # scheduling gate ok → scheduling node; with default scheduler None ends handoff (corretor)
         assert out.get("current_state") in ("scheduling", "conversation", "handoff")
         if out.get("current_state") == "handoff":
-            assert "corretor" in (out.get("response") or "").lower() or out.get("response")
+            assert "corretor" in (out.get("response") or "").lower() or out.get(
+                "response"
+            )
 
     def test_request_human_with_options_stays_conversation(self):
-        flow = self._flow(router_result={
-            "thought": "x",
-            "tool": "request_human",
-            "arguments": {},
-            "lead_info": {},
-            "memory_updates": {},
-        })
-        out = flow.invoke({
-            "current_state": "conversation",
-            "message": "quero ver mais opções",
-            "lead_info": {},
-            "context": {},
-            "properties": [{"title": "A"}],
-        })
+        flow = self._flow(
+            router_result={
+                "thought": "x",
+                "tool": "request_human",
+                "arguments": {},
+                "lead_info": {},
+                "memory_updates": {},
+            }
+        )
+        out = flow.invoke(
+            {
+                "current_state": "conversation",
+                "message": "quero ver mais opções",
+                "lead_info": {},
+                "context": {},
+                "properties": [{"title": "A"}],
+            }
+        )
         assert out.get("current_state") == "conversation"
 
     def test_decline_routes_followup(self):
-        flow = self._flow(router_result={
-            "thought": "x",
-            "tool": "decline",
-            "arguments": {},
-            "lead_info": {},
-            "memory_updates": {},
-        })
-        out = flow.invoke({
-            "current_state": "conversation",
-            "message": "não quero mais",
-            "lead_info": {},
-            "context": {},
-            "properties": [],
-        })
+        flow = self._flow(
+            router_result={
+                "thought": "x",
+                "tool": "decline",
+                "arguments": {},
+                "lead_info": {},
+                "memory_updates": {},
+            }
+        )
+        out = flow.invoke(
+            {
+                "current_state": "conversation",
+                "message": "não quero mais",
+                "lead_info": {},
+                "context": {},
+                "properties": [],
+            }
+        )
         assert out.get("current_state") == "followup"
 
     def test_greeting_bypasses_router(self):
         flow = self._flow()
-        out = flow.invoke({
-            "current_state": "greeting",
-            "message": "oi",
-            "lead_info": {},
-            "context": {},
-            "consent_recorded": False,
-        })
-        assert out.get("current_state") in ("greeting", "elicitation", "intent", "conversation")
+        out = flow.invoke(
+            {
+                "current_state": "greeting",
+                "message": "oi",
+                "lead_info": {},
+                "context": {},
+                "consent_recorded": False,
+            }
+        )
+        assert out.get("current_state") in (
+            "greeting",
+            "elicitation",
+            "intent",
+            "conversation",
+        )

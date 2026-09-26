@@ -10,6 +10,50 @@ _OPTIONS_REQUEST_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Ordinais em PT-BR → índice (0-based). Partilhado com validation.py para resolução de referências.
+_ORDINAL_MAP = {
+    "primeiro": 0,
+    "primeira": 0,
+    "1": 0,
+    "primeira opcao": 0,
+    "primeira opçao": 0,
+    "segundo": 1,
+    "segunda": 1,
+    "2": 1,
+    "segunda opcao": 1,
+    "segunda opçao": 1,
+    "terceiro": 2,
+    "terceira": 2,
+    "3": 2,
+    "terceira opcao": 2,
+    "terceira opçao": 2,
+    "quarto": 3,
+    "quarta": 3,
+    "4": 3,
+    "quinto": 4,
+    "quinta": 4,
+    "5": 4,
+    "sexto": 5,
+    "sexta": 5,
+    "6": 5,
+    "setimo": 6,
+    "setima": 6,
+    "sétimo": 6,
+    "sétima": 6,
+    "7": 6,
+    "oitavo": 7,
+    "oitava": 7,
+    "8": 7,
+    "nono": 8,
+    "nona": 8,
+    "9": 8,
+    "decimo": 9,
+    "decima": 9,
+    "décimo": 9,
+    "décima": 9,
+    "10": 9,
+}
+
 
 @dataclass
 class ToolResult:
@@ -25,10 +69,20 @@ class ToolResult:
     raw_arguments: dict[str, Any] = field(default_factory=dict)
 
 
-def _resolve_in_shown(ref: str | None, shown: list[dict[str, Any]]) -> dict[str, Any] | None:
+def _resolve_in_shown(
+    ref: str | None, shown: list[dict[str, Any]]
+) -> dict[str, Any] | None:
     if not ref:
         return None
     target = re.sub(r"[^a-z0-9]+", " ", ref.lower()).strip()
+    # 1. Resolver referência ordinal ("segunda opção", "2", "o segundo")
+    ordinal_idx = _ORDINAL_MAP.get(target)
+    if ordinal_idx is not None and ordinal_idx < len(shown):
+        return shown[ordinal_idx]
+    for key, val in _ORDINAL_MAP.items():
+        if key in target and val < len(shown):
+            return shown[val]
+    # 2. Fuzzy match por similaridade de título
     best, best_score = None, 0.0
     for p in shown:
         title = re.sub(r"[^a-z0-9]+", " ", str(p.get("title") or "").lower()).strip()
@@ -115,7 +169,9 @@ def execute_tool(
 
     if tool == "request_schedule":
         shown_n = max(int(state.get("shown_properties_count") or 0), len(shown))
-        visit = bool(state.get("visit_interest") or (memory_updates or {}).get("visit_interest"))
+        visit = bool(
+            state.get("visit_interest") or (memory_updates or {}).get("visit_interest")
+        )
         ready = bool(
             state.get("favorite_property")
             or state.get("visit_interest")
