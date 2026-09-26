@@ -546,6 +546,37 @@ class TestReadyForSchedulingGate:
 class TestAgenticRouter:
     """ADR-011: LLM classifica ação (enum fixo); código decide o próximo nó."""
 
+    def test_conversation_history_reaches_router_and_reply_generator(self):
+        history = [
+            {"role": "user", "content": "Busco um escritório em Pinheiros"},
+            {"role": "assistant", "content": "Qual metragem você procura?"},
+        ]
+        captured = {"router": None, "reply": None}
+
+        def router(message, lead_info, current_state, **kwargs):
+            captured["router"] = kwargs.get("conversation_history")
+            return {"action": "provide_info", "lead_info": {}}
+
+        def reply(message, canned, lead_info, properties, **kwargs):
+            captured["reply"] = kwargs.get("conversation_history")
+            return canned
+
+        flow = make_flow(
+            llm_router=router,
+            reply_generator=reply,
+            properties_rag=lambda info: [],
+        )
+        flow.invoke(
+            {
+                "current_state": "recommendation",
+                "message": "e a segunda opção?",
+                "conversation_history": history,
+            }
+        )
+
+        assert captured["router"] == history
+        assert captured["reply"] == history
+
     def test_llm_router_merges_extracted_lead_info(self):
         router = lambda message, lead_info, current_state, **kwargs: {
             "lead_info": {"region": "Pinheiros", "decision_maker": "yes"},

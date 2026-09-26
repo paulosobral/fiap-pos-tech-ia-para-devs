@@ -94,6 +94,7 @@ class FlowState(TypedDict, total=False):
 
     current_state: str
     message: str
+    conversation_history: list[dict[str, str]]
     context: dict[str, Any]
     lead_info: dict[str, Any]
     intent: str
@@ -395,6 +396,7 @@ class SalesFlow:
                     message,
                     merged,
                     state.get("current_state", "greeting"),
+                    conversation_history=state.get("conversation_history") or [],
                     shown_properties=state.get("properties") or [],
                     favorite_property=state.get("favorite_property"),
                 )
@@ -999,6 +1001,7 @@ class SalesFlow:
                 visit_interest=bool(state.get("visit_interest")),
                 rejected_properties=state.get("rejected_properties"),
                 last_tool=state.get("_last_tool"),
+                conversation_history=state.get("conversation_history") or [],
             )
             if generated and generated.strip():
                 state["response"] = generated.strip()

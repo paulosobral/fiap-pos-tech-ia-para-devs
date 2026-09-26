@@ -388,6 +388,7 @@ class ConversationRouter:
             "session_id": conversation.session_id,
             "lead_id": lead.lead_id,
             "message": masked,
+            "conversation_history": self._recent_conversation_history(conversation),
             "current_state": conversation.current_state,
             "consent_recorded": conversation.consent_recorded,
             "context": conversation.context,
@@ -415,6 +416,27 @@ class ConversationRouter:
             response = FALLBACK_MESSAGE
         conversation.context = flow_state.get("context", conversation.context)
         return response, state
+
+    @staticmethod
+    def _recent_conversation_history(conversation: Any) -> list[dict[str, str]]:
+        """Retorna turnos anteriores já mascarados, sem duplicar a mensagem atual."""
+        if not getattr(conversation, "pii_masked", False):
+            return []
+        history: list[dict[str, str]] = []
+        for turn in (conversation.messages[:-1])[-8:]:
+            if not isinstance(turn, dict):
+                continue
+            role = turn.get("role")
+            text = turn.get("text")
+            if role not in ("lead", "agent") or not isinstance(text, str) or not text:
+                continue
+            history.append(
+                {
+                    "role": "user" if role == "lead" else "assistant",
+                    "content": text[:500],
+                }
+            )
+        return history
 
     def _enqueue_crm(
         self, lead: Any, conversation: Any, flow_state: dict[str, Any] | None = None
@@ -520,6 +542,7 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
                     visit_interest=bool(kwargs.get("visit_interest")),
                     rejected_properties=kwargs.get("rejected_properties"),
                     last_tool=kwargs.get("last_tool"),
+                    conversation_history=kwargs.get("conversation_history"),
                 )
             except Exception:
                 logger.warning(
@@ -541,6 +564,7 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
                 api_key=llm_key,
                 shown_properties=kwargs.get("shown_properties"),
                 favorite_property=kwargs.get("favorite_property"),
+                conversation_history=kwargs.get("conversation_history"),
             )
 
         llm_router = llm_route

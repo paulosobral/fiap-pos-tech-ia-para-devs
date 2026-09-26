@@ -1,10 +1,36 @@
 import sys
 import types
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 
 import handler
+
+
+def test_recent_conversation_history_uses_only_masked_prior_turns():
+    conversation = SimpleNamespace(
+        pii_masked=True,
+        messages=[
+            {"role": "lead", "text": "Busco escritório em Pinheiros"},
+            {"role": "agent", "text": "Qual metragem você procura?"},
+            {"role": "lead", "text": "[EMAIL] e 300 m²"},
+        ],
+    )
+
+    assert handler.ConversationRouter._recent_conversation_history(conversation) == [
+        {"role": "user", "content": "Busco escritório em Pinheiros"},
+        {"role": "assistant", "content": "Qual metragem você procura?"},
+    ]
+
+
+def test_recent_conversation_history_is_empty_before_masking():
+    conversation = SimpleNamespace(
+        pii_masked=False,
+        messages=[{"role": "lead", "text": "meu email é pessoa@example.com"}],
+    )
+
+    assert handler.ConversationRouter._recent_conversation_history(conversation) == []
 
 
 def test_llm_key_env_override(monkeypatch: pytest.MonkeyPatch):
