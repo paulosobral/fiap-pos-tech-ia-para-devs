@@ -66,6 +66,27 @@ def test_search_prefers_purchase_when_intent_purchase():
     assert result[0]["id"] == "p3"
 
 
+def test_purchase_intent_never_falls_back_to_rent_listings():
+    catalog = [
+        {"id": "r1", "title": "Rent 1", "mode": "rent", "price": 1000},
+        {"id": "r2", "title": "Rent 2", "mode": "rent", "price": 2000},
+        {"id": "r3", "title": "Rent 3", "mode": "rent", "price": 3000},
+        {"id": "p1", "title": "Purchase 1", "mode": "purchase", "price": 3_000_000},
+    ]
+
+    result = pc.search_properties({"intent": "purchase"}, catalog=catalog, top_k=3)
+
+    assert [prop["id"] for prop in result] == ["p1"]
+
+
+def test_purchase_intent_returns_empty_when_catalog_has_no_purchase_inventory():
+    result = pc.search_properties(
+        {"intent": "purchase"}, catalog=PROPERTIES[:2], top_k=3
+    )
+
+    assert result == []
+
+
 def test_search_strict_budget_when_enough_in_budget_candidates():
     catalog = [
         {"id": "a", "title": "A", "region": "Moema", "mode": "rent", "price": 4_000},

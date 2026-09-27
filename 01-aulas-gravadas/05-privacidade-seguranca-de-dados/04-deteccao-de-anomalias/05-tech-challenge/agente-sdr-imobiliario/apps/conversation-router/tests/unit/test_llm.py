@@ -459,6 +459,22 @@ class TestExtractAndRoute:
         assert result["thought"] == "info"
         assert "action" not in result
 
+    def test_extract_and_route_preserves_commercial_intent(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(
+            lm.litellm,
+            "completion",
+            lambda **kwargs: _make_completion(
+                '{"lead_info":{"intent":"purchase"},"tool":"request_options",'
+                '"arguments":{},"memory_updates":{}}'
+            ),
+        )
+
+        result = lm.extract_and_route(
+            "quero comprar", {}, "conversation", api_key="k"
+        )
+
+        assert result["lead_info"] == {"intent": "purchase"}
+
     def test_detects_options_request_tool(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(
             lm.litellm, "completion",

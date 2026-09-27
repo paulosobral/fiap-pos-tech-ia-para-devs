@@ -94,6 +94,42 @@ def _resolve_in_shown(
     return best if best is not None and best_score >= 0.55 else None
 
 
+def _explicit_shown_reference(
+    message: str, shown: list[dict[str, Any]]
+) -> dict[str, Any] | None:
+    normalized = re.sub(r"[^a-z0-9]+", " ", message.lower()).strip()
+    for key, index in _ORDINAL_MAP.items():
+        if key.isdigit():
+            continue
+        normalized_key = re.sub(r"[^a-z0-9]+", " ", key.lower()).strip()
+        if normalized_key and re.search(rf"\b{re.escape(normalized_key)}\b", normalized):
+            if index < len(shown):
+                return shown[index]
+
+    option = re.search(
+        r"\b(?:(?:op[çc][ãa]o|im[óo]vel|da|do)\s*)(?:n[ºo]\s*)?(\d+)\b",
+        message,
+        re.IGNORECASE,
+    )
+    if option:
+        index = int(option.group(1)) - 1
+        if 0 <= index < len(shown):
+            return shown[index]
+
+    matches = []
+    for prop in shown:
+        title = str(prop.get("title") or "").split("—", 1)[0]
+        words = re.sub(r"[^a-z0-9]+", " ", title.lower()).split()
+        phrases = {
+            " ".join(words[start : start + size])
+            for size in range(2, min(4, len(words)) + 1)
+            for start in range(len(words) - size + 1)
+        }
+        if any(re.search(rf"\b{re.escape(phrase)}\b", normalized) for phrase in phrases):
+            matches.append(prop)
+    return matches[0] if len(matches) == 1 else None
+
+
 def execute_tool(
     tool: str,
     arguments: dict[str, Any],
@@ -127,8 +163,10 @@ def execute_tool(
     if tool == "property_detail":
         ref = (arguments or {}).get("property_ref")
         focus = state.get("favorite_property")
-        hit = _resolve_in_shown(ref, shown) or (
-            _resolve_in_shown(focus, shown) if focus else None
+        hit = (
+            _explicit_shown_reference(message, shown)
+            or (_resolve_in_shown(focus, shown) if focus else None)
+            or _resolve_in_shown(ref, shown)
         )
         if hit is None and len(shown) == 1:
             hit = shown[0]

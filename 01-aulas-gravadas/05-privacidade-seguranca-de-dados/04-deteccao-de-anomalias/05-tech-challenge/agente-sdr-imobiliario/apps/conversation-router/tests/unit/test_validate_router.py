@@ -98,3 +98,29 @@ def test_unknown_memory_keys_dropped():
     }
     out = validate_router_output(raw, _state())
     assert "evil_key" not in out["memory_updates"]
+
+
+def test_known_commercial_intent_is_preserved():
+    raw = {
+        "tool": "request_options",
+        "arguments": {},
+        "lead_info": {"intent": "purchase", "unknown": "ignored"},
+        "memory_updates": {},
+    }
+
+    out = validate_router_output(raw, _state(), message="quero comprar")
+
+    assert out["lead_info"] == {"intent": "purchase"}
+
+
+def test_invalid_commercial_intent_is_dropped():
+    raw = {
+        "tool": "request_options",
+        "arguments": {},
+        "lead_info": {"intent": "lease"},
+        "memory_updates": {},
+    }
+
+    out = validate_router_output(raw, _state())
+
+    assert "intent" not in out["lead_info"]

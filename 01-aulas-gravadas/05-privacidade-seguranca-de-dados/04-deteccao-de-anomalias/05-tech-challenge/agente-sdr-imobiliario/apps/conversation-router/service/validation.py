@@ -12,6 +12,7 @@ _VISIT_EVIDENCE_RE = re.compile(
 _FUZZY_THRESHOLD = 0.55
 _MEMORY_KEYS = ("favorite_property", "visit_interest")
 _KNOWN_LEAD_FIELDS = (
+    "intent",
     "area",
     "region",
     "budget",
@@ -146,6 +147,8 @@ def validate_router_output(
     clean_lead = {
         k: v for k, v in lead.items() if k in _KNOWN_LEAD_FIELDS and v not in (None, "")
     }
+    if clean_lead.get("intent") not in ("purchase", "rent", "investment"):
+        clean_lead.pop("intent", None)
     tool = raw.get("tool")
     return {
         "thought": str(raw.get("thought") or ""),

@@ -74,6 +74,33 @@ def test_tools_resolve_in_shown_ordinal():
     assert resolved_digit["title"] == _PROPERTIES[1]["title"]
 
 
+def test_property_detail_generic_followup_uses_favorite_over_model_reference():
+    favorite = _PROPERTIES[1]
+    state = {"properties": _PROPERTIES, "favorite_property": favorite["title"]}
+
+    result = execute_tool(
+        "property_detail",
+        {"property_ref": _PROPERTIES[0]["title"]},
+        state,
+        message="quero mais detalhes",
+    )
+
+    assert result.detail == favorite
+
+
+def test_explicit_ordinal_overrides_saved_favorite():
+    state = {"properties": _PROPERTIES, "favorite_property": _PROPERTIES[1]["title"]}
+
+    result = execute_tool(
+        "property_detail",
+        {"property_ref": _PROPERTIES[1]["title"]},
+        state,
+        message="quero mais detalhes do primeiro",
+    )
+
+    assert result.detail == _PROPERTIES[0]
+
+
 def test_property_detail_tool_and_response_contain_disponibilidade():
     from unittest.mock import MagicMock
 

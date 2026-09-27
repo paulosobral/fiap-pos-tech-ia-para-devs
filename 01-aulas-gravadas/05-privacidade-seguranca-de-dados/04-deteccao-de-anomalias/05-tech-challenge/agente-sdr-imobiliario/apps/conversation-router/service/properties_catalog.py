@@ -208,13 +208,23 @@ def search_properties(
         return []
 
     intent = (lead_info.get("intent") or "").lower()
+    requested_mode = "purchase" if intent == "investment" else intent
     region = _norm_region(lead_info.get("region"))
     area_m2 = _area_m2(lead_info.get("area"))
     budget = parse_budget(lead_info.get("budget"))
 
+    # Do not substitute rent listings when the lead asked to buy (or vice versa).
+    mode_candidates = (
+        [p for p in items if str(p.get("mode") or "").lower() == requested_mode]
+        if requested_mode in ("purchase", "rent")
+        else items
+    )
+    if not mode_candidates:
+        return []
+
     # 1. Filtros determinísticos (hard filters)
     candidates: list[dict[str, Any]] = []
-    for prop in items:
+    for prop in mode_candidates:
         price = _fprice(prop.get("price"))
         if budget and (price is None or price > budget * 1.25):
             continue
@@ -224,7 +234,7 @@ def search_properties(
     # Sem soft, budget R$5k deixa 1 de 120 → bot repete o mesmo imóvel.
     min_for_strict = max(top_k, 3)
     if len(candidates) < min_for_strict:
-        candidates = items
+        candidates = mode_candidates
 
     # 2. FAISS: similaridade vetorial da query contra descrições
     query_text = " ".join(str(v) for v in lead_info.values() if v)
@@ -243,9 +253,9 @@ def search_properties(
     for prop in candidates:
         score = 0.0
         pintent = str(prop.get("mode") or "").lower()
-        if intent and pintent == intent:
+        if requested_mode and pintent == requested_mode:
             score += _INTENT_BONUS
-        if intent in ("purchase", "investment") and pintent == "rent":
+        if requested_mode == "purchase" and pintent == "rent":
             score -= _INTENT_BONUS
         if region:
             prop_regions = " ".join(

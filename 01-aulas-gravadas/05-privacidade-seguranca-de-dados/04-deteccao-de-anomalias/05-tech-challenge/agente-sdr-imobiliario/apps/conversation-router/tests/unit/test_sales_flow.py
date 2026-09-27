@@ -875,6 +875,95 @@ class TestAgenticRouter:
         assert captured.get("budget") == "R$ 80 mil"
         assert "Opção Barata" in state["response"]
 
+    def test_request_options_uses_new_purchase_intent_for_search(self, monkeypatch):
+        from service import properties_catalog
+
+        captured = {}
+        purchase_property = {"title": "Edifício à venda", "mode": "purchase"}
+
+        def search(info, top_k=9, list_scope="filtered"):
+            captured.update(info)
+            return [purchase_property]
+
+        monkeypatch.setattr(properties_catalog, "search_properties", search)
+        router = lambda message, lead_info, current_state, **kwargs: {
+            "tool": "request_options",
+            "arguments": {},
+            "lead_info": {"intent": "purchase"},
+            "memory_updates": {},
+        }
+        flow = make_flow(properties_rag=lambda info: [], llm_router=router)
+
+        state = flow.invoke(
+            {"current_state": "recommendation", "message": "quero comprar"}
+        )
+
+        assert captured["intent"] == "purchase"
+        assert state["intent"] == "purchase"
+        assert state["properties"] == [purchase_property]
+
+    def test_property_detail_follows_favorite_and_skips_llm_rewrite(self):
+        properties = [
+            {"title": "Corporate Faria Lima 02", "region": "Paulista", "area_util": 80},
+            {
+                "title": "Vila Olímpia Executive 75",
+                "region": "Berrini",
+                "area_util": 80,
+                "disponibilidade": "reservado",
+            },
+        ]
+        router = lambda message, lead_info, current_state, **kwargs: {
+            "tool": "property_detail",
+            "arguments": {"property_ref": properties[0]["title"]},
+            "lead_info": {},
+            "memory_updates": {},
+        }
+        reply = MagicMock(return_value="O primeiro imóvel está livre para alugar.")
+        flow = make_flow(llm_router=router, reply_generator=reply)
+
+        state = flow.invoke(
+            {
+                "current_state": "conversation",
+                "message": "quero mais detalhes",
+                "properties": properties,
+                "favorite_property": properties[1]["title"],
+            }
+        )
+
+        assert "Vila Olímpia Executive 75" in state["response"]
+        assert "Corporate Faria Lima 02" not in state["response"]
+        assert "Disponibilidade: reservado" in state["response"]
+        reply.assert_not_called()
+
+    def test_reservation_question_does_not_invent_who_reserved(self):
+        prop = {
+            "title": "Vila Olímpia Executive 75",
+            "region": "Berrini",
+            "area_util": 80,
+            "disponibilidade": "reservado",
+        }
+        router = lambda message, lead_info, current_state, **kwargs: {
+            "tool": "property_detail",
+            "arguments": {},
+            "lead_info": {},
+            "memory_updates": {},
+        }
+        reply = MagicMock(return_value="Está reservado para outro cliente.")
+        flow = make_flow(llm_router=router, reply_generator=reply)
+
+        state = flow.invoke(
+            {
+                "current_state": "conversation",
+                "message": "Está reservado pra quem?",
+                "properties": [prop],
+                "favorite_property": prop["title"],
+            }
+        )
+
+        assert "não informa para quem" in state["response"]
+        assert "outro cliente" not in state["response"]
+        reply.assert_not_called()
+
 
 class TestDiscoveryState:
     def test_discovery_answers_about_shown_property_and_stays_discovery(self):

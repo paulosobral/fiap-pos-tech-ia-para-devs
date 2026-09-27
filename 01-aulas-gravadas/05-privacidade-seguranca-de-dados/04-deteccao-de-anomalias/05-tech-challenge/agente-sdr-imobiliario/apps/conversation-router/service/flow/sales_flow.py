@@ -370,6 +370,9 @@ class SalesFlow:
         stored_info = context.get("lead_info") or {}
         seeded = state.get("lead_info") or {}
         merged = {**stored_info, **seeded}
+        state["lead_info"] = merged
+        if merged.get("intent") in ("purchase", "rent", "investment"):
+            state["intent"] = merged["intent"]
 
         if context.get("favorite_property"):
             state["favorite_property"] = context["favorite_property"]
@@ -409,6 +412,9 @@ class SalesFlow:
                     state["_last_tool"] = validated["tool"]
                     llm_deltas = validated.get("lead_info") or {}
                     merged = {**merged, **llm_deltas}
+                    state["lead_info"] = merged
+                    if merged.get("intent") in ("purchase", "rent", "investment"):
+                        state["intent"] = merged["intent"]
                     context["lead_info"] = {
                         **(context.get("lead_info") or {}),
                         **llm_deltas,
@@ -454,6 +460,7 @@ class SalesFlow:
                     # Legacy action contract (ADR-011)
                     llm_deltas = (result or {}).get("lead_info") or {}
                     merged = {**merged, **llm_deltas}
+                    state["lead_info"] = merged
                     context["lead_info"] = {
                         **(context.get("lead_info") or {}),
                         **llm_deltas,
@@ -554,6 +561,16 @@ class SalesFlow:
                 p = tr.detail
                 price = p.get("price_text") or p.get("price") or "sob consulta"
                 disp = p.get("disponibilidade", "")
+                message = state.get("message", "").lower()
+                if re.search(r"\b(?:pra|para) quem\b|\bquem reservou\b", message):
+                    state["response"] = (
+                        f"O cadastro informa que {p.get('title', 'o imóvel')} está {disp}, "
+                        "mas não informa para quem. Posso pedir ao corretor que confirme."
+                        if disp == "reservado"
+                        else "Não tenho no cadastro a informação de para quem seria a reserva. "
+                        "Posso pedir ao corretor que confirme."
+                    )
+                    return state
                 disp_line = f" Disponibilidade: {disp}." if disp else ""
                 state["response"] = (
                     f"{p.get('title', 'Imóvel')} — {p.get('region', '')}, "
@@ -983,6 +1000,8 @@ class SalesFlow:
     def _node_postprocess(self, state: FlowState) -> FlowState:
         """FR-02: geração de resposta humanizada via LLM (exceto LGPD/recusa)."""
         if self.reply_generator is None:
+            return state
+        if state.get("_last_tool") in ("property_detail", "compare_properties"):
             return state
         from service.security_layer import CONSENT_MESSAGE, REFUSAL_MESSAGE
 
