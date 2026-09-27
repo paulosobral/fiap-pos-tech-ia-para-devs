@@ -21,9 +21,12 @@ _CAPITAL_TOKEN_RE = re.compile(r"\b[A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-záéíóúâê
 PII_PATTERNS = {
     "NOME": re.compile(r"\b([A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-záéíóúâêôãõç]+(?:\s+[A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-záéíóúâêôãõç]+)+)\b"),
     "EMAIL": re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"),
-    "TELEFONE": re.compile(r"\+55\s?\d{2}\s?\d{4,5}-?\d{4}"),
     "CNPJ": re.compile(r"\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}"),
+    "TELEFONE": re.compile(
+        r"(?<!\d)(?:\+?55[\s.-]*)?(?:\(?\d{2}\)?[\s.-]*)(?:9\d{4}|[2-8]\d{3})[\s.-]?\d{4}(?!\d)"
+    ),
 }
+_PII_PLACEHOLDER_RE = re.compile(r"\[(?:NOME|EMAIL|TELEFONE|CNPJ)(?:_\d+)?\]", re.IGNORECASE)
 
 
 class SecurityLayer:
@@ -56,6 +59,9 @@ class SecurityLayer:
         return masked
 
     def check_output_leak(self, text: str) -> tuple[bool, str | None]:
+        if _PII_PLACEHOLDER_RE.search(text):
+            logger.error("Unresolved PII placeholder detected in agent output")
+            return True, "PLACEHOLDER"
         for label in ("EMAIL", "TELEFONE", "CNPJ"):
             if PII_PATTERNS[label].search(text):
                 logger.error("PII leakage detected (%s) in LLM output; blocking", label)

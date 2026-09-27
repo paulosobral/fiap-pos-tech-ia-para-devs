@@ -31,6 +31,16 @@ class TestPiiMasker:
         assert "91234-5678" not in out
         assert "[TELEFONE]" in out
 
+    def test_masks_local_phone_without_country_code(self):
+        out = self.layer.mask("telefone 11979918262")
+        assert "11979918262" not in out
+        assert "[TELEFONE]" in out
+
+    def test_masks_formatted_local_phone(self):
+        out = self.layer.mask("telefone (11) 97991-8262")
+        assert "97991-8262" not in out
+        assert "[TELEFONE]" in out
+
     def test_masks_cnpj(self):
         out = self.layer.mask("CNPJ 12.345.678/0001-95")
         assert "12.345.678/0001-95" not in out
@@ -50,6 +60,11 @@ class TestPiiMasker:
     def test_output_clean_passes(self):
         leak, _ = self.layer.check_output_leak("Segue sua lista de imóveis.")
         assert leak is False
+
+    def test_output_unresolved_pii_placeholder_is_blocked(self):
+        leak, label = self.layer.check_output_leak("Ótimo, [NOME]! Envio para [EMAIL].")
+        assert leak is True
+        assert label == "PLACEHOLDER"
 
     def test_output_leak_blocks_first_name(self):
         leak, label = self.layer.check_output_leak("Olá João, segue a proposta.")

@@ -221,6 +221,14 @@ def execute_tool(
             result.refusal = "scheduling_gate"
             result.current_state_hint = "conversation"
             return result
+        if state.get("missing_contact_fields"):
+            result.ok = False
+            result.refusal = "missing_contact"
+            result.raw_arguments["missing_contact_fields"] = list(
+                state["missing_contact_fields"]
+            )
+            result.current_state_hint = "conversation"
+            return result
         result.current_state_hint = "scheduling"
         return result
 

@@ -95,6 +95,8 @@ class FlowState(TypedDict, total=False):
     current_state: str
     message: str
     conversation_history: list[dict[str, str]]
+    missing_contact_fields: list[str]
+    scheduling_when: str
     context: dict[str, Any]
     lead_info: dict[str, Any]
     intent: str
@@ -393,7 +395,8 @@ class SalesFlow:
         state["_router_tool"] = None
         state["_tool_result"] = None
         state["_last_tool"] = None
-        if self.llm_router is not None:
+        pending_schedule_when = context.get("pending_schedule_when")
+        if self.llm_router is not None and pending_schedule_when is None:
             try:
                 result = self.llm_router(
                     message,
@@ -474,6 +477,22 @@ class SalesFlow:
                     "llm_router falhou; usando extração regex + FSM determinístico (fallback ADR-011)",
                     exc_info=True,
                 )
+
+        if pending_schedule_when is not None:
+            from service.tools import execute_tool
+
+            state["scheduling_when"] = str(pending_schedule_when)
+            state["_router_tool"] = "request_schedule"
+            state["_last_tool"] = "request_schedule"
+            tool_result = execute_tool(
+                "request_schedule",
+                {},
+                state,
+                message=str(pending_schedule_when),
+            )
+            state["_tool_result"] = tool_result
+            if tool_result.ok:
+                context.pop("pending_schedule_when", None)
 
         state["lead_info"] = merged
         self._apply_commercial_memory(state)
@@ -638,6 +657,25 @@ class SalesFlow:
         if tool == "request_schedule":
             if tr is not None and not tr.ok:
                 state["current_state"] = "conversation"
+                if tr.refusal == "missing_contact":
+                    ctx = state.setdefault("context", {})
+                    ctx.setdefault("pending_schedule_when", state.get("message", ""))
+                    field_names = {
+                        "name": "seu nome",
+                        "email": "seu e-mail",
+                        "phone": "seu telefone",
+                    }
+                    missing = [
+                        field_names[field]
+                        for field in tr.raw_arguments.get("missing_contact_fields", [])
+                        if field in field_names
+                    ]
+                    state["response"] = (
+                        "Antes de encaminhar o pedido de visita ao corretor, preciso de "
+                        + ", ".join(missing)
+                        + ". Pode me enviar?"
+                    )
+                    return state
                 state["response"] = (
                     "Antes de agendar, me diga qual imóvel mais te interessou "
                     "ou se quer refinar a busca. Assim consigo preparar a visita ideal."

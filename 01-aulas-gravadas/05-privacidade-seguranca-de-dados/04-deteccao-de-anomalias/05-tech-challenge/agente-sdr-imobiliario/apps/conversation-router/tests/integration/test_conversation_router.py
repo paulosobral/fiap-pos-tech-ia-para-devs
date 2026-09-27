@@ -160,6 +160,19 @@ class TestConversationRouter:
         assert lead_data[0]["deadline"].endswith("2 meses")
         assert lead_data[0]["area"] == "200 m²"
 
+    def test_telegram_profile_name_is_saved_only_after_consent(self):
+        router, _, _ = make_router(with_pii=True)
+
+        router.handle(update("Olá", first_name="Paulo", last_name="Sobral"))
+        _, conversation = router.store.get_by_telegram_user(42)
+        assert router.pii_store.load(conversation.session_id) == {}
+
+        router.handle(
+            update("sim", first_name="Paulo", last_name="Sobral", update_id=2)
+        )
+
+        assert router.pii_store.load(conversation.session_id)["NOME"] == ["Paulo Sobral"]
+
     def test_internal_inbound_text_happy_path(self):
         router, sqs, telegram = make_router()
         result = router.handle(

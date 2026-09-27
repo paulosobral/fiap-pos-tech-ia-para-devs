@@ -45,8 +45,22 @@ class FakeKms:
         return {"Plaintext": base64.b64decode(CiphertextBlob)}
 
 
-def telegram_update(text: str | None, user_id=42, chat_id=7, voice=None, update_id=1, message_id=1):
-    message = {"message_id": message_id, "from": {"id": user_id}, "chat": {"id": chat_id}}
+def telegram_update(
+    text: str | None,
+    user_id=42,
+    chat_id=7,
+    voice=None,
+    update_id=1,
+    message_id=1,
+    first_name=None,
+    last_name=None,
+):
+    sender = {"id": user_id}
+    if first_name:
+        sender["first_name"] = first_name
+    if last_name:
+        sender["last_name"] = last_name
+    message = {"message_id": message_id, "from": sender, "chat": {"id": chat_id}}
     if text is not None:
         message["text"] = text
     if voice:

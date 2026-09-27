@@ -239,6 +239,7 @@ class ConversationRouter:
             }
 
         response, state = self._process_lead_message(lead, conversation, text)
+        self._persist_telegram_profile_name(sender, conversation)
 
         conversation.current_state = state
         conversation.pii_masked = True
@@ -400,6 +401,21 @@ class ConversationRouter:
             logger.warning("Guardrail violation: %s", reason)
             return FALLBACK_MESSAGE, conversation.current_state
         masked = self.security.mask(text, session_id=conversation.session_id)
+        contact = (
+            self.pii_store.load(conversation.session_id)
+            if self.pii_store is not None
+            else {}
+        )
+        flow_contact_fields = {
+            "name": "NOME",
+            "email": "EMAIL",
+            "phone": "TELEFONE",
+        }
+        missing_contact_fields = [
+            field
+            for field, label in flow_contact_fields.items()
+            if not contact.get(label)
+        ]
         conversation.messages.append(
             {"role": "lead", "text": masked, "at": utc_now_iso()}
         )
@@ -408,6 +424,7 @@ class ConversationRouter:
             "lead_id": lead.lead_id,
             "message": masked,
             "conversation_history": self._recent_conversation_history(conversation),
+            "missing_contact_fields": missing_contact_fields,
             "current_state": conversation.current_state,
             "consent_recorded": conversation.consent_recorded,
             "context": conversation.context,
@@ -435,6 +452,22 @@ class ConversationRouter:
             response = FALLBACK_MESSAGE
         conversation.context = flow_state.get("context", conversation.context)
         return response, state
+
+    def _persist_telegram_profile_name(
+        self, sender: dict[str, Any], conversation: Any
+    ) -> None:
+        if not conversation.consent_recorded or self.pii_store is None:
+            return
+        name = " ".join(
+            part.strip()
+            for part in (sender.get("first_name"), sender.get("last_name"))
+            if isinstance(part, str) and part.strip()
+        )
+        if not name:
+            return
+        stored = self.pii_store.load(conversation.session_id)
+        if not stored.get("NOME"):
+            self.pii_store.save(conversation.session_id, {"NOME": [name]})
 
     @staticmethod
     def _recent_conversation_history(conversation: Any) -> list[dict[str, str]]:
