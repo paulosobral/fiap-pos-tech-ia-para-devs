@@ -6,6 +6,15 @@ from typing import Any
 SCORE_THRESHOLD = 70
 AREA_THRESHOLD_M2 = 500
 
+_FIELD_LABELS = {
+    "area": "a metragem desejada",
+    "region": "a região de interesse",
+    "budget": "o orçamento",
+    "deadline": "o prazo",
+    "people_count": "o número de pessoas",
+    "decision_maker": "se você é o decisor",
+}
+
 
 class LeadQualifier:
     def calculate_score(self, info: dict[str, Any]) -> dict[str, Any]:
@@ -40,9 +49,20 @@ class LeadQualifier:
         required = ("area", "region", "budget", "deadline", "people_count", "decision_maker")
         return [field for field in required if not info.get(field)]
 
+    def missing_fields_labels(self, info: dict[str, Any]) -> list[str]:
+        """Rótulos em PT-BR de `missing_fields`, seguros para exibir ao lead."""
+        return [_FIELD_LABELS[field] for field in self.missing_fields(info)]
+
     def explain(self, result: dict[str, Any]) -> str:
+        """Uso interno (log/handoff/CRM) — não expor ao lead, usar `lead_facing_summary`."""
         parts = ", ".join(result["factors"]) if result["factors"] else "há informações pendentes"
         return f"Seu score é {result['score']} porque {parts}."
+
+    def lead_facing_summary(self, result: dict[str, Any], qualified: bool) -> str:
+        """Texto consultivo equivalente a `explain`, sem jargão de CRM interno."""
+        if qualified:
+            return "Perfeito, já tenho o que preciso! Vou te conectar com o especialista certo."
+        return "Já entendi bastante do que você precisa."
 
     def urgency(self, info: dict[str, Any]) -> str:
         """Rótulo low/medium/high para o handoff do CRM (entities.md/Contrato 4).

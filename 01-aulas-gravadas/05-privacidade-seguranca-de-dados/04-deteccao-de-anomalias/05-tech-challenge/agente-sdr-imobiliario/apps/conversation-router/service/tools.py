@@ -210,13 +210,17 @@ def execute_tool(
         visit = bool(
             state.get("visit_interest") or (memory_updates or {}).get("visit_interest")
         )
+        favorite = bool(state.get("favorite_property"))
         ready = bool(
-            state.get("favorite_property")
+            favorite
             or state.get("visit_interest")
             or (state.get("lead_info") or {}).get("deadline")
             or visit
         )
-        if shown_n < 3 or not visit or not ready:
+        # Sinal comercial forte (pedido explícito + imóvel já indicado) dispensa o
+        # mínimo de 3 imóveis mostrados, mas nunca dispensa ter mostrado pelo menos 1.
+        min_shown = 1 if (visit and favorite) else 3
+        if shown_n < min_shown or not visit or not ready:
             result.ok = False
             result.refusal = "scheduling_gate"
             result.current_state_hint = "conversation"

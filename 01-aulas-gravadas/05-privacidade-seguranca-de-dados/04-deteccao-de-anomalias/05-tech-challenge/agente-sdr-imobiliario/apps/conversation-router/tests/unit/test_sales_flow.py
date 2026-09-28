@@ -49,7 +49,7 @@ class TestSalesFlow:
         flow = make_flow()
         state = flow.invoke({"current_state": "intent", "message": "sei lá"})
         assert state.get("intent") is None
-        assert "compra, locação ou investimento" in state["response"]
+        assert "comprar, alugar ou investir" in state["response"]
 
     def test_qualification_qualified_routes_recommendation(self):
         flow = make_flow()
@@ -902,7 +902,10 @@ class TestAgenticRouter:
         assert state["intent"] == "purchase"
         assert state["properties"] == [purchase_property]
 
-    def test_property_detail_follows_favorite_and_skips_llm_rewrite(self):
+    def test_property_detail_follows_favorite_and_feeds_correct_facts_to_llm(self):
+        """`property_detail` agora também passa pela humanização via LLM (item 1.5),
+        mas a resolução do imóvel-alvo (favorito, não o primeiro da lista) continua
+        determinística em código, e é ela quem alimenta os FATOS enviados ao LLM."""
         properties = [
             {"title": "Corporate Faria Lima 02", "region": "Paulista", "area_util": 80},
             {
@@ -918,7 +921,7 @@ class TestAgenticRouter:
             "lead_info": {},
             "memory_updates": {},
         }
-        reply = MagicMock(return_value="O primeiro imóvel está livre para alugar.")
+        reply = MagicMock(return_value="Esse imóvel está reservado no momento.")
         flow = make_flow(llm_router=router, reply_generator=reply)
 
         state = flow.invoke(
@@ -930,12 +933,16 @@ class TestAgenticRouter:
             }
         )
 
-        assert "Vila Olímpia Executive 75" in state["response"]
-        assert "Corporate Faria Lima 02" not in state["response"]
-        assert "Disponibilidade: reservado" in state["response"]
-        reply.assert_not_called()
+        reply.assert_called_once()
+        canned = reply.call_args.args[1]
+        assert "Vila Olímpia Executive 75" in canned
+        assert "Corporate Faria Lima 02" not in canned
+        assert "Disponibilidade: reservado" in canned
+        assert state["response"] == "Esse imóvel está reservado no momento."
 
-    def test_reservation_question_does_not_invent_who_reserved(self):
+    def test_reservation_question_canned_facts_never_name_who_reserved(self):
+        """A resposta oficial (fatos enviados ao LLM) nunca inventa PARA QUEM um imóvel
+        está reservado — isso é responsabilidade do nó determinístico, não do prompt."""
         prop = {
             "title": "Vila Olímpia Executive 75",
             "region": "Berrini",
@@ -948,7 +955,7 @@ class TestAgenticRouter:
             "lead_info": {},
             "memory_updates": {},
         }
-        reply = MagicMock(return_value="Está reservado para outro cliente.")
+        reply = MagicMock(return_value="Está reservado no momento, mas posso sugerir outras opções.")
         flow = make_flow(llm_router=router, reply_generator=reply)
 
         state = flow.invoke(
@@ -960,9 +967,10 @@ class TestAgenticRouter:
             }
         )
 
-        assert "não informa para quem" in state["response"]
-        assert "outro cliente" not in state["response"]
-        reply.assert_not_called()
+        canned = reply.call_args.args[1]
+        assert "não informa para quem" in canned
+        assert "outro cliente" not in canned
+        assert state["response"] == "Está reservado no momento, mas posso sugerir outras opções."
 
 
 class TestDiscoveryState:

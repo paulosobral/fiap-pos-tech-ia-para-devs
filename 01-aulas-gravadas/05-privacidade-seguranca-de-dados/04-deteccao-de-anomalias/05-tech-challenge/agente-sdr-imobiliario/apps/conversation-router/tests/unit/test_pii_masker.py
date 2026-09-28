@@ -66,10 +66,21 @@ class TestPiiMasker:
         assert leak is True
         assert label == "PLACEHOLDER"
 
-    def test_output_leak_blocks_first_name(self):
-        leak, label = self.layer.check_output_leak("Olá João, segue a proposta.")
+    def test_output_leak_blocks_first_name_from_session(self):
+        leak, label = self.layer.check_output_leak(
+            "Olá João, segue a proposta.", session_pii={"NOME": ["João"]}
+        )
         assert leak is True
         assert label == "NOME"
+
+    def test_output_first_name_not_in_session_is_not_blocked(self):
+        """Nome comum que aparece no texto mas não é PII desta sessão (ex.: nome de
+        bairro/empreendimento) não deve derrubar a resposta — regressão do falso
+        positivo com a lista estática COMMON_FIRST_NAMES."""
+        leak, _ = self.layer.check_output_leak(
+            "Temos opções na região da Vila Ana.", session_pii={"NOME": ["Paulo"]}
+        )
+        assert leak is False
 
     def test_unmask_restores(self):
         masked = self.layer.mask("Meu nome é João Silva")

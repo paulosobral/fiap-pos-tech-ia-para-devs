@@ -20,8 +20,20 @@ from typing import Any, Callable, TypedDict
 
 logger = logging.getLogger(__name__)
 
-CONFIDENCE_THRESHOLD = 0.85
-INTENT_CONFIRM_QUESTION = "Você está buscando compra, locação ou investimento?"
+CONFIDENCE_THRESHOLD = 0.6
+INTENT_CONFIRM_QUESTION = "Só pra eu entender melhor: você está pensando em comprar, alugar ou investir em um imóvel comercial?"
+
+# Recusa de consentimento LGPD: determinística (sem LLM), mas tolerante a variações
+# próximas das 4 formas originais ("não", "nao", "não quero", "nao quero").
+_CONSENT_REFUSAL_RE = re.compile(r"^\s*n[ãa]o(\s+quero)?\s*[.!]?\s*$", re.IGNORECASE)
+
+# Variações do fecho de "mostrei opções, o que achou?" — evita repetir a mesma
+# frase literal em todo ponto do fluxo que lista/reoferece imóveis.
+_FOLLOWUP_PROMPTS = (
+    "Alguma chamou atenção? Posso refinar por metragem, orçamento ou região.",
+    "Alguma dessas te interessou? Posso ajustar por metragem, orçamento ou localização.",
+    "O que achou dessas opções? Consigo refinar por área, preço ou bairro.",
+)
 
 # Extração sobre texto JÁ MASCARADO (placeholders [NOME]/[EMAIL] não colidem com os padrões).
 _BUDGET_NUMBER_RE = r"\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:[.,]\d+)?"
@@ -195,6 +207,11 @@ class SalesFlow:
         else:
             self._graph = None
 
+    def _followup_prompt(self, state: FlowState) -> str:
+        """Escolhe uma variação do fecho de listagem, evitando repetir a mesma frase."""
+        n = state.get("shown_properties_count", 0) or 0
+        return _FOLLOWUP_PROMPTS[n % len(_FOLLOWUP_PROMPTS)]
+
     # --- Graph construction (LangGraph) ---
 
     def _build_graph(self):
@@ -266,7 +283,10 @@ class SalesFlow:
                     state.get("shown_properties_count", 0) or 0,
                     len(state.get("properties") or []),
                 )
-                if shown >= 3:
+                strong_signal = bool(
+                    state.get("visit_interest") and state.get("favorite_property")
+                )
+                if shown >= (1 if strong_signal else 3):
                     return "scheduling"
             return "conversation"
         if action in ("refine_search", "compare_properties"):
@@ -637,8 +657,7 @@ class SalesFlow:
                     )
                 )
                 state["response"] = (
-                    f"Separei algumas opções:\n{listed}\n\n"
-                    "Alguma chamou atenção? Posso refinar por metragem, orçamento ou região."
+                    f"Separei algumas opções:\n{listed}\n\n{self._followup_prompt(state)}"
                 )
                 return state
             if self.properties_rag is not None:
@@ -684,19 +703,30 @@ class SalesFlow:
             state["response"] = "Vamos escolher um horário pra visita?"
             return state
         if tool == "unclear":
+            if state.get("properties"):
+                state["response"] = (
+                    "Não peguei bem — quer que eu detalhe algum dos imóveis que já mostrei, "
+                    "compare eles ou busque outras opções?"
+                )
+            else:
+                state["response"] = (
+                    "Não entendi bem. Pode reformular? "
+                    "Posso te ajudar a encontrar um imóvel comercial pra compra, locação ou investimento."
+                )
+            return state
+        if tool == "provide_info":
             state["response"] = (
-                "Não entendi bem. Pode reformular? "
-                "Também posso mostrar opções ou comparar imóveis já vistos."
+                "Essa informação específica eu não tenho aqui comigo, mas posso encaminhar "
+                "sua pergunta para o corretor responsável. Quer que eu faça isso?"
             )
             return state
-        # provide_info / fallback
         return self._node_recommendation(state)
 
     def _node_greeting(self, state: FlowState) -> FlowState:
         from service.security_layer import CONSENT_MESSAGE, REFUSAL_MESSAGE
 
         message = state.get("message", "")
-        if message.strip().lower() in ("não", "nao", "não quero", "nao quero"):
+        if _CONSENT_REFUSAL_RE.match(message):
             state["response"] = REFUSAL_MESSAGE
             state["current_state"] = "followup"
             state["consent_recorded"] = False
@@ -709,7 +739,7 @@ class SalesFlow:
         from service.security_layer import REFUSAL_MESSAGE
 
         message = state.get("message", "")
-        if message.strip().lower() in ("não", "nao", "não quero", "nao quero"):
+        if _CONSENT_REFUSAL_RE.match(message):
             state["response"] = REFUSAL_MESSAGE
             state["current_state"] = "followup"
             state["consent_recorded"] = False
@@ -735,7 +765,7 @@ class SalesFlow:
             region = info.get("region", "")
             state["response"] = self._build_early_recommendation(state, region)
         else:
-            state["response"] = "Ótimo! Qual a metragem desejada, região e orçamento?"
+            state["response"] = "Ótimo! Em qual região você está buscando?"
         return state
 
     def _node_qualification(self, state: FlowState) -> FlowState:
@@ -753,8 +783,7 @@ class SalesFlow:
                     for i, p in enumerate(state["properties"])
                 )
                 state["response"] = (
-                    f"Já tenho uma ideia do que você procura. Separei algumas opções:\n{listed}\n\n"
-                    "Alguma chamou atenção? Posso refinar por metragem, orçamento ou região."
+                    f"Já tenho uma ideia do que você procura. Separei algumas opções:\n{listed}\n\n{self._followup_prompt(state)}"
                 )
                 self._remember_shown(state)
                 return state
@@ -769,22 +798,22 @@ class SalesFlow:
                 self.specialist_rotation,
                 self.specialist_fallback,
             )
-            state["response"] = self.qualifier.explain(result)
+            state["response"] = self.qualifier.lead_facing_summary(result, qualified=True)
         else:
             state["current_state"] = "qualification"
             state["lead_qualified"] = False
-            missing = result["missing"]
+            missing_labels = self.qualifier.missing_fields_labels(info)
             if self.properties_rag and (info.get("region") or info.get("area")):
                 state["response"] = (
-                    "Quase lá! "
-                    + ", ".join(missing)
+                    "Quase lá! Me conta "
+                    + ", ".join(missing_labels)
                     + " pra eu te mostrar as melhores opções."
                 )
             else:
                 state["response"] = (
-                    self.qualifier.explain(result)
+                    self.qualifier.lead_facing_summary(result, qualified=False)
                     + " Ainda precisamos de algumas informações: "
-                    + ", ".join(missing)
+                    + ", ".join(missing_labels)
                     + "."
                 )
         return state
@@ -815,10 +844,7 @@ class SalesFlow:
         state["properties"] = top
         state["shown_properties_count"] = len(top)
         self._remember_shown(state)
-        return (
-            f"Tenho algumas opções pra você:\n{listed}\n"
-            "Alguma chamou atenção? Posso refinar por metragem, orçamento ou localização."
-        )
+        return f"Tenho algumas opções pra você:\n{listed}\n{self._followup_prompt(state)}"
 
     def _node_discovery(self, state: FlowState) -> FlowState:
         if self._wants_options(state) and self.properties_rag is not None:
@@ -858,17 +884,28 @@ class SalesFlow:
             if "disponi" in message or "reservad" in message or "livre" in message:
                 disp = focus_prop.get("disponibilidade", "sob consulta")
                 detail_bits.append(f"disponibilidade: {disp}")
-            detail = (
-                "; ".join(detail_bits)
-                if detail_bits
-                else (
-                    f"{focus_prop.get('title')} — {focus_prop.get('region', '')}, {focus_prop.get('area_util', '')} m²"
+            if "elevador" in message:
+                detail_bits.append(f"elevadores: {focus_prop.get('elevadores') or 'sob consulta'}")
+            if "entrega" in message or "prazo" in message:
+                detail_bits.append(f"entrega: {focus_prop.get('entrega') or 'sob consulta'}")
+            if "classe" in message or "categoria" in message:
+                detail_bits.append(f"classe: {focus_prop.get('class') or 'sob consulta'}")
+            if "laje" in message:
+                detail_bits.append(
+                    "laje corporativa" if focus_prop.get("laje") else "não é laje corporativa"
                 )
-            )
-            state["response"] = (
-                f"Sobre {focus_prop.get('title', 'o imóvel')}: {detail}. "
-                "Quer que eu compare com outra opção ou ajuste algum critério?"
-            )
+            if detail_bits:
+                detail = "; ".join(detail_bits)
+                state["response"] = (
+                    f"Sobre {focus_prop.get('title', 'o imóvel')}: {detail}. "
+                    "Quer que eu compare com outra opção ou ajuste algum critério?"
+                )
+            else:
+                state["response"] = (
+                    f"Essa informação específica sobre {focus_prop.get('title', 'esse imóvel')} "
+                    "eu não tenho no cadastro. Posso encaminhar sua pergunta ao corretor ou "
+                    "te mostrar outros detalhes que eu tenho (metragem, vagas, andar, valor)."
+                )
         else:
             state["response"] = (
                 "Qual imóvel específico você quer que eu detalhe? "
@@ -916,9 +953,7 @@ class SalesFlow:
             for i, p in enumerate(state["properties"])
         )
         state["response"] = (
-            f"Separei algumas opções que parecem próximas do que você procura:\n{listed}\n\n"
-            "Alguma delas chamou atenção? "
-            "Posso também ajustar por metragem, orçamento ou localização."
+            f"Separei algumas opções que parecem próximas do que você procura:\n{listed}\n\n{self._followup_prompt(state)}"
         )
         self._remember_shown(state)
         return state
@@ -938,7 +973,11 @@ class SalesFlow:
             state.get("shown_properties_count", 0) or 0,
             len(state.get("properties") or []),
         )
-        if shown_count < 3 and not state.get("lead_id"):
+        # Sinal comercial forte (interesse de visita + imóvel favorito já indicado)
+        # dispensa o mínimo de 3 mostrados, mas nunca dispensa ter mostrado pelo menos 1.
+        strong_signal = bool(state.get("visit_interest") and state.get("favorite_property"))
+        min_shown = 1 if strong_signal else 3
+        if shown_count < min_shown and not state.get("lead_id"):
             state["current_state"] = "recommendation"
             state["response"] = (
                 "Antes de pensar em agendar, vou te mostrar mais opções. "
@@ -992,8 +1031,7 @@ class SalesFlow:
             for p in fresh
         )
         state["response"] = (
-            f"Separei mais algumas opções que parecem próximas do que você procura:\n{listed}\n\n"
-            "Alguma chamou atenção? Posso também refinar por metragem, orçamento ou localização."
+            f"Separei mais algumas opções que parecem próximas do que você procura:\n{listed}\n\n{self._followup_prompt(state)}"
         )
         self._remember_shown(state)
         return state
@@ -1038,8 +1076,6 @@ class SalesFlow:
     def _node_postprocess(self, state: FlowState) -> FlowState:
         """FR-02: geração de resposta humanizada via LLM (exceto LGPD/recusa)."""
         if self.reply_generator is None:
-            return state
-        if state.get("_last_tool") in ("property_detail", "compare_properties"):
             return state
         from service.security_layer import CONSENT_MESSAGE, REFUSAL_MESSAGE
 
@@ -1142,11 +1178,11 @@ class SalesFlow:
     @staticmethod
     def _default_classify(message: str) -> tuple[str, float]:
         lowered = message.lower()
-        if any(w in lowered for w in ("alugar", "locação", "locacao", "locar")):
+        if any(w in lowered for w in ("alugar", "aluguel", "locação", "locacao", "locar")):
             return "rent", 0.9
-        if any(w in lowered for w in ("investimento", "investir", "renda")):
+        if any(w in lowered for w in ("investimento", "investir", "invest", "renda")):
             return "investment", 0.9
-        if any(w in lowered for w in ("comprar", "compra", "adquirir")):
+        if any(w in lowered for w in ("comprar", "compra", "compro", "adquirir")):
             return "purchase", 0.9
         return "unknown", 0.3
 

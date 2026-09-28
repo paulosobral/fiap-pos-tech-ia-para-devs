@@ -58,7 +58,9 @@ class SecurityLayer:
             self._pii_store.save(session_id, extracted)
         return masked
 
-    def check_output_leak(self, text: str) -> tuple[bool, str | None]:
+    def check_output_leak(
+        self, text: str, session_pii: dict[str, list[str]] | None = None
+    ) -> tuple[bool, str | None]:
         if _PII_PLACEHOLDER_RE.search(text):
             logger.error("Unresolved PII placeholder detected in agent output")
             return True, "PLACEHOLDER"
@@ -66,9 +68,12 @@ class SecurityLayer:
             if PII_PATTERNS[label].search(text):
                 logger.error("PII leakage detected (%s) in LLM output; blocking", label)
                 return True, label
+        # NOME: só bloqueia se for um nome REAL do lead nesta sessão — evita falso
+        # positivo em nome de bairro/empreendimento ou uso natural da palavra
+        # (checar contra a lista estática COMMON_FIRST_NAMES gerava esse falso positivo).
         lowered = text.lower()
-        for name in COMMON_FIRST_NAMES:
-            if re.search(rf"\b{re.escape(name)}\b", lowered):
+        for name in (session_pii or {}).get("NOME", []):
+            if re.search(rf"\b{re.escape(name.lower())}\b", lowered):
                 logger.error("PII leakage detected (NOME) in LLM output; blocking")
                 return True, "NOME"
         return False, None
@@ -80,7 +85,9 @@ class SecurityLayer:
             if pattern in lowered:
                 logger.warning("Prompt injection attempt blocked")
                 return True, "prompt_injection"
-        denied_topics = ("política", "politica", "eleição", "eleicao", "concorrente", "insulto")
+        # "concorrente" e "insulto" foram removidos: bloqueavam objeções comerciais
+        # legítimas ("o de vocês é melhor que o concorrente X?").
+        denied_topics = ("política", "politica", "eleição", "eleicao")
         for topic in denied_topics:
             if topic in lowered:
                 logger.warning("Denied topic '%s' blocked", topic)

@@ -446,7 +446,7 @@ class ConversationRouter:
         if flow_state.get("lead_qualified"):
             lead.status = "qualified"
             self._enqueue_crm(lead, conversation, flow_state)
-        leak, _ = self.security.check_output_leak(response)
+        leak, _ = self.security.check_output_leak(response, session_pii=contact)
         if leak:
             logger.error("PII leakage in response; using fallback")
             response = FALLBACK_MESSAGE
