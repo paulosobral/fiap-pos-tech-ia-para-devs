@@ -431,6 +431,7 @@ resource "aws_ecs_task_definition" "conversation_router" {
         { name = "SESSIONS_TABLE", value = aws_dynamodb_table.sessions.name },
         { name = "PII_TABLE", value = aws_dynamodb_table.pii.name },
         { name = "ALERTS_TABLE", value = aws_dynamodb_table.alerts.name },
+        { name = "PROPERTIES_TABLE", value = aws_dynamodb_table.properties.name },
         { name = "VOICE_QUEUE_URL", value = aws_sqs_queue.voice.id },
         { name = "CRM_QUEUE_URL", value = aws_sqs_queue.crm.id },
         { name = "CATALOG_BUCKET", value = aws_s3_bucket.catalogs.bucket },

@@ -101,3 +101,13 @@ resource "aws_dynamodb_table" "followup" {
     enabled        = true
   }
 }
+
+resource "aws_dynamodb_table" "properties" {
+  name         = "sdr-properties"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "id"
+  attribute {
+    name = "id"
+    type = "S"
+  }
+}

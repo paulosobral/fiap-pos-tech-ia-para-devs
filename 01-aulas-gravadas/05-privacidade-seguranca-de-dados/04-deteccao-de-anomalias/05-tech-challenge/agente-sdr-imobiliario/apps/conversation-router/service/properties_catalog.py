@@ -5,10 +5,11 @@ descrições dos imóveis. A busca combina similaridade vetorial (FAISS) com
 filtros determinísticos (intent/região/orçamento/área) — top-k por score híbrido.
 
 Fonte: data/properties.json (gerado por scripts/seed_properties.py, 120 imóveis
-sintéticos com campos de negócio do PRD §8.2). Na POC o catálogo é bundled no
-zip da Lambda (data/ é gitignored e regenerado no build via start.sh).
-O arquitetura-alvo carrega o catálogo do S3 + índice FAISS pré-construído
-(§7.1: "índice carregado em memória").
+sintéticos com campos de negócio do PRD §8.2). O catálogo padrão é carregado da
+tabela DynamoDB `sdr-properties` (populada por scripts/load_properties_dynamodb.py
+após o deploy) em um único Scan no cold start; sem `PROPERTIES_TABLE` configurado
+(dev local/testes) ou em caso de falha, cai de volta para o JSON local
+(data/ é gitignored e regenerado no build via start.sh).
 
 Embeddings: TF-IDF esparso sobre n-gramas de caracteres (PT-BR robusto, sem
 depender de modelo de embedding externo). FAISS IndexFlatIP (inner product)
@@ -46,6 +47,18 @@ _IDF_CACHE: np.ndarray | None = None
 _DOCS_CACHE: list[str] = []
 _INDEX_CACHE: faiss.IndexFlatIP | None = None
 _CATALOG_CACHE: list[dict[str, Any]] = []
+
+_DYNAMO_CLIENT: Any | None = None
+
+
+def set_dynamodb_client(client: Any | None) -> None:
+    """Injeta o cliente boto3 DynamoDB usado pelo carregamento padrão do catálogo.
+
+    Chamado uma vez no cold start (handler.py), no mesmo padrão de injeção de
+    SessionStore/KmsPiiRegistry/DynamoRestrictionCheck.
+    """
+    global _DYNAMO_CLIENT
+    _DYNAMO_CLIENT = client
 
 
 def _tokenize(text: str) -> list[str]:
@@ -109,7 +122,7 @@ def _ensure_index(catalog: list[dict[str, Any]] | None = None) -> None:
     if _INDEX_CACHE is not None and catalog is None:
         return
 
-    items = catalog if catalog is not None else _load()
+    items = catalog if catalog is not None else _load_default()
     if not items:
         return
 
@@ -149,6 +162,58 @@ def _load(catalog_path: str | None = None) -> list[dict[str, Any]]:
     except (json.JSONDecodeError, ValueError) as exc:
         logger.warning("catálogo de imóveis inválido: %s (%s)", path, exc)
         return []
+
+
+def unmarshal_property_item(item: dict[str, Any]) -> dict[str, Any]:
+    """Desserializa um item DynamoDB (low-level, tipos {"S": ...}/{"N": ...}/{"L": ...})."""
+    out: dict[str, Any] = {}
+    for key, raw in item.items():
+        if isinstance(raw, dict) and len(raw) == 1:
+            kind, value = next(iter(raw.items()))
+            if kind == "BOOL":
+                out[key] = value
+            elif kind == "N":
+                number = float(value)
+                out[key] = int(number) if number.is_integer() else number
+            elif kind == "NULL":
+                out[key] = None
+            elif kind == "L":
+                out[key] = [
+                    next(iter(v.values())) if isinstance(v, dict) and len(v) == 1 else v
+                    for v in value
+                ]
+            else:
+                out[key] = value
+        else:
+            out[key] = raw
+    return out
+
+
+def _load_from_dynamodb() -> list[dict[str, Any]]:
+    """Scan completo da tabela `PROPERTIES_TABLE`; fail-open → [] se indisponível."""
+    table = os.environ.get("PROPERTIES_TABLE")
+    if _DYNAMO_CLIENT is None or not table:
+        return []
+    items: list[dict[str, Any]] = []
+    kwargs: dict[str, Any] = {"TableName": table}
+    try:
+        while True:
+            response = _DYNAMO_CLIENT.scan(**kwargs)
+            items.extend(unmarshal_property_item(raw) for raw in response.get("Items", []))
+            last_key = response.get("LastEvaluatedKey")
+            if not last_key:
+                break
+            kwargs["ExclusiveStartKey"] = last_key
+    except Exception as exc:
+        logger.warning("catálogo de imóveis no DynamoDB indisponível (%s); usando JSON local", exc)
+        return []
+    return items
+
+
+def _load_default() -> list[dict[str, Any]]:
+    """Catálogo padrão: DynamoDB (se configurado) com fallback para o JSON local."""
+    items = _load_from_dynamodb()
+    return items if items else _load()
 
 
 # --- Parsers pt-BR -----------------------------------------------------------
@@ -203,7 +268,7 @@ def search_properties(
     """
     if list_scope == "all":
         top_k = max(top_k, 50)
-    items = catalog if catalog is not None else _load()
+    items = catalog if catalog is not None else _load_default()
     if not items:
         return []
 

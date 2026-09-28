@@ -186,7 +186,7 @@ components:
   - name: PropertiesRAG
     summary: RAG sobre base de imóveis — vetoriza base sintética, carrega índice FAISS em memória, busca top-k imóveis
     behaviour: >
-      Vetoriza base sintética de imóveis (S3) + embeddings.
+      Vetoriza base sintética de imóveis (DynamoDB, com fallback para JSON local) + embeddings.
       Na POC usa FAISS local (índice ~200 docs carrega em memória lambda) para custo zero.
       Busca top-k imóveis compatíveis com filtros do lead.
       Nunca inventa imóveis que não estão na base (constraint via prompting).
@@ -204,9 +204,9 @@ components:
         interaction: Usa como tool
         style: sync
     external_dependencies:
-      - name: Amazon S3
-        kind: object-store
-        purpose: Armazenar base de imóveis e índice FAISS
+      - name: Amazon DynamoDB
+        kind: database
+        purpose: Armazenar base de imóveis (tabela sdr-properties; índice FAISS segue construído em memória a partir dela — ver ADR-012)
     entities:
       - name: Property
         identifier: property_id

@@ -31,6 +31,7 @@ module "lambda_conversation_router" {
     SESSIONS_TABLE        = aws_dynamodb_table.sessions.name
     PII_TABLE             = aws_dynamodb_table.pii.name
     ALERTS_TABLE          = aws_dynamodb_table.alerts.name
+    PROPERTIES_TABLE      = aws_dynamodb_table.properties.name
     VOICE_QUEUE_URL       = aws_sqs_queue.voice.id
     CRM_QUEUE_URL         = aws_sqs_queue.crm.id
     CATALOG_BUCKET        = aws_s3_bucket.catalogs.bucket

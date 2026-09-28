@@ -811,8 +811,13 @@ Resumo direto das adaptações feitas durante o deploy para estabilizar o bot:
    - Parâmetros gerenciados no AWS SSM Parameter Store: `/sdr/llm-model-primary`, `/sdr/llm-model-fallback`, `/sdr/llm-model-complex`. Troca dinâmica sem redeploy de imagem.
    - **Ganho**: redução de ~75% a 90% no consumo de tokens para o tráfego rotineiro. Resiliência total contra falhas de provedor.
 
+5. **Catálogo de imóveis migrado de S3 para DynamoDB (ADR-012)**:
+   - O armazenamento persistente do catálogo (`PropertiesRAG`), originalmente especificado como S3 (§7.2, §8.2, ADR-003), passa a ser a tabela `sdr-properties` (DynamoDB, `PAY_PER_REQUEST`, hash key `id`), populada após o deploy a partir do mesmo `properties.json` gerado no `start.sh` (`scripts/load_properties_dynamodb.py`, upsert idempotente por `id`).
+   - O objeto S3 (`aws_s3_object.properties_catalog`) permanece provisionado, sem leitor na aplicação.
+   - O mecanismo de busca (índice FAISS/TF-IDF construído em memória) não muda — só a origem dos dados carregados no cold start.
+
 ---
 
 *Documento gerado a partir de brainstorming/validação e servirá de guia para a pipeline AI-DLC (profile: POC) — revisão de aprovação do cliente/aluno antes da implementação.*
 
-*Atualizado em 09/set/2026 — v1.9: contrato OpenAPI movido para arquivo próprio `apigw-openapi.yaml` (visualizável no VS Code com OpenAPI Editor/Swagger Viewer), linkado no §7.5.*
+*Atualizado em 28/set/2026 — v1.10: catálogo de imóveis (`PropertiesRAG`) migrado de S3 para DynamoDB (`sdr-properties`), ver §11 item 5 e ADR-012.*

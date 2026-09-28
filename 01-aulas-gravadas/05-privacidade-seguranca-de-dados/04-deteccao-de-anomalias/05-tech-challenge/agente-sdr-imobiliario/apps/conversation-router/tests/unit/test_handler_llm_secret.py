@@ -156,6 +156,43 @@ def test_handler_function_leaves_llm_router_none_without_key(
     assert captured.get("reply_generator") is None
 
 
+def test_handler_function_wires_properties_dynamodb_client(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("LLM_API_KEY", "sk-or-test-key")
+    monkeypatch.setenv("INTERNAL_SECRET_TOKEN", "test-token")
+
+    def fake_sales_flow(**kwargs):
+        mock = MagicMock()
+        mock.invoke.return_value = {"response": "olá", "current_state": "greeting"}
+        return mock
+
+    dynamo_client = MagicMock()
+    fake_boto3 = types.ModuleType("boto3")
+    fake_boto3.client = lambda service, *a, **k: (
+        dynamo_client if service == "dynamodb" else MagicMock()
+    )
+    monkeypatch.setitem(sys.modules, "boto3", fake_boto3)
+
+    monkeypatch.setattr(handler, "SalesFlow", fake_sales_flow)
+    monkeypatch.setattr(
+        handler,
+        "ConversationRouter",
+        lambda **kwargs: MagicMock(handle=lambda e: {"statusCode": 200}),
+    )
+    monkeypatch.setattr(handler, "SessionStore", lambda *args, **kwargs: MagicMock())
+    monkeypatch.setattr(handler, "SecurityLayer", lambda **kwargs: MagicMock())
+
+    calls = []
+    monkeypatch.setattr(
+        handler, "_set_properties_dynamo_client", lambda client: calls.append(client)
+    )
+
+    handler.handler({"body": '{"message": "olá"}'}, None)
+
+    assert calls == [dynamo_client]
+
+
 def test_llm_route_returns_tool_contract(monkeypatch: pytest.MonkeyPatch):
     """Task 7: handler llm_route must return tool-agent dict (tool, not action)."""
     monkeypatch.setenv("LLM_API_KEY", "sk-or-test-key")

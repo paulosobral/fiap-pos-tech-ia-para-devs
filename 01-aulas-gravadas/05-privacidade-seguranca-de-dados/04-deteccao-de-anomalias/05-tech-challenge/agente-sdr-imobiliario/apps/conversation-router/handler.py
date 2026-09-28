@@ -20,6 +20,7 @@ try:
     from service.llm import extract_and_route as _llm_extract_and_route
     from service.llm import generate_reply as _llm_generate_reply
     from service.properties_catalog import search_properties as _search_properties
+    from service.properties_catalog import set_dynamodb_client as _set_properties_dynamo_client
 
     _HAS_LLM = True
 except ImportError:  # pragma: no cover - módulos ausentes só em env sem os arquivos
@@ -536,6 +537,8 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
     dynamodb = boto3.client("dynamodb")
     sqs = boto3.client("sqs")
     store = SessionStore(dynamodb, os.environ.get("SESSIONS_TABLE", "sdr-sessions"))
+    if _HAS_LLM:
+        _set_properties_dynamo_client(dynamodb)
 
     # Token/valores injetados no deploy via Secrets Manager (placeholders de env); sem token, sem envio.
     telegram = None

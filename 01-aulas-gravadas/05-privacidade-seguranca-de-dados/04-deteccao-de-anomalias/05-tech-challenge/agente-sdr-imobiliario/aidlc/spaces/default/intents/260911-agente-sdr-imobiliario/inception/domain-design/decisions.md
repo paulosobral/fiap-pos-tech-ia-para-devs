@@ -248,3 +248,27 @@ Inserir um nó `router` acionado por LLM entre `preprocess` e os nós de destino
 **Alternatives Rejected**
 - **Delegar o score de qualificação ao LLM**: rejeitado por eliminar a explicabilidade/auditabilidade que é diferencial competitivo (ver Q1 da pergunta de brainstorming ao usuário, resposta explícita "score determinístico é inegociável").
 - **Agente único com tool-calling livre (sem grafo de estados)**: mais flexível, porém perde a garantia de gates de negócio determinísticos (ex.: poderia chamar "agendar visita" antes de qualificar o lead) e aumenta custo/latência por turno; fica registrado como possível evolução pós-POC, não adotado agora.
+
+---
+
+## ADR-012: Catálogo de Imóveis Persistido em DynamoDB (substitui o backend de armazenamento da ADR-003)
+
+**Context**
+A ADR-003 especificou S3 como armazenamento do catálogo de imóveis, com o índice FAISS carregado em memória a partir desse objeto. Na prática, o upload do `properties.json` para S3 (`infra/s3.tf`, `aws_s3_object.properties_catalog`) foi provisionado, mas nenhum código da aplicação chegou a ler do S3 — o catálogo era carregado exclusivamente do arquivo JSON local empacotado com a Lambda/task (`apps/conversation-router/data/properties.json`, gerado por `scripts/seed_properties.py`). Isso deixava o armazenamento persistente do catálogo sem implementação real, divergindo do que a ADR-003 documentava. Solicitação explícita do time: migrar o catálogo para DynamoDB, reaproveitando o padrão já usado pelas outras 5 tabelas `sdr-*` (sessões, PII, alertas de restrição), mantendo o JSON gerado como fonte de seed.
+
+**Decision**
+Nova tabela `sdr-properties` (DynamoDB, `PAY_PER_REQUEST`, hash key `id`, sem GSI). `apps/conversation-router/service/properties_catalog.py` passa a carregar o catálogo padrão (cold start, sem `catalog=` explícito) via `Scan` paginado nessa tabela, com fallback fail-open para o JSON local (`_load()`, inalterado) caso a tabela esteja vazia, sem client configurado, ou a chamada falhe. O `start.sh` popula a tabela após o deploy (fase 5), a partir do mesmo `properties.json` gerado na fase [2/6], via `scripts/load_properties_dynamodb.py` (upsert idempotente por `id`, `batch_write_item` em lotes de 25). O `aws_s3_object.properties_catalog` (`infra/s3.tf`) permanece como está — não é removido nesta mudança. **O mecanismo de busca (índice FAISS/TF-IDF em memória, construído a partir do catálogo carregado) não muda** — esta ADR substitui apenas o backend de armazenamento persistente que a ADR-003 documentava, não a arquitetura de busca que ela também estabelece.
+
+**Consequences**
+**Positivos:**
+- Reaproveita o padrão IAM/tabela já usado pelas outras 4 tabelas `sdr-*` — a policy wildcard `arn:aws:dynamodb:*:*:table/sdr-*` já cobre `sdr-properties` sem mudança de IAM.
+- Elimina a divergência entre o que a ADR-003 documentava (S3) e o que o código de fato fazia (JSON local embutido, sem armazenamento persistente real).
+- Reseed idempotente e não-destrutivo: rodar `start.sh` repetidamente apenas sobrescreve por `id`, sem duplicar itens.
+
+**Negativos:**
+- `Scan` completo da tabela no cold start em vez de um único `GetObject` do S3 — latência extra provavelmente desprezível no volume atual (~120-200 imóveis).
+- `aws_s3_object.properties_catalog` permanece como artefato sem leitor na aplicação (decisão explícita de não remover nesta mudança).
+
+**Alternatives Rejected**
+- **Implementar a leitura do S3 conforme a ADR-003 original**: rejeitado por pedido explícito do time de usar DynamoDB, e por já existir o padrão de acesso/IAM/injeção de client DynamoDB replicável de `SessionStore`/`KmsPiiRegistry`/`DynamoRestrictionCheck`.
+- **Remover `aws_s3_object.properties_catalog`**: avaliado e rejeitado por decisão explícita do time nesta rodada — mantido como está, sem remoção.

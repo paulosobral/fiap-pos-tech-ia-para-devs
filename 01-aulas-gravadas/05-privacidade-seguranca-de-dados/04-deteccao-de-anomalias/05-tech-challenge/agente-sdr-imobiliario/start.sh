@@ -168,6 +168,11 @@ for i in $(seq 1 12); do
   sleep 10
 done
 
+# Popula a tabela DynamoDB sdr-properties a partir de data/properties.json (idempotente).
+echo "== [5d.5/6] Seed do catálogo de imóveis no DynamoDB"
+PROPERTIES_TABLE="sdr-properties" AWS_REGION="$REGION" "$PY" scripts/load_properties_dynamodb.py \
+  || echo "AVISO: falha ao popular sdr-properties (RAG cai para catálogo local em memória)"
+
 # IP público da task do dashboard (Streamlit, porta 80)
 DASHBOARD_TASK_ARN=$(aws ecs list-tasks --cluster "$CLUSTER" --service-name sdr-dashboard-ui \
   --region "$REGION" --query "taskArns[0]" --output text 2>/dev/null || true)

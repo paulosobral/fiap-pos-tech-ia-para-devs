@@ -147,6 +147,113 @@ def test_load_non_list_root_returns_empty(tmp_path):
     assert pc._load(str(f)) == []
 
 
+class FakePropertiesClient:
+    def __init__(self, pages=None, error=None):
+        self._pages = pages or [{"Items": []}]
+        self._error = error
+        self.calls = []
+
+    def scan(self, **kwargs):
+        self.calls.append(kwargs)
+        if self._error:
+            raise self._error
+        return self._pages[len(self.calls) - 1]
+
+
+class TestUnmarshalPropertyItem:
+    def test_unmarshals_scalars(self):
+        item = {
+            "id": {"S": "p1"},
+            "title": {"S": "Laje na Faria Lima"},
+            "area_util": {"N": "200"},
+            "price": {"N": "15000.5"},
+            "laje": {"BOOL": True},
+            "cep": {"NULL": True},
+        }
+        out = pc.unmarshal_property_item(item)
+        assert out == {
+            "id": "p1",
+            "title": "Laje na Faria Lima",
+            "area_util": 200,
+            "price": 15000.5,
+            "laje": True,
+            "cep": None,
+        }
+
+    def test_unmarshals_string_list(self):
+        item = {"regions": {"L": [{"S": "Itaim Bibi"}, {"S": "Faria Lima"}]}}
+        assert pc.unmarshal_property_item(item) == {
+            "regions": ["Itaim Bibi", "Faria Lima"]
+        }
+
+
+class TestLoadFromDynamoDB:
+    def teardown_method(self):
+        pc.set_dynamodb_client(None)
+
+    def test_no_client_returns_empty(self, monkeypatch):
+        monkeypatch.setenv("PROPERTIES_TABLE", "sdr-properties")
+        pc.set_dynamodb_client(None)
+        assert pc._load_from_dynamodb() == []
+
+    def test_no_table_env_returns_empty(self, monkeypatch):
+        monkeypatch.delenv("PROPERTIES_TABLE", raising=False)
+        pc.set_dynamodb_client(FakePropertiesClient())
+        assert pc._load_from_dynamodb() == []
+
+    def test_scans_and_unmarshals_items(self, monkeypatch):
+        monkeypatch.setenv("PROPERTIES_TABLE", "sdr-properties")
+        client = FakePropertiesClient(
+            pages=[{"Items": [{"id": {"S": "p1"}, "price": {"N": "1000"}}]}]
+        )
+        pc.set_dynamodb_client(client)
+        assert pc._load_from_dynamodb() == [{"id": "p1", "price": 1000}]
+        assert client.calls[0]["TableName"] == "sdr-properties"
+
+    def test_paginates_via_last_evaluated_key(self, monkeypatch):
+        monkeypatch.setenv("PROPERTIES_TABLE", "sdr-properties")
+        client = FakePropertiesClient(
+            pages=[
+                {
+                    "Items": [{"id": {"S": "p1"}}],
+                    "LastEvaluatedKey": {"id": {"S": "p1"}},
+                },
+                {"Items": [{"id": {"S": "p2"}}]},
+            ]
+        )
+        pc.set_dynamodb_client(client)
+        assert pc._load_from_dynamodb() == [{"id": "p1"}, {"id": "p2"}]
+        assert "ExclusiveStartKey" in client.calls[1]
+
+    def test_scan_error_fails_open_to_empty(self, monkeypatch):
+        monkeypatch.setenv("PROPERTIES_TABLE", "sdr-properties")
+        pc.set_dynamodb_client(FakePropertiesClient(error=RuntimeError("down")))
+        assert pc._load_from_dynamodb() == []
+
+
+class TestLoadDefault:
+    def teardown_method(self):
+        pc.set_dynamodb_client(None)
+
+    def test_falls_back_to_local_json_without_dynamodb(self, monkeypatch):
+        monkeypatch.delenv("PROPERTIES_TABLE", raising=False)
+        pc.set_dynamodb_client(None)
+        monkeypatch.setattr(pc, "_load", lambda catalog_path=None: PROPERTIES)
+        assert pc._load_default() == PROPERTIES
+
+    def test_prefers_dynamodb_when_available(self, monkeypatch):
+        monkeypatch.setenv("PROPERTIES_TABLE", "sdr-properties")
+        client = FakePropertiesClient(pages=[{"Items": [{"id": {"S": "p1"}}]}])
+        pc.set_dynamodb_client(client)
+        assert pc._load_default() == [{"id": "p1"}]
+
+    def test_falls_back_when_dynamodb_scan_is_empty(self, monkeypatch):
+        monkeypatch.setenv("PROPERTIES_TABLE", "sdr-properties")
+        pc.set_dynamodb_client(FakePropertiesClient(pages=[{"Items": []}]))
+        monkeypatch.setattr(pc, "_load", lambda catalog_path=None: PROPERTIES)
+        assert pc._load_default() == PROPERTIES
+
+
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
