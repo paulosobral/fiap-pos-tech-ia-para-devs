@@ -1,7 +1,7 @@
 BOT_NAME = "crawling_imobiliarias"
 
-SPIDER_MODULES = ["crawling_imobiliarias.spiders"]
-NEWSPIDER_MODULE = "crawling_imobiliarias.spiders"
+SPIDER_MODULES = ["c_imobiliarias.spiders"]
+NEWSPIDER_MODULE = "c_imobiliarias.spiders"
 
 # Identifica o bot e dá um contato de forma transparente (boa prática de scraping).
 USER_AGENT = (
@@ -26,7 +26,7 @@ HTTPCACHE_ENABLED = True
 HTTPCACHE_EXPIRATION_SECS = 3600
 
 ITEM_PIPELINES = {
-    "crawling_imobiliarias.pipelines.PropertiesJsonPipeline": 300,
+    "c_imobiliarias.pipelines.PropertiesJsonPipeline": 300,
 }
 
 # Caminho do arquivo gerado por este projeto (sempre escrito).
