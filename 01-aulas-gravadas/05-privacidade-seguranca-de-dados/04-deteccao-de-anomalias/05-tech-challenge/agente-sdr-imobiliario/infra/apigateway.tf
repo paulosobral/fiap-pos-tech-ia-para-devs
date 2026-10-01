@@ -18,12 +18,24 @@ resource "aws_apigatewayv2_stage" "default" {
 # Para manter a URL única do API Gateway para webhooks e health, mantemos a rota HTTP integration se desejado,
 # ou expomos o endpoint do router.
 
-# Integração HTTP_PROXY para o conversation-router (ECS Fargate).
-# O URL aponta para o IP público da task; start.sh atualiza após o scale-out.
-resource "aws_apigatewayv2_integration" "router" {
+# Integrações HTTP_PROXY para o conversation-router (ECS Fargate).
+# O URL base aponta para o IP público da task; start.sh atualiza após o
+# scale-out. Uma integração HTTP_PROXY com URI fixa (sem path/{proxy}) sempre
+# chama o backend em "/" — por isso cada rota tem sua própria integração com
+# o path de destino embutido na URI (a de /internal usa "{proxy}" para
+# repassar o sub-path real; as demais são rotas fixas, sem wildcard).
+resource "aws_apigatewayv2_integration" "router_webhook" {
   api_id                 = aws_apigatewayv2_api.http.id
   integration_type       = "HTTP_PROXY"
-  integration_uri        = var.router_endpoint
+  integration_uri        = "${var.router_endpoint}/webhook/telegram"
+  integration_method     = "POST"
+  payload_format_version = "1.0"
+}
+
+resource "aws_apigatewayv2_integration" "router_internal" {
+  api_id                 = aws_apigatewayv2_api.http.id
+  integration_type       = "HTTP_PROXY"
+  integration_uri        = "${var.router_endpoint}/internal/{proxy}"
   integration_method     = "POST"
   payload_format_version = "1.0"
 }
@@ -31,7 +43,7 @@ resource "aws_apigatewayv2_integration" "router" {
 resource "aws_apigatewayv2_integration" "router_get" {
   api_id                 = aws_apigatewayv2_api.http.id
   integration_type       = "HTTP_PROXY"
-  integration_uri        = var.router_endpoint
+  integration_uri        = "${var.router_endpoint}/health"
   integration_method     = "GET"
   payload_format_version = "1.0"
 }
@@ -53,13 +65,13 @@ resource "aws_apigatewayv2_route" "dashboard_proxy" {
 resource "aws_apigatewayv2_route" "webhook_telegram" {
   api_id    = aws_apigatewayv2_api.http.id
   route_key = "POST /webhook/telegram"
-  target    = "integrations/${aws_apigatewayv2_integration.router.id}"
+  target    = "integrations/${aws_apigatewayv2_integration.router_webhook.id}"
 }
 
 resource "aws_apigatewayv2_route" "internal_proxy" {
   api_id    = aws_apigatewayv2_api.http.id
   route_key = "POST /internal/{proxy+}"
-  target    = "integrations/${aws_apigatewayv2_integration.router.id}"
+  target    = "integrations/${aws_apigatewayv2_integration.router_internal.id}"
 }
 
 resource "aws_apigatewayv2_route" "health" {

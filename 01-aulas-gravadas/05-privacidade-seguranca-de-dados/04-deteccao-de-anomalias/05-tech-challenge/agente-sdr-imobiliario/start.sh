@@ -26,7 +26,11 @@ echo "compileall OK"
 # testes de conversation-router leem data/*.json (data/ é gitignored, então é gerado
 # aqui). Gerar depois do pytest fazia o gate falhar em clone limpo.
 mkdir -p apps/conversation-router/data
-"$PY" scripts/seed_properties.py > apps/conversation-router/data/properties.json
+# properties.json só é gerado sinteticamente se ainda não existir (ex.: dataset
+# real populado por um scraper) — não sobrescreve um catálogo já presente.
+if [ ! -f apps/conversation-router/data/properties.json ]; then
+  "$PY" scripts/seed_properties.py > apps/conversation-router/data/properties.json
+fi
 "$PY" scripts/seed_clients.py > apps/conversation-router/data/clients.json
 echo "RAG seed: $("$PY" -c 'import json;print(len(json.load(open("apps/conversation-router/data/properties.json"))["properties"]))') imóveis + $("$PY" -c 'import json;print(len(json.load(open("apps/conversation-router/data/clients.json"))["clients"]))') clientes sintéticos"
 
@@ -194,17 +198,24 @@ echo "  Router IP: $ROUTER_IP"
 
 API_ID=$(aws apigatewayv2 get-apis --region "$REGION" \
   --query "Items[?Name=='sdr-http-api'].ApiId" --output text 2>/dev/null)
-# Integração POST (webhook + internal)
-POST_INT_ID=$(aws apigatewayv2 get-integrations --api-id "$API_ID" --region "$REGION" \
-  --query "Items[?IntegrationType=='HTTP_PROXY' && IntegrationMethod=='POST'].IntegrationId" --output text 2>/dev/null)
-aws apigatewayv2 update-integration --api-id "$API_ID" --integration-id "$POST_INT_ID" \
-  --region "$REGION" --integration-uri "http://$ROUTER_IP:8080" >/dev/null 2>&1
-# Integração GET (health)
-GET_INT_ID=$(aws apigatewayv2 get-integrations --api-id "$API_ID" --region "$REGION" \
-  --query "Items[?IntegrationType=='HTTP_PROXY' && IntegrationMethod=='GET'].IntegrationId" --output text 2>/dev/null)
-aws apigatewayv2 update-integration --api-id "$API_ID" --integration-id "$GET_INT_ID" \
-  --region "$REGION" --integration-uri "http://$ROUTER_IP:8080" >/dev/null 2>&1
-echo "  API Gateway -> http://$ROUTER_IP:8080"
+# Cada rota tem sua própria integração HTTP_PROXY com o path de destino
+# embutido na URI (URI sem path sempre chama o backend em "/", quebrando o
+# roteamento interno do handler). Resolve o integration-id pela rota, não
+# por tipo+método, já que agora há 2 integrações POST.
+update_route_integration() {
+  local route_key="$1" target_path="$2" target int_id
+  target=$(aws apigatewayv2 get-routes --api-id "$API_ID" --region "$REGION" \
+    --query "Items[?RouteKey=='$route_key'].Target" --output text 2>/dev/null)
+  int_id="${target#integrations/}"
+  if [ -n "$int_id" ]; then
+    aws apigatewayv2 update-integration --api-id "$API_ID" --integration-id "$int_id" \
+      --region "$REGION" --integration-uri "http://$ROUTER_IP:8080$target_path" >/dev/null 2>&1
+  fi
+}
+update_route_integration "POST /webhook/telegram" "/webhook/telegram"
+update_route_integration "POST /internal/{proxy+}" "/internal/{proxy}"
+update_route_integration "GET /health" "/health"
+echo "  API Gateway -> http://$ROUTER_IP:8080 (webhook, internal, health)"
 
 # Setar o webhook do Telegram para o API Gateway (HTTPS exigido pelo Telegram)
 if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
