@@ -25,7 +25,7 @@ class HttpRouterGateway:
         http: Any,
         base_url: str,
         secret_token: str | None = None,
-        timeout: int = 10,
+        timeout: int = 30,
     ) -> None:
         if not secret_token:
             raise RouterError("internal secret is required for re-injection")

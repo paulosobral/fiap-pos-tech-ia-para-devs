@@ -816,8 +816,14 @@ Resumo direto das adaptações feitas durante o deploy para estabilizar o bot:
    - O objeto S3 (`aws_s3_object.properties_catalog`) permanece provisionado, sem leitor na aplicação.
    - O mecanismo de busca (índice FAISS/TF-IDF construído em memória) não muda — só a origem dos dados carregados no cold start.
 
+6. **Foto do imóvel na resposta do bot (ADR-013)**:
+   - O crawler (`crawling-imobiliarias`) passa a extrair o campo `images` (URLs do CDN `cdn.imoview.com.br`, origem `fotos`/`urlfotoprincipal` do endpoint `/retornar-imoveis-codigo`) para cada imóvel; o catálogo sintético e o `sdr-properties` no DynamoDB armazenam apenas essas URLs (string), sem download/hospedagem de binário — o `List<String>` do DynamoDB já é suportado de forma genérica pelo loader e pelo catálogo (sem mudança de schema).
+   - `SalesFlow.invoke` deriva `response_images` (até 3 fotos, 1ª de cada imóvel recomendado em `state["properties"]`) a cada resposta.
+   - `TelegramApi` (conversation-router) ganha `send_photo`, que usa o `sendPhoto` da Bot API do Telegram passando a URL remota diretamente (o Telegram busca a imagem no CDN; não há proxy/arquivo intermediário). Após `send_message`, o handler chama `send_photo` para cada URL em `response_images`.
+   - **Escopo**: cobre o fluxo síncrono do webhook (`POST /webhook/telegram`). O fluxo assíncrono de voz (reinjeção via `/internal/inbound-text`) já recebe `response_images` no corpo JSON, mas o `voice-adapter` ainda não o consome para enviar foto — extensão futura, fora do escopo desta POC.
+
 ---
 
 *Documento gerado a partir de brainstorming/validação e servirá de guia para a pipeline AI-DLC (profile: POC) — revisão de aprovação do cliente/aluno antes da implementação.*
 
-*Atualizado em 28/set/2026 — v1.10: catálogo de imóveis (`PropertiesRAG`) migrado de S3 para DynamoDB (`sdr-properties`), ver §11 item 5 e ADR-012.*
+*Atualizado em 01/out/2026 — v1.11: foto do imóvel na resposta do bot via `images` no catálogo + `TelegramApi.send_photo`, ver §11 item 6 e ADR-013.*

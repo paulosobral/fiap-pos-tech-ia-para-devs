@@ -77,7 +77,7 @@ class TelegramApi:
     """Cliente mínimo da Bot API do Telegram para envio de respostas."""
 
     def __init__(self, token: str, timeout: int = 10) -> None:
-        self._url = f"https://api.telegram.org/bot{token}/sendMessage"
+        self._base_url = f"https://api.telegram.org/bot{token}"
         self._timeout = timeout
 
     def send_message(self, chat_id: Any, text: str) -> None:
@@ -86,7 +86,23 @@ class TelegramApi:
 
         data = urllib.parse.urlencode({"chat_id": chat_id, "text": text}).encode()
         urllib.request.urlopen(
-            urllib.request.Request(self._url, data=data), timeout=self._timeout
+            urllib.request.Request(f"{self._base_url}/sendMessage", data=data),
+            timeout=self._timeout,
+        )
+
+    def send_photo(self, chat_id: Any, photo_url: str, caption: str | None = None) -> None:
+        """Envia foto por URL remota (Contrato 1 estendido): o Telegram baixa a
+        imagem direto do CDN do imóvel — sem precisarmos armazenar/servir o arquivo."""
+        import urllib.parse
+        import urllib.request
+
+        params = {"chat_id": chat_id, "photo": photo_url}
+        if caption:
+            params["caption"] = caption[:1024]
+        data = urllib.parse.urlencode(params).encode()
+        urllib.request.urlopen(
+            urllib.request.Request(f"{self._base_url}/sendPhoto", data=data),
+            timeout=self._timeout,
         )
 
 
@@ -239,7 +255,7 @@ class ConversationRouter:
                 "body": json.dumps({"ok": True, "state": conversation.current_state}),
             }
 
-        response, state = self._process_lead_message(lead, conversation, text)
+        response, state, response_images = self._process_lead_message(lead, conversation, text)
         self._persist_telegram_profile_name(sender, conversation)
 
         conversation.current_state = state
@@ -251,6 +267,8 @@ class ConversationRouter:
 
         if self.telegram:
             self.telegram.send_message(chat.get("id"), response)
+            for image_url in response_images:
+                self.telegram.send_photo(chat.get("id"), image_url)
 
         return {
             "statusCode": 200,
@@ -308,7 +326,7 @@ class ConversationRouter:
         if lead is None or conversation is None:
             lead, conversation, _ = self.store.get_or_create(telegram_user_id)
 
-        response, state = self._process_lead_message(lead, conversation, text)
+        response, state, response_images = self._process_lead_message(lead, conversation, text)
         conversation.current_state = state
         conversation.pii_masked = True
         conversation.messages.append(
@@ -324,6 +342,7 @@ class ConversationRouter:
                     "session_id": conversation.session_id,
                     "state": conversation.current_state,
                     "response": response,
+                    "response_images": response_images,
                 }
             ),
         }
@@ -395,12 +414,12 @@ class ConversationRouter:
 
     def _process_lead_message(
         self, lead: Any, conversation: Any, text: str
-    ) -> tuple[str, str]:
-        """Guard → máscara → fluxo → handoff do CRM. Retorna (resposta, estado)."""
+    ) -> tuple[str, str, list[str]]:
+        """Guard → máscara → fluxo → handoff do CRM. Retorna (resposta, estado, fotos)."""
         violation, reason = self.security.guard(text)
         if violation:
             logger.warning("Guardrail violation: %s", reason)
-            return FALLBACK_MESSAGE, conversation.current_state
+            return FALLBACK_MESSAGE, conversation.current_state, []
         masked = self.security.mask(text, session_id=conversation.session_id)
         contact = (
             self.pii_store.load(conversation.session_id)
@@ -452,7 +471,8 @@ class ConversationRouter:
             logger.error("PII leakage in response; using fallback")
             response = FALLBACK_MESSAGE
         conversation.context = flow_state.get("context", conversation.context)
-        return response, state
+        response_images = flow_state.get("response_images") or []
+        return response, state, response_images
 
     def _persist_telegram_profile_name(
         self, sender: dict[str, Any], conversation: Any

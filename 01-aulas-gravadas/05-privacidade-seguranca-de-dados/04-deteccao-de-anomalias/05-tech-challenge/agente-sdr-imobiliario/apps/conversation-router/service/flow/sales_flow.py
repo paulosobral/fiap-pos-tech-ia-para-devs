@@ -1108,9 +1108,22 @@ class SalesFlow:
 
     def invoke(self, state: dict[str, Any]) -> dict[str, Any]:
         if self._graph is not None:
-            result = self._graph.invoke(state)
-            return dict(result)
-        return self._invoke_fsm(state)
+            result = dict(self._graph.invoke(state))
+        else:
+            result = self._invoke_fsm(state)
+        result["response_images"] = self._response_images(result)
+        return result
+
+    @staticmethod
+    def _response_images(state: dict[str, Any]) -> list[str]:
+        """Até 3 fotos (1ª de cada imóvel recomendado) para o handler enviar via
+        Telegram sendPhoto, na mesma ordem dos imóveis citados na resposta em texto."""
+        images: list[str] = []
+        for prop in (state.get("properties") or [])[:3]:
+            photos = prop.get("images") or []
+            if photos:
+                images.append(photos[0])
+        return images
 
     def _invoke_fsm(self, state: dict[str, Any]) -> dict[str, Any]:
         """Fallback manual (sem LangGraph) — mesmo contrato, mesmo router tool-agent/ADR-011."""

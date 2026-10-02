@@ -191,6 +191,16 @@ class GoncalvesImoveisSpider(scrapy.Spider):
         url_amigavel = detail.get("url_amigavel") or listing.get("url_amigavel") or ""
         source_url = f"{BASE_URL}imovel/{url_amigavel}/{codigo}" if url_amigavel else BASE_URL
 
+        images = [
+            foto["url"]
+            for foto in (detail.get("fotos") or listing.get("fotos") or [])
+            if isinstance(foto, dict) and foto.get("url")
+        ]
+        if not images:
+            main_photo = detail.get("urlfotoprincipal") or listing.get("urlfotoprincipal")
+            if main_photo:
+                images = [main_photo]
+
         return {
             "id": f"gi-{codigo}",
             "title": detail.get("titulo") or listing.get("titulo") or "",
@@ -214,4 +224,5 @@ class GoncalvesImoveisSpider(scrapy.Spider):
             "price_text": price_text,
             "description": description,
             "source_url": source_url,
+            "images": images,
         }
