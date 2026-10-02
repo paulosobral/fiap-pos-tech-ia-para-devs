@@ -616,6 +616,7 @@ class SalesFlow:
                     f"{p.get('area_util', '')} m², {price}.{disp_line} "
                     "Quer que eu compare com outra opção?"
                 )
+                state["response_properties"] = [p]
             else:
                 state["response"] = "Qual imóvel específico você quer que eu detalhe?"
             return state
@@ -632,6 +633,7 @@ class SalesFlow:
                     "Comparativo das opções:\n" + "\n".join(lines) + "\n\n"
                     "Quer que eu detalhe alguma ou ajuste algum critério?"
                 )
+                state["response_properties"] = [p for p in (a, b) if p]
             elif tr is not None and tr.needs_clarification:
                 state["response"] = (
                     "Preciso de dois imóveis já mostrados para comparar. "
@@ -648,13 +650,15 @@ class SalesFlow:
                 if not state.get("shown_properties_count"):
                     state["shown_properties_count"] = len(tr.properties)
                 self._remember_shown(state)
+                shown = (
+                    state["properties"][:9]
+                    if tool == "request_options"
+                    else state["properties"][:3]
+                )
+                state["response_properties"] = shown
                 listed = "\n".join(
                     f"{i + 1}. {p.get('title', 'Imóvel')} — {p.get('region', '')}, {p.get('area_util', '')} m²"
-                    for i, p in enumerate(
-                        state["properties"][:9]
-                        if tool == "request_options"
-                        else state["properties"][:3]
-                    )
+                    for i, p in enumerate(shown)
                 )
                 state["response"] = (
                     f"Separei algumas opções:\n{listed}\n\n{self._followup_prompt(state)}"
@@ -777,6 +781,7 @@ class SalesFlow:
             properties = self.properties_rag(info)
             if properties:
                 state["properties"] = properties[:3]
+                state["response_properties"] = state["properties"]
                 state["shown_properties_count"] = len(properties[:3])
                 listed = "\n".join(
                     f"{i + 1}. {p.get('title', 'Imóvel')} — {p.get('region', '')}, {p.get('area_util', '')} m²"
@@ -842,6 +847,7 @@ class SalesFlow:
             for i, p in enumerate(top)
         )
         state["properties"] = top
+        state["response_properties"] = top
         state["shown_properties_count"] = len(top)
         self._remember_shown(state)
         return f"Tenho algumas opções pra você:\n{listed}\n{self._followup_prompt(state)}"
@@ -900,6 +906,7 @@ class SalesFlow:
                     f"Sobre {focus_prop.get('title', 'o imóvel')}: {detail}. "
                     "Quer que eu compare com outra opção ou ajuste algum critério?"
                 )
+                state["response_properties"] = [focus_prop]
             else:
                 state["response"] = (
                     f"Essa informação específica sobre {focus_prop.get('title', 'esse imóvel')} "
@@ -921,6 +928,7 @@ class SalesFlow:
             tool == "compare_properties" or action == "compare_properties"
         ) and state.get("properties"):
             props = state["properties"][:3]
+            state["response_properties"] = props
             lines = [
                 f"- {p.get('title', 'Imóvel')}: {p.get('region', '')}, "
                 f"{p.get('area_util', '')} m², {p.get('price_text') or p.get('price', 'sob consulta')}"
@@ -946,6 +954,7 @@ class SalesFlow:
             )
             return state
         state["properties"] = properties[:3]
+        state["response_properties"] = state["properties"]
         if not state.get("shown_properties_count"):
             state["shown_properties_count"] = len(state["properties"])
         listed = "\n".join(
@@ -1025,6 +1034,7 @@ class SalesFlow:
             )
             return state
         state["properties"] = (state.get("properties") or []) + fresh
+        state["response_properties"] = fresh
         state["shown_properties_count"] = len(state["properties"])
         listed = "\n".join(
             f"- {p.get('title', 'Imóvel')} — {p.get('region', '')}, {p.get('area_util', '')} m²"
@@ -1116,10 +1126,13 @@ class SalesFlow:
 
     @staticmethod
     def _response_images(state: dict[str, Any]) -> list[str]:
-        """Até 3 fotos (1ª de cada imóvel recomendado) para o handler enviar via
-        Telegram sendPhoto, na mesma ordem dos imóveis citados na resposta em texto."""
+        """Até 3 fotos (1ª de cada imóvel citado na resposta em texto deste turno),
+        para o handler enviar via Telegram sendPhoto. Usa `response_properties`
+        (setado por cada nó exatamente com os imóveis que entraram no `listed` da
+        resposta), nunca o acumulado de `properties` — que em `_show_more_options`
+        cresce turno a turno e não reflete o que foi citado agora."""
         images: list[str] = []
-        for prop in (state.get("properties") or [])[:3]:
+        for prop in (state.get("response_properties") or [])[:3]:
             photos = prop.get("images") or []
             if photos:
                 images.append(photos[0])

@@ -818,12 +818,13 @@ Resumo direto das adaptações feitas durante o deploy para estabilizar o bot:
 
 6. **Foto do imóvel na resposta do bot (ADR-013)**:
    - O crawler (`crawling-imobiliarias`) passa a extrair o campo `images` (URLs do CDN `cdn.imoview.com.br`, origem `fotos`/`urlfotoprincipal` do endpoint `/retornar-imoveis-codigo`) para cada imóvel; o catálogo sintético e o `sdr-properties` no DynamoDB armazenam apenas essas URLs (string), sem download/hospedagem de binário — o `List<String>` do DynamoDB já é suportado de forma genérica pelo loader e pelo catálogo (sem mudança de schema).
-   - `SalesFlow.invoke` deriva `response_images` (até 3 fotos, 1ª de cada imóvel recomendado em `state["properties"]`) a cada resposta.
+   - `SalesFlow.invoke` deriva `response_images` (até 3 fotos, 1ª de cada imóvel citado na resposta em texto deste turno) a cada resposta.
    - `TelegramApi` (conversation-router) ganha `send_photo`, que usa o `sendPhoto` da Bot API do Telegram passando a URL remota diretamente (o Telegram busca a imagem no CDN; não há proxy/arquivo intermediário). Após `send_message`, o handler chama `send_photo` para cada URL em `response_images`.
    - **Escopo**: cobre o fluxo síncrono do webhook (`POST /webhook/telegram`). O fluxo assíncrono de voz (reinjeção via `/internal/inbound-text`) já recebe `response_images` no corpo JSON, mas o `voice-adapter` ainda não o consome para enviar foto — extensão futura, fora do escopo desta POC.
+   - **Correção (mesmo ADR)**: a primeira versão derivava `response_images` de `state["properties"][:3]`. Esse campo é cumulativo entre turnos em `_show_more_options` (pedidos de "mais opções"/refinamento concatenam os novos imóveis aos já mostrados, para suportar referências como "o segundo" mais adiante na conversa), então as 3 primeiras posições podiam ser de uma busca anterior — gerando fotos de imóveis diferentes dos citados no texto daquele turno (ex.: texto lista 2 opções em Santo André, mas seguem 3 fotos repetidas da busca geral anterior). Corrigido introduzindo `response_properties`, atribuído em cada nó/branch exatamente com os imóveis que entram no texto `listed` daquele turno (recomendação, "mais opções", comparação, detalhe de imóvel, tool-agent `request_options`/`refine_search`); `response_images` passou a ler só esse campo, nunca o acumulado de `properties`.
 
 ---
 
 *Documento gerado a partir de brainstorming/validação e servirá de guia para a pipeline AI-DLC (profile: POC) — revisão de aprovação do cliente/aluno antes da implementação.*
 
-*Atualizado em 01/out/2026 — v1.11: foto do imóvel na resposta do bot via `images` no catálogo + `TelegramApi.send_photo`, ver §11 item 6 e ADR-013.*
+*Atualizado em 02/out/2026 — v1.12: correção do ADR-013 — fotos passam a seguir `response_properties` (imóveis citados no texto do turno) em vez do `properties` acumulado, eliminando fotos repetidas/divergentes do texto em buscas refinadas, ver §11 item 6.*
