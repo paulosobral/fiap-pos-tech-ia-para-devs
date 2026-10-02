@@ -616,6 +616,8 @@ if st.button("Sair"):
 
 > Custos: Streamlit Community Cloud **R$ 0**; `dash-api` e CloudWatch já contabilizados na tabela do §11.
 
+> **Divergência real (ADR-014, §11 item 7)**: este esboço é o desenho original; a implementação real roda em ECS Fargate (não Community Cloud) sem domínio/ALB, então não há `callback_url` estável para `st.login()`/Hosted UI. O login real usa `cognito-idp:InitiateAuth` (`USER_PASSWORD_AUTH`) com formulário usuário/senha direto no Streamlit — ver `apps/dashboard-ui/app.py` e o passo a passo de registro de usuários em §11 item 7.
+
 ---
 
 ## 11. Observabilidade, Logs, Segurança e Custos
@@ -823,8 +825,24 @@ Resumo direto das adaptações feitas durante o deploy para estabilizar o bot:
    - **Escopo**: cobre o fluxo síncrono do webhook (`POST /webhook/telegram`). O fluxo assíncrono de voz (reinjeção via `/internal/inbound-text`) já recebe `response_images` no corpo JSON, mas o `voice-adapter` ainda não o consome para enviar foto — extensão futura, fora do escopo desta POC.
    - **Correção (mesmo ADR)**: a primeira versão derivava `response_images` de `state["properties"][:3]`. Esse campo é cumulativo entre turnos em `_show_more_options` (pedidos de "mais opções"/refinamento concatenam os novos imóveis aos já mostrados, para suportar referências como "o segundo" mais adiante na conversa), então as 3 primeiras posições podiam ser de uma busca anterior — gerando fotos de imóveis diferentes dos citados no texto daquele turno (ex.: texto lista 2 opções em Santo André, mas seguem 3 fotos repetidas da busca geral anterior). Corrigido introduzindo `response_properties`, atribuído em cada nó/branch exatamente com os imóveis que entram no texto `listed` daquele turno (recomendação, "mais opções", comparação, detalhe de imóvel, tool-agent `request_options`/`refine_search`); `response_images` passou a ler só esse campo, nunca o acumulado de `properties`.
 
+7. **Autenticação Cognito do dashboard conectada (ADR-014)**:
+   - O User Pool, App Client e o JWT Authorizer (`infra/cognito.tf`) já existiam provisionados desde a unidade u7, mas nunca estavam de fato plugados: a rota `GET /api/{proxy+}` (`infra/apigateway.tf`) não tinha `authorizer_id`, e o handler do DashAPI só checava a *presença* de um header `Authorization: Bearer ...` — não validava assinatura, issuer, audience nem expiração. Corrigido anexando `authorizer_id`/`authorization_type = "JWT"` na rota: agora o próprio API Gateway valida o JWT na borda (contra o JWKS do User Pool) antes de a Lambda rodar; token inválido/expirado nunca chega no handler.
+   - **Login direto (USER_PASSWORD_AUTH), não Hosted UI/OIDC**: o sketch original do PRD (§10.3, `st.login()`) pressupõe um redirect OAuth para a Hosted UI do Cognito, o que exige uma `callback_url` estável. O dashboard roda em ECS Fargate sem ALB/domínio (IP público efêmero, ligado só na janela comercial — ADR de custo already registrado em §11.1), então não há URL estável para esse callback. Em vez disso, `apps/dashboard-ui/app.py` chama `cognito-idp:InitiateAuth` (fluxo `USER_PASSWORD_AUTH`) direto do App Client, com um formulário usuário/senha no próprio Streamlit, e trata o desafio `NEW_PASSWORD_REQUIRED` (usuário criado via `admin-create-user` sempre nasce em `FORCE_CHANGE_PASSWORD`, exigindo troca de senha no 1º login). O `IdToken` fica só em `st.session_state` (memória da sessão Streamlit), nunca em env var ou arquivo.
+   - IAM: nova task role `sdr-dashboard-ui-task` concede apenas `cognito-idp:InitiateAuth`/`RespondToAuthChallenge`, escopada ao ARN do User Pool.
+   - Removido `DASHBOARD_API_TOKEN` (segredo estático) do task definition do dashboard-ui — ficou morto, já que o Bearer agora é um JWT real emitido pelo Cognito por usuário, não um segredo compartilhado.
+   - **Como registrar os usuários do time depois do `terraform apply`**: o User Pool é `admin_create_user_only` (sem auto-cadastro — alguém precisa criar cada conta). Após o apply:
+     ```bash
+     POOL_ID=$(terraform -chdir=infra output -raw cognito_user_pool_id)
+     aws cognito-idp admin-create-user \
+       --user-pool-id "$POOL_ID" \
+       --username "pessoa@empresa.com" \
+       --user-attributes Name=email,Value="pessoa@empresa.com" Name=email_verified,Value=true \
+       --desired-delivery-mediums EMAIL
+     ```
+     Isso envia uma senha temporária por e-mail (sem `--desired-delivery-mediums`, é preciso gerar com `--temporary-password` e repassar a senha por fora). No primeiro acesso ao dashboard, a pessoa loga com essa senha temporária e a tela pede para definir uma senha definitiva (desafio `NEW_PASSWORD_REQUIRED` tratado em `_render_login`); dali em diante o login normal funciona. Repetir o `admin-create-user` para cada uma das ~5–10 pessoas do time — segue dentro do free tier de 50.000 MAUs (R$0, conforme §11 estimativa de custo).
+
 ---
 
 *Documento gerado a partir de brainstorming/validação e servirá de guia para a pipeline AI-DLC (profile: POC) — revisão de aprovação do cliente/aluno antes da implementação.*
 
-*Atualizado em 02/out/2026 — v1.12: correção do ADR-013 — fotos passam a seguir `response_properties` (imóveis citados no texto do turno) em vez do `properties` acumulado, eliminando fotos repetidas/divergentes do texto em buscas refinadas, ver §11 item 6.*
+*Atualizado em 02/out/2026 — v1.13: autenticação Cognito do dashboard conectada de ponta a ponta (authorizer na rota + login `USER_PASSWORD_AUTH` no Streamlit, sem Hosted UI) e passo a passo de registro de usuários, ver §11 item 7 e ADR-014.*

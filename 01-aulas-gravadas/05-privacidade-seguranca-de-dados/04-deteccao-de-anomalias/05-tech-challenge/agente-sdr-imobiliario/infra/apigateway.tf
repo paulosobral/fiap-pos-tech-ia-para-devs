@@ -56,9 +56,11 @@ resource "aws_apigatewayv2_integration" "dashboard" {
 }
 
 resource "aws_apigatewayv2_route" "dashboard_proxy" {
-  api_id    = aws_apigatewayv2_api.http.id
-  route_key = "GET /api/{proxy+}"
-  target    = "integrations/${aws_apigatewayv2_integration.dashboard.id}"
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "GET /api/{proxy+}"
+  target             = "integrations/${aws_apigatewayv2_integration.dashboard.id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
 }
 
 # Rotas do conversation-router (HTTP_PROXY -> ECS task)

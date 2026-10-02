@@ -64,6 +64,7 @@ resource "aws_ecs_task_definition" "dashboard_ui" {
   cpu                      = "256"
   memory                   = "512"
   execution_role_arn       = aws_iam_role.ecs_execution.arn
+  task_role_arn            = aws_iam_role.dashboard_ui_task.arn
 
   container_definitions = jsonencode([
     {
@@ -73,8 +74,10 @@ resource "aws_ecs_task_definition" "dashboard_ui" {
       portMappings = [{ containerPort = 80, protocol = "tcp" }]
       environment = [
         { name = "DASHBOARD_API_URL", value = aws_apigatewayv2_api.http.api_endpoint },
-        { name = "DASHBOARD_API_TOKEN", value = random_password.internal_secret.result },
         { name = "DASHBOARD_ALLOWED_ORIGIN", value = "*" },
+        { name = "COGNITO_USER_POOL_ID", value = aws_cognito_user_pool.pool.id },
+        { name = "COGNITO_CLIENT_ID", value = aws_cognito_user_pool_client.client.id },
+        { name = "AWS_REGION", value = var.region },
       ]
       logConfiguration = {
         logDriver = "awslogs"
@@ -174,6 +177,37 @@ resource "aws_iam_role_policy" "ecs_execution" {
         Effect   = "Allow"
         Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]
         Resource = "${aws_cloudwatch_log_group.dashboard_ui.arn}:*"
+      },
+    ]
+  })
+}
+
+# IAM role da task do dashboard-ui (InitiateAuth/RespondToAuthChallenge contra o User Pool —
+# login direto no Streamlit, sem Hosted UI, já que o container não tem domínio/ALB para
+# um callback OAuth estável)
+resource "aws_iam_role" "dashboard_ui_task" {
+  name = "sdr-dashboard-ui-task"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "ecs-tasks.amazonaws.com" }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "dashboard_ui_task" {
+  name = "sdr-dashboard-ui-task"
+  role = aws_iam_role.dashboard_ui_task.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "CognitoLogin"
+        Effect   = "Allow"
+        Action   = ["cognito-idp:InitiateAuth", "cognito-idp:RespondToAuthChallenge"]
+        Resource = aws_cognito_user_pool.pool.arn
       },
     ]
   })

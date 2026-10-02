@@ -45,3 +45,12 @@ resource "aws_apigatewayv2_authorizer" "cognito" {
     issuer   = "https://cognito-idp.${var.region}.amazonaws.com/${aws_cognito_user_pool.pool.id}"
   }
 }
+
+output "cognito_user_pool_id" {
+  description = "Usado para criar os usuários do time após o apply (aws cognito-idp admin-create-user)."
+  value       = aws_cognito_user_pool.pool.id
+}
+
+output "cognito_app_client_id" {
+  value = aws_cognito_user_pool_client.client.id
+}

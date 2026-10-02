@@ -272,3 +272,31 @@ Nova tabela `sdr-properties` (DynamoDB, `PAY_PER_REQUEST`, hash key `id`, sem GS
 **Alternatives Rejected**
 - **Implementar a leitura do S3 conforme a ADR-003 original**: rejeitado por pedido explícito do time de usar DynamoDB, e por já existir o padrão de acesso/IAM/injeção de client DynamoDB replicável de `SessionStore`/`KmsPiiRegistry`/`DynamoRestrictionCheck`.
 - **Remover `aws_s3_object.properties_catalog`**: avaliado e rejeitado por decisão explícita do time nesta rodada — mantido como está, sem remoção.
+
+---
+
+## ADR-014: Autenticação Cognito do Dashboard — Authorizer Conectado + Login Direto (USER_PASSWORD_AUTH), não Hosted UI
+
+**Context**
+A unidade u7-dashboard (code-generation) já havia deixado explícito em seu `code-summary.md` que a validação real do JWT ficaria para a "fase de infra": o handler de `GET /api/kpis` só checava a presença de um Bearer, e o login na UI era um placeholder por env (`DASHBOARD_API_TOKEN`). A fase de infra (Terraform) de fato provisionou o User Pool, o App Client e um `aws_apigatewayv2_authorizer` JWT (`infra/cognito.tf`), mas nunca completou a ligação: a rota `GET /api/{proxy+}` (`infra/apigateway.tf`) não referenciava esse authorizer, então a validação nunca rodava — qualquer string como Bearer passava pelo handler. Além disso, a ADR-005 (Dashboard como Streamlit Community Cloud) nunca foi seguida na prática: o dashboard roda em ECS Fargate (decisão de infra/deployment, IP público efêmero, sem ALB/domínio por custo), o que invalida o fluxo de Hosted UI/OIDC (`st.login()`) desenhado no PRD §10.3 — esse fluxo depende de uma `callback_url` estável, que não existe sem domínio fixo.
+
+**Decision**
+1. Rota `dashboard_proxy` (`infra/apigateway.tf`) passa a declarar `authorization_type = "JWT"` e `authorizer_id = aws_apigatewayv2_authorizer.cognito.id` — a validação de assinatura/issuer/audience/expiração passa a ocorrer na borda do API Gateway, antes de a Lambda `dashboard-api` ser invocada.
+2. Login do dashboard usa `cognito-idp:InitiateAuth` (fluxo `USER_PASSWORD_AUTH`) direto do App Client, com formulário usuário/senha nativo do Streamlit (`apps/dashboard-ui/app.py`: `cognito_login`, `cognito_respond_new_password`), em vez de Hosted UI/OIDC. Trata o desafio `NEW_PASSWORD_REQUIRED` (todo usuário criado via `admin-create-user` nasce em `FORCE_CHANGE_PASSWORD`). `IdToken` fica só em `st.session_state` (memória da sessão, nunca persistido).
+3. Nova IAM role de task `sdr-dashboard-ui-task` (`infra/ecs.tf`), restrita a `cognito-idp:InitiateAuth`/`RespondToAuthChallenge` no ARN do User Pool. Env vars `COGNITO_USER_POOL_ID`/`COGNITO_CLIENT_ID`/`AWS_REGION` injetadas no task definition; `DASHBOARD_API_TOKEN` removido (morto — o Bearer agora é o JWT real por usuário).
+4. Outputs `cognito_user_pool_id`/`cognito_app_client_id` (`infra/cognito.tf`) para o passo operacional de criar as contas do time (`aws cognito-idp admin-create-user`) após o `terraform apply` — documentado no PRD §11 item 7.
+
+**Consequences**
+**Positivos:**
+- Fecha o gap real de segurança: `/api/kpis` deixa de aceitar qualquer string como autenticação.
+- Não exige ALB/domínio (custo adicional), compatível com a decisão de custo zero/mínimo já tomada para a POC.
+- Reaproveita 100% dos recursos Cognito já provisionados (User Pool, App Client, Authorizer) — nenhum recurso novo de Cognito, só a ligação que faltava.
+
+**Negativos:**
+- Diverge do sketch original do PRD §10.3 (`st.login()`/Hosted UI) — mantido como esboço histórico no PRD, com nota de divergência apontando para este ADR.
+- `USER_PASSWORD_AUTH` expõe a senha ao app (via `InitiateAuth`), em vez do redirect da Hosted UI nunca tocar a senha — aceitável para ~5-10 usuários internos do time, não para usuários externos.
+- Sem refresh automático de sessão: expirando o `IdToken`, o usuário precisa logar de novo (sem fluxo de `REFRESH_TOKEN_AUTH` implementado nesta rodada).
+
+**Alternatives Rejected**
+- **Hosted UI/OIDC completo (`st.login()`, conforme o sketch do PRD)**: rejeitado nesta rodada por exigir domínio fixo + ALB (custo fora do orçamento da POC) para uma `callback_url` estável — o dashboard roda em ECS com IP público efêmero.
+- **Resolver a ADR-005 (migrar de fato para Streamlit Community Cloud) para então usar Hosted UI**: fora de escopo desta rodada — tratado como drift pré-existente, não reaberto aqui.
