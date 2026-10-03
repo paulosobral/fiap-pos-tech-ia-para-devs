@@ -131,6 +131,7 @@ class FlowState(TypedDict, total=False):
     visit_interest: bool
     rejected_properties: list[str]
     interests: list[str]
+    response_properties: list[dict[str, Any]]
     _router_action: str | None  # legacy ADR-011 enum action (compat)
     _router_tool: str | None  # tool-agent contract (spec 2026-09-23)
     _tool_result: Any  # ToolResult from execute_tool

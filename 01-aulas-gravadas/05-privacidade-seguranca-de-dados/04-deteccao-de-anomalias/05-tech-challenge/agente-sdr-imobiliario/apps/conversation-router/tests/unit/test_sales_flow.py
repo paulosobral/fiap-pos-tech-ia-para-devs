@@ -429,6 +429,42 @@ class TestResponseImages:
         assert SalesFlow._response_images({}) == []
         assert SalesFlow._response_images({"properties": [{"images": ["x"]}]}) == []
 
+    def test_response_properties_survives_the_real_compiled_langgraph(self):
+        """Regressão: response_properties/response_images só existiam como chaves
+        soltas em `state`, nunca declaradas em `FlowState` (TypedDict). O
+        LangGraph real (StateGraph(FlowState), ativo sempre que `langgraph` está
+        instalado — é o caso deste venv) descarta SILENCIOSAMENTE qualquer chave
+        que o node devolva fora do schema declarado, então `response_images`
+        sempre voltava vazio em produção mesmo com a lógica de `_response_images`
+        100% correta. Os outros testes desta classe chamam `_response_images`
+        direto num dict à mão (bypassando o grafo) ou só checam `properties` —
+        nenhum deles passava pelo `flow.invoke()` de ponta a ponta de verdade.
+        Este teste só funciona como regressão se `_HAS_LANGGRAPH` for True aqui."""
+        from service.flow import sales_flow as sales_flow_module
+
+        assert sales_flow_module._HAS_LANGGRAPH, (
+            "langgraph não está instalado neste venv — este teste não cobre "
+            "o bug real (precisa do StateGraph de verdade, não do fallback _invoke_fsm)"
+        )
+        properties = [{"title": "Torre Nova", "images": ["https://cdn/1.jpg"] * 5}]
+        router = lambda message, lead_info, current_state, **kwargs: {
+            "tool": "property_detail",
+            "arguments": {"property_ref": "Torre Nova"},
+            "lead_info": {},
+            "memory_updates": {},
+        }
+        flow = make_flow(llm_router=router)
+        assert flow._graph is not None  # usando o grafo real, não o fallback FSM
+        state = flow.invoke(
+            {
+                "current_state": "conversation",
+                "message": "mostra a torre nova",
+                "properties": properties,
+            }
+        )
+        assert state["response_properties"] == properties
+        assert state["response_images"] == ["https://cdn/1.jpg"] * 3
+
 
 class TestSchedulingRestriction:
     def scheduler(self):
