@@ -161,7 +161,30 @@ if ! terraform apply -auto-approve -input=false \
 fi
 
 API_URL="$(terraform output -raw api_url)"
+POOL_ID="$(terraform output -raw cognito_user_pool_id)"
+CLIENT_ID="$(terraform output -raw cognito_app_client_id)"
 cd ..
+
+# Usuário dedicado de smoke-test no Cognito (idempotente: recria a senha a cada
+# run) — o smoke check de /api/kpis precisa de um JWT real agora que a rota
+# está protegida pelo authorizer Cognito (ADR-014); um Bearer fixo/inventado é
+# corretamente rejeitado com 401.
+echo "== [5f/6] Usuário de smoke-test no Cognito"
+SMOKE_USER="smoke-test@sdr.local"
+SMOKE_PASSWORD="Smoke-Test-$(date +%Y)!"
+aws cognito-idp admin-create-user --user-pool-id "$POOL_ID" --username "$SMOKE_USER" \
+  --user-attributes Name=email,Value="$SMOKE_USER" Name=email_verified,Value=true \
+  --message-action SUPPRESS --region "$REGION" >/dev/null 2>&1 || true
+aws cognito-idp admin-set-user-password --user-pool-id "$POOL_ID" --username "$SMOKE_USER" \
+  --password "$SMOKE_PASSWORD" --permanent --region "$REGION" >/dev/null 2>&1 || true
+SMOKE_TOKEN=$(aws cognito-idp initiate-auth --auth-flow USER_PASSWORD_AUTH \
+  --client-id "$CLIENT_ID" \
+  --auth-parameters USERNAME="$SMOKE_USER",PASSWORD="$SMOKE_PASSWORD" \
+  --region "$REGION" --query "AuthenticationResult.IdToken" --output text 2>/dev/null || echo "")
+if [ -z "$SMOKE_TOKEN" ] || [ "$SMOKE_TOKEN" = "None" ]; then
+  echo "AVISO: não consegui obter token Cognito pro smoke-test — /api/kpis vai dar 401 (esperado sem token válido)"
+  SMOKE_TOKEN="sem-token"
+fi
 
 # Scale-out manual das 3 tasks ECS (o cron so dispara no proximo 09:00 BRT)
 echo "== [5d/6] Scale-out das tasks ECS"
@@ -258,7 +281,7 @@ def hit_health():
 # check("GET /health", hit_health) — health agora no container conversation-router (porta 8080)
 def hit_dashboard():
     req = urllib.request.Request(api + "/api/kpis", method="GET",
-        headers={"Authorization": "Bearer poc-smoke"})
+        headers={"Authorization": "Bearer $SMOKE_TOKEN"})
     r = urllib.request.urlopen(req, timeout=15)
     assert r.status == 200, f"status {r.status}"
 check("GET /api/kpis", hit_dashboard)
