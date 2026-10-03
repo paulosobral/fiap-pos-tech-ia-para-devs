@@ -268,7 +268,14 @@ class ConversationRouter:
         if self.telegram:
             self.telegram.send_message(chat.get("id"), response)
             for image_url in response_images:
-                self.telegram.send_photo(chat.get("id"), image_url)
+                try:
+                    self.telegram.send_photo(chat.get("id"), image_url)
+                except Exception:
+                    logger.warning(
+                        "Falha ao enviar foto via Telegram (url=%s)",
+                        image_url,
+                        exc_info=True,
+                    )
 
         return {
             "statusCode": 200,

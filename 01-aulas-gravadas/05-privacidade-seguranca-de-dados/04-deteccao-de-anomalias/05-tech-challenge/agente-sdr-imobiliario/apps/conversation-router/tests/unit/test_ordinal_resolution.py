@@ -75,12 +75,15 @@ def test_tools_resolve_in_shown_ordinal():
 
 
 def test_property_detail_generic_followup_uses_favorite_over_model_reference():
+    """Mensagem generica, sem referencia nenhuma: o roteador nao tem nada pra
+    resolver em property_ref (fica vazio/ausente) — o favorito salvo e quem
+    decide, nao um property_ref hipotetico e desalinhado da mensagem atual."""
     favorite = _PROPERTIES[1]
     state = {"properties": _PROPERTIES, "favorite_property": favorite["title"]}
 
     result = execute_tool(
         "property_detail",
-        {"property_ref": _PROPERTIES[0]["title"]},
+        {},
         state,
         message="quero mais detalhes",
     )
@@ -89,11 +92,15 @@ def test_property_detail_generic_followup_uses_favorite_over_model_reference():
 
 
 def test_explicit_ordinal_overrides_saved_favorite():
+    """Mensagem com referencia explicita ('do primeiro'): o roteador resolve
+    property_ref pro titulo exato do item referenciado na mensagem atual (nao
+    pro favorito salvo) — e esse property_ref, ja resolvido, e quem manda,
+    vencendo o favorito antigo."""
     state = {"properties": _PROPERTIES, "favorite_property": _PROPERTIES[1]["title"]}
 
     result = execute_tool(
         "property_detail",
-        {"property_ref": _PROPERTIES[1]["title"]},
+        {"property_ref": _PROPERTIES[0]["title"]},
         state,
         message="quero mais detalhes do primeiro",
     )
@@ -135,3 +142,53 @@ def test_sales_flow_match_property_token_resolves_ordinals():
 
     matched_num = SalesFlow._match_property_token("2", _PROPERTIES)
     assert matched_num == _PROPERTIES[1]["title"]
+
+
+def test_property_detail_trusts_llm_resolved_ref_for_any_phrasing():
+    """A resolução de referência não depende de Python reconhecer a palavra usada
+    na mensagem (ordinal, posição, apelido) — o roteador já resolve isso pro título
+    exato em property_ref; o Python só precisa casar esse título contra a lista.
+    Aqui a mensagem usa uma forma ("mostra o penúltimo") que NÃO existe em nenhum
+    dict de ordinais do projeto, mas funciona porque o teste simula o property_ref
+    já resolvido pela LLM (não um regex Python adivinhando "penúltimo")."""
+    from service.tools import execute_tool
+
+    state = {"properties": _PROPERTIES}
+    result = execute_tool(
+        "property_detail",
+        {"property_ref": _PROPERTIES[-2]["title"]},
+        state,
+        message="mostra o penúltimo",
+    )
+    assert result.detail == _PROPERTIES[-2]
+
+
+def test_property_detail_exact_title_ref_wins_over_digit_substring_collision():
+    """Regressão: títulos com número embutido (ex. 'Faria Lima 02') não devem
+    colidir com a chave ordinal '2' do _ORDINAL_MAP quando property_ref já é o
+    título exato — o match exato de título precisa vir antes do loop ordinal."""
+    from service.tools import _resolve_in_shown
+
+    props = [
+        {"title": "Corporate Faria Lima 02 — laje corporativa em Paulista"},
+        {"title": "Vila Olímpia Executive 75 — conjunto comercial em Berrini"},
+    ]
+    resolved = _resolve_in_shown(props[0]["title"], props)
+    assert resolved is props[0]
+
+
+def test_explicit_shown_reference_is_last_resort_fallback():
+    """Quando property_ref vem vazio (LLM não extraiu nada) e não há favorito,
+    o regex sobre a mensagem crua (_explicit_shown_reference) ainda serve de
+    rede de segurança — mas só é consultado nesse caso, nunca quando já há
+    uma referência resolvida."""
+    from service.tools import execute_tool
+
+    state = {"properties": _PROPERTIES}
+    result = execute_tool(
+        "property_detail",
+        {},
+        state,
+        message="quero saber mais da segunda opção",
+    )
+    assert result.detail == _PROPERTIES[1]

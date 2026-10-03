@@ -36,13 +36,23 @@ echo "RAG seed: $("$PY" -c 'import json;print(len(json.load(open("apps/conversat
 
 echo "== [3/6] Gates (pytest por unit — mesmos comandos de test-results.md)"
 for u in conversation-router voice-adapter crm-adapter contact-ingest anomaly-detector followup; do
-  COVERAGE_FILE="/tmp/.cov-$u" "$PY" -m pytest "apps/$u/tests" \
+  COVERAGE_FILE="/tmp/.cov-$u" "$PY" -m pytest "apps/$u/tests" --ignore="apps/$u/tests/quality" \
     --cov="apps/$u" --cov-report=term --cov-fail-under=80 -q || { echo "FALHA: $u"; exit 1; }
 done
 COVERAGE_FILE="/tmp/.cov-u7" "$PY" -m pytest apps/dashboard-api/tests \
   --cov=apps/dashboard-api --cov-report=term --cov-fail-under=80 -q || { echo "FALHA: dashboard-api"; exit 1; }
 "$PY" -m pytest apps/dashboard-ui/tests -q || { echo "FALHA: dashboard-ui"; exit 1; }
 echo "Gates OK"
+
+# Teste de qualidade com LLM real (plano "naturalidade do bot SDR", seção 5) — opcional,
+# só roda quando há chave configurada (custa crédito real no OpenRouter, Tier 1); sem
+# chave, não bloqueia o deploy, só avisa.
+if [ -n "${OPENROUTER_API_KEY:-}${LLM_API_KEY:-}" ]; then
+  echo "== [3b/6] Quality gate (LLM real, apps/conversation-router/tests/quality)"
+  "$PY" -m pytest apps/conversation-router/tests/quality -q || { echo "FALHA: quality gate"; exit 1; }
+else
+  echo "== [3b/6] Quality gate pulado (sem OPENROUTER_API_KEY/LLM_API_KEY no ambiente)"
+fi
 
 echo "== [4/6] Build dist/*.zip (7 Lambdas; dashboard-ui = container via ECR)"
 mkdir -p dist dist/archive

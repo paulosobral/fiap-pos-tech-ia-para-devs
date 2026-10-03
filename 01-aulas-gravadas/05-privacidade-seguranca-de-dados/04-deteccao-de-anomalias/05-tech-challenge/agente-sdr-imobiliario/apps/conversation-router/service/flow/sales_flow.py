@@ -1126,16 +1126,24 @@ class SalesFlow:
 
     @staticmethod
     def _response_images(state: dict[str, Any]) -> list[str]:
-        """Até 3 fotos (1ª de cada imóvel citado na resposta em texto deste turno),
-        para o handler enviar via Telegram sendPhoto. Usa `response_properties`
-        (setado por cada nó exatamente com os imóveis que entraram no `listed` da
+        """Fotos dos imóveis citados na resposta em texto deste turno, para o
+        handler enviar via Telegram sendPhoto. Usa `response_properties` (setado
+        por cada nó exatamente com os imóveis que entraram no `listed` da
         resposta), nunca o acumulado de `properties` — que em `_show_more_options`
-        cresce turno a turno e não reflete o que foi citado agora."""
+        cresce turno a turno e não reflete o que foi citado agora.
+
+        Com 1 único imóvel em foco (visão de detalhe — inclui o caso de pedido de
+        "mais fotos" sobre o imóvel já detalhado), manda até 3 fotos dele; com 2-3
+        imóveis numa lista, manda só a 1ª foto de cada (evita espamar)."""
+        response_properties = state.get("response_properties") or []
         images: list[str] = []
-        for prop in (state.get("response_properties") or [])[:3]:
-            photos = prop.get("images") or []
-            if photos:
-                images.append(photos[0])
+        if len(response_properties) == 1:
+            images.extend((response_properties[0].get("images") or [])[:3])
+        else:
+            for prop in response_properties[:3]:
+                photos = prop.get("images") or []
+                if photos:
+                    images.append(photos[0])
         return images
 
     def _invoke_fsm(self, state: dict[str, Any]) -> dict[str, Any]:

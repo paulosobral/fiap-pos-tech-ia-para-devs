@@ -300,6 +300,41 @@ class TestGenerateReplyToolAgent:
         system = captured["messages"][0]["content"]
         assert "1 frase por imóvel" in system.lower() or "uma frase por imóvel" in system.lower()
 
+    def test_props_payload_includes_fotos_disponiveis_flag(self, monkeypatch: pytest.MonkeyPatch):
+        captured: dict[str, object] = {}
+
+        def fake_completion(**kwargs):
+            captured.update(kwargs)
+            return _make_completion("Claro, seguem as fotos a seguir.")
+
+        monkeypatch.setattr(lm.litellm, "completion", fake_completion)
+        lm.generate_reply(
+            message="cadê a foto?",
+            canned_response="Vou te mandar as fotos da Torre Nova.",
+            lead_info={},
+            properties=[
+                {"title": "Torre Nova", "images": ["https://cdn/1.jpg", "https://cdn/2.jpg"]},
+                {"title": "Torre Velha", "images": []},
+            ],
+            api_key="k",
+        )
+        user_block = captured["messages"][1]["content"]
+        assert '"fotos_disponiveis": true' in user_block
+        assert '"fotos_disponiveis": false' in user_block
+        # URLs reais nunca vazam pro prompt de texto — só o booleano derivado.
+        assert "https://cdn" not in user_block
+
+    def test_reply_prompt_forbids_denying_photos_when_available(self):
+        prompt = lm._REPLY_SYSTEM_PROMPT
+        assert "fotos_disponiveis" in prompt
+        assert "NUNCA diga que não há fotos" in prompt
+
+    def test_reply_prompt_has_naturalness_rules(self):
+        """Ajustes de tom: variar fechamento repetido e reconhecer correção do lead."""
+        prompt = lm._REPLY_SYSTEM_PROMPT
+        assert "não repita a mesma pergunta" in prompt
+        assert "reconheça brevemente a correção" in prompt
+
     def test_short_list_keeps_280_tokens(self, monkeypatch: pytest.MonkeyPatch):
         captured: dict[str, object] = {}
 
@@ -580,3 +615,31 @@ def test_router_prompt_splits_property_detail_vs_list_more():
     assert "tem mais opções" in options
     assert "list_scope" in options
     assert "property_ref" in detail
+
+
+def test_router_prompt_has_show_priority_rule():
+    """O roteador precisa saber que um verbo de exibição ('mostra') junto com uma
+    referência a item especifico vence o pedido de lista nova (bug real: "mostra o
+    um" caindo em request_options em vez de property_detail)."""
+    prompt = lm._ROUTER_SYSTEM_PROMPT
+    assert "PRIORIDADE MOSTRAR" in prompt
+    assert "mostra o um" in prompt
+
+
+def test_router_prompt_generalizes_reference_resolution_to_exact_title():
+    """O prompt não deve depender de uma lista fechada de exemplos de ordinal —
+    instrui a LLM a resolver QUALQUER forma de referência (ordinal, posição,
+    apelido) pro título exato da lista já exibida."""
+    prompt = lm._ROUTER_SYSTEM_PROMPT
+    assert "TÍTULO EXATO" in prompt
+    assert "qualquer forma de" in prompt.lower()
+    assert "penúltimo" in prompt
+
+
+def test_router_prompt_routes_navigation_requests_to_unclear_not_provide_info():
+    """Pedido de navegação/meta-conversa ('volta pra lista anterior') deve virar
+    unclear (que já tem fallback consciente de properties mostradas), não
+    provide_info (que oferece encaminhar ao corretor — sem sentido aqui)."""
+    prompt = lm._ROUTER_SYSTEM_PROMPT
+    assert "volta pra lista anterior" in prompt
+    assert "NUNCA provide_info" in prompt

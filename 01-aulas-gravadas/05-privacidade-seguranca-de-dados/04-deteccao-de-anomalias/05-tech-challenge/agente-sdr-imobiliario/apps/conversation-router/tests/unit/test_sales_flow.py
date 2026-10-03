@@ -363,6 +363,72 @@ class TestReplyGenerator:
         state = flow.invoke({"current_state": "elicitation", "message": "não"})
         assert state["response"] == REFUSAL_MESSAGE
 
+    def test_reply_generator_receives_photo_fact_for_property_with_images(self):
+        """Fecha o pipeline do Bug 2: imóvel com `images` populado chega intacto
+        em `properties` até o reply_generator — é esse dado que alimenta o fato
+        `fotos_disponiveis` enviado ao LLM (llm.py), sem o qual ele alucina."""
+        received: dict[str, Any] = {}
+
+        def fake_reply(message, canned, lead_info, properties, **kwargs):
+            received["properties"] = properties
+            return "Sim, tenho fotos! Vou te enviar a seguir."
+
+        router = lambda message, lead_info, current_state, **kwargs: {
+            "tool": "property_detail",
+            "arguments": {"property_ref": "Torre Nova"},
+            "lead_info": {},
+            "memory_updates": {},
+        }
+        flow = make_flow(llm_router=router, reply_generator=fake_reply)
+        flow.invoke(
+            {
+                "current_state": "conversation",
+                "message": "cadê a foto?",
+                "properties": [
+                    {"title": "Torre Nova", "images": ["https://cdn/1.jpg"] * 9}
+                ],
+            }
+        )
+        assert any(p.get("images") for p in received["properties"])
+
+
+class TestResponseImages:
+    """_response_images: fotos seguem o foco da resposta, não o acumulado de properties."""
+
+    def test_single_property_focus_sends_up_to_three_photos(self):
+        from service.flow.sales_flow import SalesFlow
+
+        state = {
+            "response_properties": [
+                {"title": "Torre Nova", "images": [f"https://cdn/{i}.jpg" for i in range(9)]}
+            ]
+        }
+        assert SalesFlow._response_images(state) == [
+            "https://cdn/0.jpg",
+            "https://cdn/1.jpg",
+            "https://cdn/2.jpg",
+        ]
+
+    def test_multiple_properties_send_one_photo_each(self):
+        from service.flow.sales_flow import SalesFlow
+
+        state = {
+            "response_properties": [
+                {"title": "A", "images": ["https://cdn/a1.jpg", "https://cdn/a2.jpg"]},
+                {"title": "B", "images": ["https://cdn/b1.jpg"]},
+            ]
+        }
+        assert SalesFlow._response_images(state) == [
+            "https://cdn/a1.jpg",
+            "https://cdn/b1.jpg",
+        ]
+
+    def test_no_response_properties_sends_no_photos(self):
+        from service.flow.sales_flow import SalesFlow
+
+        assert SalesFlow._response_images({}) == []
+        assert SalesFlow._response_images({"properties": [{"images": ["x"]}]}) == []
+
 
 class TestSchedulingRestriction:
     def scheduler(self):
@@ -903,9 +969,11 @@ class TestAgenticRouter:
         assert state["properties"] == [purchase_property]
 
     def test_property_detail_follows_favorite_and_feeds_correct_facts_to_llm(self):
-        """`property_detail` agora também passa pela humanização via LLM (item 1.5),
-        mas a resolução do imóvel-alvo (favorito, não o primeiro da lista) continua
-        determinística em código, e é ela quem alimenta os FATOS enviados ao LLM."""
+        """`property_detail` agora também passa pela humanização via LLM (item 1.5).
+        Mensagem genérica ("quero mais detalhes") sem referência nenhuma: o roteador
+        não tem nada pra resolver em property_ref (fica ausente) — a resolução do
+        imóvel-alvo cai pro favorito salvo, determinística em código, e é ela quem
+        alimenta os FATOS enviados ao LLM."""
         properties = [
             {"title": "Corporate Faria Lima 02", "region": "Paulista", "area_util": 80},
             {
@@ -917,7 +985,7 @@ class TestAgenticRouter:
         ]
         router = lambda message, lead_info, current_state, **kwargs: {
             "tool": "property_detail",
-            "arguments": {"property_ref": properties[0]["title"]},
+            "arguments": {},
             "lead_info": {},
             "memory_updates": {},
         }
