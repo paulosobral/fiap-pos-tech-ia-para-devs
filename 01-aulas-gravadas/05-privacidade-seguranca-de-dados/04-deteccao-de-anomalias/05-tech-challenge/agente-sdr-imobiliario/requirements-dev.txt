@@ -1,2 +1,10 @@
 pytest>=8.0
 pytest-cov>=5.0
+# scikit-learn: só pra rodar de verdade (sem importorskip) os testes do
+# SklearnScorer (apps/anomaly-detector) — produção usa ANOMALY_SCORER=heuristic
+# por padrão (infra/lambda-anomaly-detector.tf), não precisa disso no Lambda.
+scikit-learn>=1.4
+# streamlit: só pra rodar de verdade (sem importorskip) os 2 testes de render
+# do dashboard-ui — a imagem do container tem a própria instalação via
+# apps/dashboard-ui/requirements.txt; isso aqui é só pro gate de testes local.
+streamlit>=1.35
