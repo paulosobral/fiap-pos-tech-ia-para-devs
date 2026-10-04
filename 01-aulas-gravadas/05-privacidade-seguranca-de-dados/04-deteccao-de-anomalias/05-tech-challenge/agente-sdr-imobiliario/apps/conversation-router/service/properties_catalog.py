@@ -254,6 +254,26 @@ def _norm_region(region: Any) -> str | None:
     return value or None
 
 
+# Palavras que aparecem em dezenas de nomes de bairro/cidade ("São João Clímaco",
+# "Santo André", "Vila Bastos") — sozinhas não identificam um lugar.
+_REGION_STOPWORDS = {"sao", "são", "santo", "santa", "vila", "jardim", "parque", "do", "da", "de", "dos", "das"}
+
+
+def _region_matches(region: str, prop: dict[str, Any]) -> bool:
+    """Bairro (region/regions) OU cidade (corredor) OU título. Antes o corredor
+    era ignorado e qualquer token valia — "São Caetano" casava com "São João
+    Clímaco" (token "são") e nunca com os 56 imóveis de São Caetano do Sul."""
+    place = " ".join(
+        str(v)
+        for v in (prop.get("region"), prop.get("corredor"), prop.get("title"), *(prop.get("regions") or []))
+        if v
+    ).lower()
+    if region in place:
+        return True
+    tokens = [t for t in region.split() if len(t) >= 4 and t not in _REGION_STOPWORDS]
+    return bool(tokens) and all(t in place for t in tokens)
+
+
 # --- Busca RAG (FAISS + filtros) ---------------------------------------------
 
 def search_properties(
@@ -322,12 +342,8 @@ def search_properties(
             score += _INTENT_BONUS
         if requested_mode == "purchase" and pintent == "rent":
             score -= _INTENT_BONUS
-        if region:
-            prop_regions = " ".join(
-                {str(prop.get("region", "")), *map(str, prop.get("regions") or [])}
-            ).lower()
-            if region in prop_regions or any(tok in prop_regions for tok in region.split()):
-                score += _REGION_BONUS
+        if region and _region_matches(region, prop):
+            score += _REGION_BONUS
         price = _fprice(prop.get("price"))
         if budget and price is not None and price <= budget:
             score += _PRICE_WITHIN_BUDGET

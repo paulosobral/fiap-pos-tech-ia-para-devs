@@ -90,6 +90,37 @@ class TestConversationRouter:
         assert crm_bodies[0]["lead_data"]["name"] == "Lead (nome não informado)"
         assert crm_bodies[0]["lead_data"]["urgency"] == "low"
 
+    def test_handoff_without_lead_qualified_still_enqueued_to_crm(self):
+        """Regressão: no roteamento tool-agent (ADR-011), _node_qualification
+        nunca roda (lead_qualified nunca é setado nesse fluxo) — sem este
+        gatilho adicional, nenhum lead do fluxo real chegava ao CRM, nem
+        mesmo após um agendamento concluído com contato completo."""
+        router, sqs, _ = make_router()
+        router.handle(update("olá"))
+        router.flow.invoke = lambda s: {**s, "current_state": "handoff", "response": "ok"}
+        router.handle(update("pode agendar"))
+        calls = sqs.send_message.call_args_list
+        crm_bodies = [
+            json.loads(c.kwargs["MessageBody"])
+            for c in calls
+            if "lead_data" in json.loads(c.kwargs["MessageBody"])
+        ]
+        assert len(crm_bodies) == 1
+
+    def test_handoff_crm_enqueue_fires_only_once_per_session(self):
+        router, sqs, _ = make_router()
+        router.handle(update("olá"))
+        router.flow.invoke = lambda s: {**s, "current_state": "handoff", "response": "ok"}
+        router.handle(update("pode agendar"))
+        router.handle(update("oi de novo"))
+        calls = sqs.send_message.call_args_list
+        crm_bodies = [
+            json.loads(c.kwargs["MessageBody"])
+            for c in calls
+            if "lead_data" in json.loads(c.kwargs["MessageBody"])
+        ]
+        assert len(crm_bodies) == 1
+
     def test_production_handler_sends_telegram_reply(self, monkeypatch):
         monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "bot-token")
         monkeypatch.setenv("TELEGRAM_SECRET_TOKEN", "tok")

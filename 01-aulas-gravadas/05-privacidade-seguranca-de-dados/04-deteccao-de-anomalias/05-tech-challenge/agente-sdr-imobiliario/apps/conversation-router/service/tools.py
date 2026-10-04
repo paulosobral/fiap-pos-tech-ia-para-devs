@@ -31,11 +31,21 @@ class ToolResult:
 
 
 def _resolve_in_shown(
-    ref: str | None, shown: list[dict[str, Any]]
+    ref: str | None, shown: list[dict[str, Any]], prefer_id: str | None = None
 ) -> dict[str, Any] | None:
     if not ref:
         return None
     target = re.sub(r"[^a-z0-9]+", " ", ref.lower()).strip()
+    # Títulos se repetem no catálogo (ex.: 2 "Sobrado à venda, São João Clímaco");
+    # o imóvel em foco (id) desempata — senão o 1º homônimo vencia.
+    exact = [
+        p for p in shown
+        if target == re.sub(r"[^a-z0-9]+", " ", str(p.get("title") or "").lower()).strip()
+    ]
+    if len(exact) > 1 and prefer_id:
+        exact = [p for p in exact if str(p.get("id")) == str(prefer_id)] or exact
+    if exact:
+        return exact[0]
     # 1. Match exato de titulo primeiro — cobre o caso comum de property_ref ja
     # vir com o titulo exato (instrucao do _ROUTER_SYSTEM_PROMPT). Precisa vir
     # ANTES do loop de ordinais: titulos com numero embutido (ex. "Faria Lima 02")
@@ -99,6 +109,23 @@ def _explicit_shown_reference(
     return matches[0] if len(matches) == 1 else None
 
 
+def contact_unreachable(state: dict[str, Any]) -> bool:
+    """Sem nenhum canal pro corretor retornar (nem telefone/WhatsApp nem e-mail).
+    Basta um dos dois — nome vem do perfil do Telegram e não bloqueia."""
+    missing = set(state.get("missing_contact_fields") or [])
+    return {"phone", "email"} <= missing
+
+
+def _missing_contact(result: ToolResult, state: dict[str, Any]) -> ToolResult:
+    result.ok = False
+    result.refusal = "missing_contact"
+    result.raw_arguments["missing_contact_fields"] = [
+        f for f in (state.get("missing_contact_fields") or []) if f in ("phone", "email")
+    ]
+    result.current_state_hint = "conversation"
+    return result
+
+
 def execute_tool(
     tool: str,
     arguments: dict[str, Any],
@@ -137,9 +164,10 @@ def execute_tool(
         # evita ter que ensinar Python a reconhecer cada forma nova de falar.
         ref = (arguments or {}).get("property_ref")
         focus = state.get("favorite_property")
+        focus_id = (state.get("context") or {}).get("focus_property_id")
         hit = (
-            _resolve_in_shown(ref, shown)
-            or (_resolve_in_shown(focus, shown) if focus else None)
+            _resolve_in_shown(ref, shown, prefer_id=focus_id)
+            or (_resolve_in_shown(focus, shown, prefer_id=focus_id) if focus else None)
             or _explicit_shown_reference(message, shown)
         )
         if hit is None and len(shown) == 1:
@@ -199,14 +227,8 @@ def execute_tool(
             result.refusal = "scheduling_gate"
             result.current_state_hint = "conversation"
             return result
-        if state.get("missing_contact_fields"):
-            result.ok = False
-            result.refusal = "missing_contact"
-            result.raw_arguments["missing_contact_fields"] = list(
-                state["missing_contact_fields"]
-            )
-            result.current_state_hint = "conversation"
-            return result
+        if contact_unreachable(state):
+            return _missing_contact(result, state)
         result.current_state_hint = "scheduling"
         return result
 
@@ -214,6 +236,8 @@ def execute_tool(
         if message and _OPTIONS_REQUEST_RE.search(message):
             result.current_state_hint = "conversation"
             return result
+        if contact_unreachable(state):
+            return _missing_contact(result, state)
         result.current_state_hint = "handoff"
         return result
 

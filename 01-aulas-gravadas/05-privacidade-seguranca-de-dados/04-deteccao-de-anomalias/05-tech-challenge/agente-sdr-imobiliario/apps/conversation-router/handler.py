@@ -221,7 +221,11 @@ class ConversationRouter:
         if telegram_user_id is None:
             return {"statusCode": 400, "body": json.dumps({"error": "invalid payload"})}
 
-        lead, conversation, _ = self.store.get_or_create(telegram_user_id)
+        lead, conversation, created = self.store.get_or_create(telegram_user_id)
+        logger.info(
+            "sessao: created=%s telegram_user_id=%s lead_id=%s session_id=%s",
+            created, telegram_user_id, lead.lead_id, conversation.session_id,
+        )
         if message.get("voice"):
             voice = message["voice"]
             if not voice.get("file_id"):
@@ -266,7 +270,20 @@ class ConversationRouter:
         self.store.save(lead, conversation)
 
         if self.telegram:
-            self.telegram.send_message(chat.get("id"), response)
+            try:
+                self.telegram.send_message(chat.get("id"), response)
+            except Exception:
+                # Estado já foi salvo (linha acima): se a notificação falhar e
+                # devolvermos 500, o Telegram reenvia o MESMO update — e o
+                # reprocessamento acharia a sessão já avançada (ex.: já passou
+                # da saudação), produzindo respostas duplicadas/fora de
+                # sincronia. Melhor logar e devolver 200 — processamos certo,
+                # só a entrega falhou.
+                logger.error(
+                    "Falha ao enviar send_message via Telegram; sessão já salva, "
+                    "não propagando erro (evita retry/reprocessamento duplicado)",
+                    exc_info=True,
+                )
             for image_url in response_images:
                 try:
                     self.telegram.send_photo(chat.get("id"), image_url)
@@ -457,9 +474,24 @@ class ConversationRouter:
             "context": conversation.context,
             "lead_info": conversation.context.get("lead_info", {}),
         }
+        logger.info(
+            "turno IN: session=%s state_in=%s context_keys=%s lead_info_in=%s message=%r",
+            conversation.session_id,
+            conversation.current_state,
+            sorted((conversation.context or {}).keys()),
+            conversation.context.get("lead_info", {}),
+            masked[:80],
+        )
         flow_state = self.flow.invoke(flow_state)
         response = flow_state.get("response", "")
         state = flow_state.get("current_state", conversation.current_state)
+        logger.info(
+            "turno OUT: state_out=%s tool=%s response_properties=%d response_images=%d",
+            state,
+            flow_state.get("_router_tool"),
+            len(flow_state.get("response_properties") or []),
+            len(flow_state.get("response_images") or []),
+        )
         # Consentimento só é gravado a partir da decisão do lead no fluxo (LGPD R6).
         conversation.consent_recorded = flow_state.get(
             "consent_recorded", conversation.consent_recorded
@@ -472,6 +504,14 @@ class ConversationRouter:
             lead.route = flow_state["route"]
         if flow_state.get("lead_qualified"):
             lead.status = "qualified"
+            self._enqueue_crm(lead, conversation, flow_state)
+        # Roteamento tool-agent (ADR-011) nunca passa por _node_qualification
+        # (fica em "conversation" o turno inteiro) — sem este gatilho, nenhum
+        # lead chegava ao CRM nesse fluxo, nem mesmo após agendamento concluído
+        # com contato completo. Dispara 1x, só na transição PARA handoff (não
+        # repete em toda mensagem seguinte já dentro de handoff).
+        if state == "handoff" and conversation.current_state != "handoff":
+            lead.status = lead.status or "qualified"
             self._enqueue_crm(lead, conversation, flow_state)
         leak, _ = self.security.check_output_leak(response, session_pii=contact)
         if leak:
@@ -625,6 +665,9 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
                     rejected_properties=kwargs.get("rejected_properties"),
                     last_tool=kwargs.get("last_tool"),
                     conversation_history=kwargs.get("conversation_history"),
+                    photos_sending=int(kwargs.get("photos_sending") or 0),
+                    contact_channels=kwargs.get("contact_channels"),
+                    contact_request=bool(kwargs.get("contact_request")),
                 )
             except Exception:
                 logger.warning(
@@ -647,6 +690,7 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
                 shown_properties=kwargs.get("shown_properties"),
                 favorite_property=kwargs.get("favorite_property"),
                 conversation_history=kwargs.get("conversation_history"),
+                photos_sent=kwargs.get("photos_sent"),
             )
 
         llm_router = llm_route

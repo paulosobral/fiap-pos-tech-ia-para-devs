@@ -66,10 +66,13 @@ def test_reference_to_specific_item_resolves_to_exact_shown_title(message: str):
     (ordinal, posição, apelido) deve virar property_detail com property_ref
     batendo um título real já exibido — nenhuma dessas formas está em um dict
     Python; é a LLM resolvendo a lista que ela já recebeu no prompt."""
+    from service.tools import _resolve_in_shown
+
     result = _route(message)
     assert result["tool"] == "property_detail", (message, result)
     ref = (result.get("arguments") or {}).get("property_ref")
-    assert ref in _TITLES, (message, ref)
+    # título exato ou número do item (preferido quando há títulos repetidos)
+    assert _resolve_in_shown(str(ref), _SHOWN) is not None, (message, ref)
 
 
 @pytest.mark.parametrize("message", ["volta pra lista anterior", "repete a lista"])
@@ -115,3 +118,52 @@ def test_follow_up_for_more_photos_on_single_focused_property_stays_property_det
         conversation_history=history,
     )
     assert result["tool"] == "property_detail", result
+
+
+def test_bare_intent_asks_for_criteria_before_listing():
+    result = llm.extract_and_route(
+        "comprar", lead_info={}, current_state="conversation", api_key=API_KEY,
+    )
+    assert result["tool"] in ("refine_search", "request_options"), result
+    assert (result.get("arguments") or {}).get("ask_criteria") is True, result
+
+
+def test_list_request_does_not_send_photos_but_explicit_ask_does():
+    listing = _route("tem apartamentos em são caetano?", shown_properties=[])
+    assert not (listing.get("arguments") or {}).get("send_photos"), listing
+    asked = _route("manda as fotos do primeiro")
+    assert asked["tool"] == "property_detail", asked
+    assert (asked.get("arguments") or {}).get("send_photos") is True, asked
+
+
+def test_contact_request_reply_asks_for_phone_or_email_instead_of_promising():
+    from service.flow.sales_flow import _asks_for_contact
+
+    reply = llm.generate_reply(
+        message="quero entrar em contato por esse imóvel",
+        canned_response="Claro! Pro corretor falar com você, me passa seu telefone (WhatsApp) ou seu e-mail?",
+        lead_info={},
+        properties=[_SHOWN[0]],
+        api_key=API_KEY,
+        last_tool="request_human",
+        contact_channels={"telefone": False, "email": False},
+        contact_request=True,
+    )
+    assert _asks_for_contact(reply), reply
+
+
+def test_detail_reply_uses_listing_description_instead_of_inventing():
+    prop = {
+        **_SHOWN[0],
+        "description": "Sala comercial com 2 banheiros, copa e 1 vaga. IPTU R$ 90.",
+        "images": ["https://cdn/x.jpg"],
+    }
+    reply = llm.generate_reply(
+        message="quantos banheiros tem?",
+        canned_response=f"{prop['title']} — {prop['region']}, 30 m².",
+        lead_info={},
+        properties=[prop],
+        api_key=API_KEY,
+        last_tool="property_detail",
+    )
+    assert "2 banheiros" in reply.lower() or "dois banheiros" in reply.lower(), reply

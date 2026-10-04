@@ -101,6 +101,35 @@ _REJECT_LIKE_RE = re.compile(
 )
 
 
+_CONTACT_CHANNEL_RE = re.compile(r"telefone|whats|e-?mail|celular|n[úu]mero", re.IGNORECASE)
+_CONTACT_ASK_RE = re.compile(
+    r"\?|\bme (?:passa|manda|envia|informa|diz)\b|\bpode(?:ria)? (?:me )?"
+    r"(?:passar|enviar|mandar|informar)\b|\bqual (?:é )?(?:o )?seu\b",
+    re.IGNORECASE,
+)
+
+
+# Linha inteira entre ()/[] (com ou sem *itálico*) é nota de bastidor do modelo
+# ("*(Segue as fotos!)*", "[Fotos enviadas]"), nunca texto pro lead.
+_META_NOTE_LINE_RE = re.compile(r"^\s*\**\s*[\(\[][^\n]*[\)\]]\s*\**\s*$", re.MULTILINE)
+
+
+def _strip_meta_notes(text: str) -> str:
+    return re.sub(r"\n{3,}", "\n\n", _META_NOTE_LINE_RE.sub("", text)).strip()
+
+
+def _asks_for_contact(text: str) -> bool:
+    """Canal citado E em forma de pedido — "o corretor vai te chamar no
+    WhatsApp" cita o canal mas é promessa, não pedido (bug real 03/10)."""
+    return bool(_CONTACT_CHANNEL_RE.search(text) and _CONTACT_ASK_RE.search(text))
+
+
+def _photo_key(prop: dict[str, Any]) -> str:
+    # id, não título: o catálogo tem títulos repetidos (ex.: vários
+    # "Apartamento à venda, Santo Antônio - São Caetano do Sul/SP").
+    return str(prop.get("id") or prop.get("title") or "")
+
+
 class FlowState(TypedDict, total=False):
     """Estado do grafo LangGraph — um turno por invocação."""
 
@@ -132,6 +161,9 @@ class FlowState(TypedDict, total=False):
     rejected_properties: list[str]
     interests: list[str]
     response_properties: list[dict[str, Any]]
+    response_images: list[str]
+    _send_photos: bool  # decisão do roteador LLM (arguments.send_photos)
+    _contact_request: bool  # resposta deste turno precisa pedir telefone/e-mail
     _router_action: str | None  # legacy ADR-011 enum action (compat)
     _router_tool: str | None  # tool-agent contract (spec 2026-09-23)
     _tool_result: Any  # ToolResult from execute_tool
@@ -416,8 +448,19 @@ class SalesFlow:
         state["_router_tool"] = None
         state["_tool_result"] = None
         state["_last_tool"] = None
-        pending_schedule_when = context.get("pending_schedule_when")
-        if self.llm_router is not None and pending_schedule_when is None:
+        state["_send_photos"] = False
+        state["_contact_request"] = False
+        from service.tools import contact_unreachable
+
+        # Ação (agendar/falar com corretor) que ficou esperando um contato. O
+        # roteador continua rodando normalmente enquanto o contato não chega (a
+        # conversa não trava); quando o telefone/e-mail aparece numa mensagem
+        # (SecurityLayer já capturou antes do fluxo), a ação é retomada sozinha.
+        pending_action = context.get("pending_contact_action") or (
+            "request_schedule" if context.get("pending_schedule_when") is not None else None
+        )
+        resume_pending = pending_action is not None and not contact_unreachable(state)
+        if self.llm_router is not None and not resume_pending:
             try:
                 result = self.llm_router(
                     message,
@@ -426,6 +469,11 @@ class SalesFlow:
                     conversation_history=state.get("conversation_history") or [],
                     shown_properties=state.get("properties") or [],
                     favorite_property=state.get("favorite_property"),
+                    photos_sent=[
+                        p.get("title")
+                        for p in (state.get("properties") or [])
+                        if (context.get("photos_sent") or {}).get(_photo_key(p))
+                    ],
                 )
                 if isinstance(result, dict) and "tool" in result:
                     from service.tools import execute_tool
@@ -451,6 +499,7 @@ class SalesFlow:
                         state["visit_interest"] = True
                         context["visit_interest"] = True
                     args = validated.get("arguments") or {}
+                    state["_send_photos"] = bool(args.get("send_photos"))
 
                     def _search_fn(info, top_k=9):
                         if self.properties_rag is None:
@@ -466,16 +515,31 @@ class SalesFlow:
                             props = self.properties_rag(info) or []
                             return list(props)[:top_k]
 
-                    tr = execute_tool(
-                        validated["tool"],
-                        args,
-                        state,
-                        search_fn=_search_fn
-                        if self.properties_rag is not None
-                        else None,
-                        memory_updates=mem,
-                        message=message,
-                    )
+                    has_criteria = any(merged.get(k) for k in ("region", "area", "budget"))
+                    if (
+                        validated["tool"] in ("request_options", "refine_search")
+                        and args.get("ask_criteria")
+                        and not has_criteria
+                    ):
+                        # Decisão da LLM, confirmada em código (não há mesmo critério
+                        # nenhum): pergunta antes de buscar — nada é mostrado/memorizado.
+                        from service.tools import ToolResult
+
+                        tr = ToolResult(
+                            ok=False, tool=validated["tool"], refusal="needs_criteria",
+                            raw_arguments=dict(args), current_state_hint="conversation",
+                        )
+                    else:
+                        tr = execute_tool(
+                            validated["tool"],
+                            args,
+                            state,
+                            search_fn=_search_fn
+                            if self.properties_rag is not None
+                            else None,
+                            memory_updates=mem,
+                            message=message,
+                        )
                     state["_tool_result"] = tr
                     if tr.properties:
                         state["properties"] = tr.properties
@@ -499,21 +563,24 @@ class SalesFlow:
                     exc_info=True,
                 )
 
-        if pending_schedule_when is not None:
+        if resume_pending:
             from service.tools import execute_tool
 
-            state["scheduling_when"] = str(pending_schedule_when)
-            state["_router_tool"] = "request_schedule"
-            state["_last_tool"] = "request_schedule"
+            pending_when = context.get("pending_schedule_when")
+            if pending_action == "request_schedule" and pending_when is not None:
+                state["scheduling_when"] = str(pending_when)
+            state["_router_tool"] = pending_action
+            state["_last_tool"] = pending_action
             tool_result = execute_tool(
-                "request_schedule",
+                pending_action,
                 {},
                 state,
-                message=str(pending_schedule_when),
+                message=str(pending_when or ""),
             )
             state["_tool_result"] = tool_result
             if tool_result.ok:
                 context.pop("pending_schedule_when", None)
+                context.pop("pending_contact_action", None)
 
         state["lead_info"] = merged
         self._apply_commercial_memory(state)
@@ -591,6 +658,18 @@ class SalesFlow:
         tool = state.get("_router_tool")
         tr = state.get("_tool_result")
         state["current_state"] = "conversation"
+        if (
+            tool in ("request_schedule", "request_human")
+            and tr is not None
+            and tr.refusal == "missing_contact"
+        ):
+            return self._ask_contact(state, tool)
+        if tr is not None and tr.refusal == "needs_criteria":
+            state["response"] = (
+                "Show! Em qual região você está procurando? Se já tiver uma faixa de "
+                "valor ou tamanho em mente, me conta também que eu filtro melhor."
+            )
+            return state
         if tool == "property_detail":
             if tr is not None and tr.needs_clarification:
                 state["response"] = (
@@ -681,25 +760,6 @@ class SalesFlow:
         if tool == "request_schedule":
             if tr is not None and not tr.ok:
                 state["current_state"] = "conversation"
-                if tr.refusal == "missing_contact":
-                    ctx = state.setdefault("context", {})
-                    ctx.setdefault("pending_schedule_when", state.get("message", ""))
-                    field_names = {
-                        "name": "seu nome",
-                        "email": "seu e-mail",
-                        "phone": "seu telefone",
-                    }
-                    missing = [
-                        field_names[field]
-                        for field in tr.raw_arguments.get("missing_contact_fields", [])
-                        if field in field_names
-                    ]
-                    state["response"] = (
-                        "Antes de encaminhar o pedido de visita ao corretor, preciso de "
-                        + ", ".join(missing)
-                        + ". Pode me enviar?"
-                    )
-                    return state
                 state["response"] = (
                     "Antes de agendar, me diga qual imóvel mais te interessou "
                     "ou se quer refinar a busca. Assim consigo preparar a visita ideal."
@@ -726,6 +786,26 @@ class SalesFlow:
             )
             return state
         return self._node_recommendation(state)
+
+    def _ask_contact(self, state: FlowState, tool: str) -> FlowState:
+        """Pede telefone (WhatsApp) ou e-mail antes de agendar/passar ao corretor.
+
+        O dado nunca passa pela LLM: a SecurityLayer captura e cifra o contato
+        da mensagem seguinte antes do fluxo, e a ação pendente é retomada
+        sozinha em `_node_preprocess`. A LLM só reescreve o tom desta pergunta
+        — e `_node_postprocess` descarta a reescrita se ela perder o pedido."""
+        ctx = state.setdefault("context", {})
+        ctx["pending_contact_action"] = tool
+        if tool == "request_schedule":
+            ctx.setdefault("pending_schedule_when", state.get("message", ""))
+            opening = "Pra eu encaminhar o pedido de visita ao corretor"
+        else:
+            opening = "Claro! Pro corretor falar com você"
+        state["_contact_request"] = True
+        state["response"] = (
+            f"{opening}, me passa seu telefone (WhatsApp) ou seu e-mail?"
+        )
+        return state
 
     def _node_greeting(self, state: FlowState) -> FlowState:
         from service.security_layer import CONSENT_MESSAGE, REFUSAL_MESSAGE
@@ -1085,7 +1165,8 @@ class SalesFlow:
         return state
 
     def _node_postprocess(self, state: FlowState) -> FlowState:
-        """FR-02: geração de resposta humanizada via LLM (exceto LGPD/recusa)."""
+        """FR-02: fotos do turno + resposta humanizada via LLM (exceto LGPD/recusa)."""
+        self._decide_photos(state)
         if self.reply_generator is None:
             return state
         from service.security_layer import CONSENT_MESSAGE, REFUSAL_MESSAGE
@@ -1093,12 +1174,18 @@ class SalesFlow:
         canned = state.get("response")
         if not canned or canned in (CONSENT_MESSAGE, REFUSAL_MESSAGE):
             return state
+        missing = state.get("missing_contact_fields")
+        contact_channels = (
+            None
+            if missing is None
+            else {"telefone": "phone" not in missing, "email": "email" not in missing}
+        )
         try:
             generated = self.reply_generator(
                 state.get("message", ""),
                 canned,
                 state.get("lead_info") or {},
-                state.get("properties") or [],
+                state.get("response_properties") or state.get("properties") or [],
                 favorite_property=state.get("favorite_property"),
                 conversation_stage=state.get("current_state"),
                 shown_properties_count=state.get("shown_properties_count", 0),
@@ -1106,9 +1193,20 @@ class SalesFlow:
                 rejected_properties=state.get("rejected_properties"),
                 last_tool=state.get("_last_tool"),
                 conversation_history=state.get("conversation_history") or [],
+                photos_sending=len(state.get("response_images") or []),
+                contact_channels=contact_channels,
+                contact_request=bool(state.get("_contact_request")),
             )
-            if generated and generated.strip():
-                state["response"] = generated.strip()
+            generated = _strip_meta_notes(generated or "")
+            if generated:
+                if state.get("_contact_request") and not _asks_for_contact(generated):
+                    # Reescrita perdeu o pedido de contato (bug real: virou pergunta
+                    # de horário) — sem ele o lead nunca chega ao corretor.
+                    logger.warning(
+                        "Reescrita da LLM omitiu o pedido de contato; mantendo texto oficial"
+                    )
+                else:
+                    state["response"] = generated
         except Exception:
             logger.warning(
                 "LLM reply falhou; mantendo resposta oficial (fallback)", exc_info=True
@@ -1122,8 +1220,33 @@ class SalesFlow:
             result = dict(self._graph.invoke(state))
         else:
             result = self._invoke_fsm(state)
-        result["response_images"] = self._response_images(result)
+        result.setdefault("response_images", [])
         return result
+
+    def _decide_photos(self, state: FlowState) -> None:
+        """Fotos só vão quando o roteador LLM decidiu (arguments.send_photos) —
+        ele vê a mensagem, o histórico e quais fotos já foram enviadas. Sem
+        roteador configurado (modo degradado), mantém o envio automático."""
+        props = state.get("response_properties") or []
+        if len(props) == 1 and props[0].get("id"):
+            state.setdefault("context", {})["focus_property_id"] = str(props[0]["id"])
+        allow = bool(state.get("_send_photos")) if self.llm_router is not None else True
+        images = self._response_images(state) if allow else []
+        state["response_images"] = images
+        if not images:
+            return
+        ctx = state.setdefault("context", {})
+        sent = dict(ctx.get("photos_sent") or {})
+        props = state.get("response_properties") or []
+        if len(props) == 1:
+            key = _photo_key(props[0])
+            sent[key] = int(sent.get(key, 0)) + len(images)
+        else:
+            for prop in props[:3]:
+                if prop.get("images"):
+                    key = _photo_key(prop)
+                    sent[key] = max(int(sent.get(key, 0)), 1)
+        ctx["photos_sent"] = sent
 
     @staticmethod
     def _response_images(state: dict[str, Any]) -> list[str]:
@@ -1137,13 +1260,16 @@ class SalesFlow:
         "mais fotos" sobre o imóvel já detalhado), manda até 3 fotos dele; com 2-3
         imóveis numa lista, manda só a 1ª foto de cada (evita espamar)."""
         response_properties = state.get("response_properties") or []
+        sent = (state.get("context") or {}).get("photos_sent") or {}
         images: list[str] = []
         if len(response_properties) == 1:
-            images.extend((response_properties[0].get("images") or [])[:3])
+            prop = response_properties[0]
+            start = int(sent.get(_photo_key(prop), 0))
+            images.extend((prop.get("images") or [])[start : start + 3])
         else:
             for prop in response_properties[:3]:
                 photos = prop.get("images") or []
-                if photos:
+                if photos and not sent.get(_photo_key(prop)):
                     images.append(photos[0])
         return images
 

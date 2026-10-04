@@ -363,6 +363,41 @@ class TestReplyGenerator:
         state = flow.invoke({"current_state": "elicitation", "message": "não"})
         assert state["response"] == REFUSAL_MESSAGE
 
+    def test_missing_contact_refusal_is_never_rewritten(self):
+        """Regressão real: a recusa de request_schedule por falta de contato
+        (nome/e-mail/telefone) pedia esses dados literalmente, mas a
+        humanização reescrevia pra uma pergunta de horário — escondendo o
+        pedido de contato e deixando o lead sem dado nenhum pro dashboard/CRM.
+        Esse pedido agora é tratado como a LGPD: nunca passa pela LLM."""
+
+        # Se a humanização NÃO for pulada, cai aqui — texto errado (sem o
+        # pedido de contato), que é exatamente o bug real observado em produção.
+        def fake_reply(message, canned, lead_info, properties, **kwargs):
+            return "Qual dia e horário funciona melhor pra você?"
+
+        router = lambda message, lead_info, current_state, **kwargs: {
+            "tool": "request_schedule",
+            "arguments": {},
+            "lead_info": {},
+            "memory_updates": {"visit_interest": True},
+        }
+        flow = make_flow(llm_router=router, reply_generator=fake_reply)
+        state = flow.invoke(
+            {
+                "current_state": "conversation",
+                "message": "quero marcar, pode ser a qualquer momento",
+                "favorite_property": "Torre Nova",
+                "visit_interest": True,
+                "shown_properties_count": 3,
+                "missing_contact_fields": ["email", "phone"],
+                "properties": [{"title": "Torre Nova"}],
+            }
+        )
+        assert "seu e-mail" in state["response"]
+        assert "seu telefone" in state["response"]
+        assert "horário" not in state["response"]
+        assert state["current_state"] == "conversation"
+
     def test_reply_generator_receives_photo_fact_for_property_with_images(self):
         """Fecha o pipeline do Bug 2: imóvel com `images` populado chega intacto
         em `properties` até o reply_generator — é esse dado que alimenta o fato
@@ -449,7 +484,7 @@ class TestResponseImages:
         properties = [{"title": "Torre Nova", "images": ["https://cdn/1.jpg"] * 5}]
         router = lambda message, lead_info, current_state, **kwargs: {
             "tool": "property_detail",
-            "arguments": {"property_ref": "Torre Nova"},
+            "arguments": {"property_ref": "Torre Nova", "send_photos": True},
             "lead_info": {},
             "memory_updates": {},
         }
@@ -1396,3 +1431,159 @@ class TestToolRouting:
             "intent",
             "conversation",
         )
+
+
+class TestLeadCompletionAndPhotos:
+    """Conversa real 03/10 18:27: fotos sem pedir, atributos inventados no detalhe,
+    e 'quero contato' -> 'whatsup' encerrando sem pegar telefone nem e-mail."""
+
+    PROPS = [
+        {"id": "a", "title": "Sobrado A", "images": [f"https://cdn/a{i}.jpg" for i in range(9)]},
+        {"id": "b", "title": "Sobrado B", "images": ["https://cdn/b0.jpg"]},
+        {"id": "c", "title": "Sobrado C", "images": ["https://cdn/c0.jpg"]},
+    ]
+
+    @staticmethod
+    def _router(tool, **args):
+        return lambda message, lead_info, current_state, **kw: {
+            "tool": tool, "arguments": args, "lead_info": {}, "memory_updates": {},
+        }
+
+    def test_list_without_photo_request_sends_no_photos(self):
+        flow = make_flow(
+            llm_router=self._router("request_options"),
+            properties_rag=lambda info: list(self.PROPS),
+        )
+        state = flow.invoke({"current_state": "conversation", "message": "comprar"})
+        assert state["response_properties"]
+        assert state["response_images"] == []
+
+    def test_router_decides_photos_and_never_resends_same_ones(self):
+        flow = make_flow(llm_router=self._router("property_detail", property_ref="Sobrado A", send_photos=True))
+        base = {"current_state": "conversation", "message": "manda fotos", "properties": list(self.PROPS)}
+        first = flow.invoke(dict(base, context={}))
+        assert first["response_images"] == [f"https://cdn/a{i}.jpg" for i in range(3)]
+        second = flow.invoke(dict(base, context=first["context"]))
+        assert second["response_images"] == [f"https://cdn/a{i}.jpg" for i in range(3, 6)]
+
+    def test_request_human_without_phone_or_email_asks_contact_instead_of_handoff(self):
+        flow = make_flow(llm_router=self._router("request_human"))
+        state = flow.invoke({
+            "current_state": "conversation",
+            "message": "quero entrar em contato por esse imóvel",
+            "properties": list(self.PROPS),
+            "missing_contact_fields": ["phone", "email"],
+            "context": {},
+        })
+        assert state["current_state"] == "conversation"
+        assert "telefone" in state["response"]
+        assert state["context"]["pending_contact_action"] == "request_human"
+
+    def test_pending_request_human_resumes_when_phone_arrives(self):
+        router = MagicMock(side_effect=AssertionError("roteador não deve rodar ao retomar"))
+        flow = make_flow(llm_router=router)
+        state = flow.invoke({
+            "current_state": "conversation",
+            "message": "[TELEFONE]",
+            "properties": list(self.PROPS),
+            "missing_contact_fields": ["email"],  # telefone já capturado pela SecurityLayer
+            "context": {"pending_contact_action": "request_human"},
+        })
+        assert state["current_state"] == "handoff"
+        assert "pending_contact_action" not in state["context"]
+
+    def test_request_human_with_email_only_goes_to_handoff(self):
+        flow = make_flow(llm_router=self._router("request_human"))
+        state = flow.invoke({
+            "current_state": "conversation",
+            "message": "quero falar com o corretor",
+            "missing_contact_fields": ["phone"],
+            "context": {},
+        })
+        assert state["current_state"] == "handoff"
+
+    def test_rewrite_that_drops_contact_ask_is_discarded(self):
+        flow = make_flow(
+            llm_router=self._router("request_human"),
+            reply_generator=lambda *a, **k: "Ótimo! O corretor vai te chamar no WhatsApp em breve.",
+        )
+        state = flow.invoke({
+            "current_state": "conversation",
+            "message": "quero contato",
+            "missing_contact_fields": ["phone", "email"],
+            "context": {},
+        })
+        assert "me passa seu telefone" in state["response"]
+
+    def test_rewrite_that_keeps_contact_ask_is_used(self):
+        natural = "Show! Me passa seu WhatsApp que o corretor já te chama."
+        flow = make_flow(
+            llm_router=self._router("request_human"),
+            reply_generator=lambda *a, **k: natural,
+        )
+        state = flow.invoke({
+            "current_state": "conversation",
+            "message": "quero contato",
+            "missing_contact_fields": ["phone", "email"],
+            "context": {},
+        })
+        assert state["response"] == natural
+
+    def test_duplicate_title_resolves_to_focused_property_not_first_homonym(self):
+        twins = [
+            {"id": "s211", "title": "Sobrado X", "area_util": 211},
+            {"id": "s220", "title": "Sobrado X", "area_util": 220.75},
+        ]
+        flow = make_flow(llm_router=self._router("property_detail", property_ref="Sobrado X"))
+        state = flow.invoke({
+            "current_state": "conversation", "message": "quantos quartos?",
+            "properties": twins, "context": {"focus_property_id": "s220"},
+        })
+        assert state["response_properties"][0]["id"] == "s220"
+
+    def test_detail_turn_records_focus_property_id(self):
+        flow = make_flow(llm_router=self._router("property_detail", property_ref="2"))
+        state = flow.invoke({
+            "current_state": "conversation", "message": "detalhes da opção 2",
+            "properties": list(self.PROPS), "context": {},
+        })
+        assert state["context"]["focus_property_id"] == "b"
+
+    def test_ask_criteria_without_any_criterion_asks_region_and_shows_nothing(self):
+        flow = make_flow(
+            llm_router=self._router("refine_search", ask_criteria=True),
+            properties_rag=lambda info: list(self.PROPS),
+        )
+        state = flow.invoke({"current_state": "conversation", "message": "comprar", "context": {}})
+        assert "região" in state["response"]
+        assert not state.get("response_properties")
+        assert not state["context"].get("properties")
+
+    def test_ask_criteria_is_ignored_when_lead_already_gave_region(self):
+        flow = make_flow(
+            llm_router=self._router("refine_search", ask_criteria=True),
+            properties_rag=lambda info: list(self.PROPS),
+        )
+        state = flow.invoke({
+            "current_state": "conversation", "message": "comprar",
+            "context": {"lead_info": {"region": "São Caetano"}},
+        })
+        assert state["response_properties"]
+
+
+class TestRegionMatching:
+    def test_city_in_corredor_matches_and_generic_token_does_not(self):
+        from service.properties_catalog import _region_matches
+
+        sc = {"region": "Boa Vista", "corredor": "São Caetano do Sul"}
+        sp = {"region": "São João Clímaco", "corredor": "São Paulo"}
+        assert _region_matches("são caetano", sc)
+        assert not _region_matches("são caetano", sp)
+        assert _region_matches("são paulo", sp)
+
+    def test_meta_notes_are_stripped_but_inline_parentheses_kept(self):
+        from service.flow.sales_flow import _strip_meta_notes
+
+        assert _strip_meta_notes("Gostou?\n\n*(Segue as fotos!)*") == "Gostou?"
+        assert _strip_meta_notes("Ok\n[Fotos enviadas]\nE aí?") == "Ok\n\nE aí?"
+        assert _strip_meta_notes("Tem 3 vagas (cobertas).") == "Tem 3 vagas (cobertas)."
