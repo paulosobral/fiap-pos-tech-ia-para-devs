@@ -49,7 +49,12 @@ echo "Gates OK"
 # chave, não bloqueia o deploy, só avisa.
 if [ -n "${OPENROUTER_API_KEY:-}${LLM_API_KEY:-}" ]; then
   echo "== [3b/6] Quality gate (LLM real, apps/conversation-router/tests/quality)"
-  "$PY" -m pytest apps/conversation-router/tests/quality -q || { echo "FALHA: quality gate"; exit 1; }
+  # LLM real não é determinística: uma falha isolada é repetida 1x (--lf roda só as
+  # que falharam). Regressão de verdade falha de novo e bloqueia o deploy.
+  if ! "$PY" -m pytest apps/conversation-router/tests/quality -q; then
+    echo "Quality gate: repetindo 1x só os testes que falharam..."
+    "$PY" -m pytest apps/conversation-router/tests/quality -q --lf || { echo "FALHA: quality gate"; exit 1; }
+  fi
 else
   echo "== [3b/6] Quality gate pulado (sem OPENROUTER_API_KEY/LLM_API_KEY no ambiente)"
 fi
@@ -93,12 +98,16 @@ fi
 # Limpeza de segurança de log groups órfãos que possam ter sobrado de execuções anteriores
 echo "Verificando log groups órfãos antes do apply..."
 CLEANUP_REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}"
+# Captura o state ANTES de filtrar: `terraform state list | grep -q` com pipefail
+# dava falso negativo (grep -q sai cedo -> SIGPIPE no terraform -> pipeline != 0)
+# e apagava os log groups ATIVOS a cada deploy.
+TF_STATE_LIST="$(terraform state list 2>/dev/null || true)"
 for prefix in "/aws/lambda/sdr-" "/ecs/sdr-"; do
   groups=$(aws logs describe-log-groups --region "$CLEANUP_REGION" --log-group-name-prefix "$prefix" --query "logGroups[].logGroupName" --output text 2>/dev/null || true)
   if [ -n "$groups" ]; then
     for lg in $groups; do
       # Só apaga se não estiver gerenciado no state atual
-      if ! terraform state list 2>/dev/null | grep -q "aws_cloudwatch_log_group"; then
+      if ! grep -q "aws_cloudwatch_log_group" <<<"$TF_STATE_LIST"; then
         aws logs delete-log-group --region "$CLEANUP_REGION" --log-group-name "$lg" 2>/dev/null && echo "  removido órfão: $lg" || true
       fi
     done
@@ -119,13 +128,28 @@ echo "ECR voice:     $VOICE_ECR_URI"
 echo "ECR router:    $ROUTER_ECR_URI"
 REGION="$(terraform output -raw region)"
 
+# Login no ECR com retry: falha transitória do login matava o script sem mensagem
+# (linha sem tratamento + set -e) — visto no build do voice-adapter, exit 125.
+ecr_login() {
+  local registry
+  registry="$(echo "$1" | cut -d/ -f1)"
+  for attempt in 1 2 3; do
+    if aws ecr get-login-password --region "$REGION" \
+        | podman login --username AWS --password-stdin "$registry" >/dev/null 2>&1; then
+      return 0
+    fi
+    echo "  login no ECR falhou (tentativa $attempt/3), tentando de novo..."
+    sleep 5
+  done
+  echo "FALHA: podman login no ECR ($registry)"; exit 1
+}
+
 # build + push da imagem do conversation-router (podman, litellm + langgraph + faiss completos)
 router_tag="$ROUTER_ECR_URI:poc-$(date +%Y%m%d%H%M%S)"
 echo "== [5a/6] build imagem conversation-router (podman, litellm+langgraph+faiss)"
 podman build -q -t "$router_tag" -f ../apps/conversation-router/Dockerfile ../apps/conversation-router/ >/tmp/td-podman-router.log 2>&1 || {
   echo "FALHA: podman build conversation-router"; tail -20 /tmp/td-podman-router.log; exit 1; }
-aws ecr get-login-password --region "$REGION" \
-  | podman login --username AWS --password-stdin "$(echo "$ROUTER_ECR_URI" | cut -d/ -f1)" >/dev/null 2>&1
+ecr_login "$ROUTER_ECR_URI"
 podman push -q "$router_tag" >>/tmp/td-podman-router.log 2>&1 || { echo "FALHA: push ECR conversation-router"; tail -10 /tmp/td-podman-router.log; exit 1; }
 echo "imagem publicada: $router_tag"
 
@@ -134,8 +158,7 @@ dash_tag="$DASH_ECR_URI:poc-$(date +%Y%m%d%H%M%S)"
 echo "== [5b/6] build imagem dashboard-ui (podman)"
 podman build -q -t "$dash_tag" -f ../apps/dashboard-ui/Dockerfile ../apps/dashboard-ui/ >/tmp/td-podman.log 2>&1 || {
   echo "FALHA: podman build dashboard-ui"; tail -20 /tmp/td-podman.log; exit 1; }
-aws ecr get-login-password --region "$REGION" \
-  | podman login --username AWS --password-stdin "$(echo "$DASH_ECR_URI" | cut -d/ -f1)" >/dev/null 2>&1
+ecr_login "$DASH_ECR_URI"
 podman push -q "$dash_tag" >>/tmp/td-podman.log 2>&1 || { echo "FALHA: push ECR dashboard-ui"; tail -10 /tmp/td-podman.log; exit 1; }
 echo "imagem publicada: $dash_tag"
 
@@ -144,8 +167,7 @@ voice_tag="$VOICE_ECR_URI:poc-$(date +%Y%m%d%H%M%S)"
 echo "== [5c/6] build imagem voice-adapter (podman, faster-whisper + ffmpeg)"
 podman build -q -t "$voice_tag" -f ../apps/voice-adapter/Dockerfile ../apps/voice-adapter/ >/tmp/td-podman-voice.log 2>&1 || {
   echo "FALHA: podman build voice-adapter"; tail -20 /tmp/td-podman-voice.log; exit 1; }
-aws ecr get-login-password --region "$REGION" \
-  | podman login --username AWS --password-stdin "$(echo "$VOICE_ECR_URI" | cut -d/ -f1)" >/dev/null 2>&1
+ecr_login "$VOICE_ECR_URI"
 podman push -q "$voice_tag" >>/tmp/td-podman-voice.log 2>&1 || { echo "FALHA: push ECR voice-adapter"; tail -10 /tmp/td-podman-voice.log; exit 1; }
 echo "imagem publicada: $voice_tag"
 

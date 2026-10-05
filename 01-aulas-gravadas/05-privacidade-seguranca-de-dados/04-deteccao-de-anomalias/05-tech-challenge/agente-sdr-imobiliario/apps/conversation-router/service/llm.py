@@ -2,13 +2,13 @@
 
 Camadas:
   Tier 1 (Primary):   deepseek/deepseek-chat — barato, 90% do tráfego
-  Tier 2 (Fallback):  anthropic/claude-3-haiku — contingência em 429/timeout
-  Tier 3 (Complex):   anthropic/claude-3.5-sonnet — negociação avançada/handoff
+  Tier 2 (Fallback):  anthropic/claude-haiku-4.5 — contingência em 429/timeout
+  Tier 3 (Complex):   anthropic/claude-sonnet-4.5 — negociação avançada/handoff
 
 Config (env, injetadas no deploy):
   LLM_MODEL_PRIMARY         nome do modelo Tier 1 (default deepseek/deepseek-chat)
-  LLM_MODEL_FALLBACK        nome do modelo Tier 2 (default anthropic/claude-3-haiku)
-  LLM_MODEL_COMPLEX         nome do modelo Tier 3 (default anthropic/claude-3.5-sonnet)
+  LLM_MODEL_FALLBACK        nome do modelo Tier 2 (default anthropic/claude-haiku-4.5)
+  LLM_MODEL_COMPLEX         nome do modelo Tier 3 (default anthropic/claude-sonnet-4.5)
   LLM_MODEL_PRIMARY_SSM     path SSM Parameter Store p/ Tier 1
   LLM_MODEL_FALLBACK_SSM    path SSM Parameter Store p/ Tier 2
   LLM_MODEL_COMPLEX_SSM     path SSM Parameter Store p/ Tier 3
@@ -27,8 +27,8 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL_PRIMARY = "deepseek/deepseek-chat"
-DEFAULT_MODEL_FALLBACK = "anthropic/claude-3-haiku"
-DEFAULT_MODEL_COMPLEX = "anthropic/claude-3.5-sonnet"
+DEFAULT_MODEL_FALLBACK = "anthropic/claude-haiku-4.5"
+DEFAULT_MODEL_COMPLEX = "anthropic/claude-sonnet-4.5"
 
 TIER_PRIMARY = "primary"
 TIER_FALLBACK = "fallback"
@@ -448,11 +448,22 @@ def generate_reply(
     return raw.strip()
 
 
+def _loads_json(raw: str) -> Any:
+    """json.loads tolerante a cerca de markdown (```json ... ```): o fallback
+    Anthropic (Haiku) devolve assim mesmo com response_format=json_object."""
+    text = raw.strip()
+    if text.startswith("```"):
+        start, end = text.find("{"), text.rfind("}")
+        if start != -1 and end > start:
+            text = text[start : end + 1]
+    return json.loads(text)
+
+
 def _parse(raw: str) -> tuple[str | None, float | None]:
     if not raw:
         return None, None
     try:
-        data = json.loads(raw)
+        data = _loads_json(raw)
     except json.JSONDecodeError:
         return None, None
     intent = data.get("intent", "unknown")
@@ -597,15 +608,22 @@ def extract_and_route(
     # Incluir imóveis exibidos e favorito para o LLM resolver referências
     # anafóricas ("dele", "a segunda", "desse imóvel") e escolher property_detail.
     if shown_properties:
+        # preço/metragem: sem eles "o mais barato"/"o maior" não tem como ser resolvido
         context_data["imoveis_exibidos"] = [
-            {"index": i + 1, "title": p.get("title"), "region": p.get("region")}
+            {
+                "index": i + 1,
+                "title": p.get("title"),
+                "region": p.get("region"),
+                "preco": p.get("price_text") or p.get("price"),
+                "m2": p.get("area_util"),
+            }
             for i, p in enumerate(shown_properties[:9])
         ]
     if favorite_property:
         context_data["imovel_favorito"] = favorite_property
     if photos_sent:
         context_data["fotos_ja_enviadas"] = [t for t in photos_sent if t][:9]
-    context = json.dumps(context_data, ensure_ascii=False, default=str)[:1600]
+    context = json.dumps(context_data, ensure_ascii=False, default=str)[:2400]
     history_messages = _normalize_history(conversation_history)
     raw = _completion_with_fallback(
         messages=[
@@ -645,7 +663,7 @@ def _parse_extract_and_route(raw: str) -> dict[str, Any]:
     if not raw:
         raise ValueError("Resposta LLM vazia")
     try:
-        data = json.loads(raw)
+        data = _loads_json(raw)
     except json.JSONDecodeError as exc:
         raise ValueError("Resposta LLM não é JSON válido") from exc
     tool = data.get("tool")

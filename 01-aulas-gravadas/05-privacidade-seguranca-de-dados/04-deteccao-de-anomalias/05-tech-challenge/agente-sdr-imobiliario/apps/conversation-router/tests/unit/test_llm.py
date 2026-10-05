@@ -643,3 +643,15 @@ def test_router_prompt_routes_navigation_requests_to_unclear_not_provide_info():
     prompt = lm._ROUTER_SYSTEM_PROMPT
     assert "volta pra lista anterior" in prompt
     assert "NUNCA provide_info" in prompt
+
+
+def test_router_parser_accepts_markdown_fenced_json_from_fallback_model():
+    """Haiku (fallback) responde com ```json ...``` mesmo com response_format."""
+    raw = '```json\n{"thought": "x", "tool": "property_detail", "arguments": {"property_ref": "2"}}\n```'
+    assert lm._parse_extract_and_route(raw)["tool"] == "property_detail"
+
+
+def test_fallback_and_complex_defaults_are_not_retired_models():
+    """claude-3-haiku e claude-3.5-sonnet foram desativados no OpenRouter (404)."""
+    assert lm.DEFAULT_MODEL_FALLBACK != "anthropic/claude-3-haiku"
+    assert lm.DEFAULT_MODEL_COMPLEX != "anthropic/claude-3.5-sonnet"
