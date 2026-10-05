@@ -105,11 +105,11 @@ variable "llm_model" {
 variable "llm_model_fallback" {
   description = "Modelo de fallback no OpenRouter em caso de indisponibilidade/429/timeout"
   type        = string
-  default     = "anthropic/claude-3-haiku"
+  default     = "anthropic/claude-haiku-4.5"
 }
 
 variable "llm_model_complex" {
   description = "Modelo avançado no OpenRouter para casos complexos / negociação sofisticada"
   type        = string
-  default     = "anthropic/claude-3.5-sonnet"
+  default     = "anthropic/claude-sonnet-4.5"
 }

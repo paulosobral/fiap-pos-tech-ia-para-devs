@@ -32,9 +32,9 @@ pytestmark = pytest.mark.skipif(
 )
 
 _SHOWN = [
-    {"title": "Sala comercial 30m2 - Sao Judas", "region": "Sao Judas", "area_util": 30},
-    {"title": "Apartamento 36m2 - Parque Sao Rafael", "region": "Parque Sao Rafael", "area_util": 36},
-    {"title": "Terreno Eldorado 19m2", "region": "Eldorado", "area_util": 19},
+    {"title": "Sala comercial 30m2 - Sao Judas", "region": "Sao Judas", "area_util": 30, "price_text": "R$ 200 mil"},
+    {"title": "Apartamento 36m2 - Parque Sao Rafael", "region": "Parque Sao Rafael", "area_util": 36, "price_text": "R$ 300 mil"},
+    {"title": "Terreno Eldorado 19m2", "region": "Eldorado", "area_util": 19, "price_text": "R$ 11 milhões"},
 ]
 _TITLES = {p["title"] for p in _SHOWN}
 
@@ -56,7 +56,6 @@ def _route(message: str, **kwargs) -> dict:
         "mostra o um",
         "mostra o terceiro",
         "quero ver o penúltimo",
-        "mostra esse aí",
         "me manda o mais barato",
         "quero o do meio",
     ],
@@ -167,3 +166,14 @@ def test_detail_reply_uses_listing_description_instead_of_inventing():
         last_tool="property_detail",
     )
     assert "2 banheiros" in reply.lower() or "dois banheiros" in reply.lower(), reply
+
+
+def test_deictic_reference_resolves_to_item_in_focus():
+    """'esse aí' só é resolvível com algo em foco (favorito/último detalhado) —
+    sem foco e com 3 itens na tela, pedir esclarecimento também seria correto."""
+    from service.tools import _resolve_in_shown
+
+    result = _route("mostra esse aí", favorite_property=_SHOWN[1]["title"])
+    assert result["tool"] == "property_detail", result
+    ref = (result.get("arguments") or {}).get("property_ref")
+    assert _resolve_in_shown(str(ref), _SHOWN) is _SHOWN[1], ref
