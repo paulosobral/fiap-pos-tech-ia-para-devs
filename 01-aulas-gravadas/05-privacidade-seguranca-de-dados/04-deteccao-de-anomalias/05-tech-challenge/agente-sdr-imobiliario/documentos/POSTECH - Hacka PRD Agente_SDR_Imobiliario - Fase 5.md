@@ -841,8 +841,18 @@ Resumo direto das adaptações feitas durante o deploy para estabilizar o bot:
      ```
      Isso envia uma senha temporária por e-mail (sem `--desired-delivery-mediums`, é preciso gerar com `--temporary-password` e repassar a senha por fora). No primeiro acesso ao dashboard, a pessoa loga com essa senha temporária e a tela pede para definir uma senha definitiva (desafio `NEW_PASSWORD_REQUIRED` tratado em `_render_login`); dali em diante o login normal funciona. Repetir o `admin-create-user` para cada uma das ~5–10 pessoas do time — segue dentro do free tier de 50.000 MAUs (R$0, conforme §11 estimativa de custo).
 
+8. **Interpretação 100% pela LLM no caminho com roteador; filtro de foto no crawler (ADR-015)**:
+   - **Problema real** (conversas de teste, texto e transcrição de áudio): regex e palavras-chave decidiam "entendi ou não" mesmo com a LLM ativa — `em qualquer momento`/`no terreno` viravam *região*; `mil metros quadrados` não virava metragem; `quero falar com o corretor sobre essa opção` cancelava o handoff por conter "opção"; visita só valia com frases da lista; `São Caetano` casava com `São João Clímaco` pelo token "são".
+   - **Regra**: com o roteador LLM ativo, **só ele interpreta** metragem, bairro/cidade, orçamento, favorito, intenção de visita e pedido de humano. O regex de extração passa a ser plano B (sem `LLM_API_KEY` ou chamada falhou). O código só **valida e executa**.
+   - **Lugar**: o roteador recebe o vocabulário do catálogo (cidades → bairros, ~1,8 mil caracteres) e grava o nome exato ("scs"/"sao caetano" → "São Caetano do Sul"); a busca compara texto normalizado, sem lista de palavras.
+   - **Visita**: `visit_interest` = decisão da LLM + `visit_quote` (trecho literal da mensagem); o código só confere que o trecho existe (anti-alucinação).
+   - **Detalhes**: para 1–2 imóveis em foco a LLM recebe a ficha completa do cadastro (andar, elevadores, entrega, condomínio...) + descrição do anúncio; o que não vier no cadastro ela diz que confirma com o corretor. Nenhum mapa pergunta→campo no código.
+   - **Mantido em código (gates de negócio, ADR-011)**: consentimento LGPD, contato obrigatório (telefone ou e-mail) antes de agendar/encaminhar, mínimo de imóveis mostrados, captura/cifra de PII antes da LLM.
+   - **Fotos genéricas da imobiliária**: o CMS anexa uma colagem das fachadas da Gonçalves (215 fotos, ~9 formatos) e um ícone "sem foto". O filtro vive no **crawler** (`scripts/drop_generic_images.py` + assinatura de conteúdo + spider), nunca no bot: a assinatura é específica do CMS de cada imobiliária. O `start.sh` usa sempre o catálogo do crawler já limpo; sem crawler, sobe o sintético (sem fotos).
+   - **Verificação**: o quality gate (`tests/quality`, LLM real, mesmo tiering de produção) roda no deploy e cobre fala de transcrição, nomes abreviados, número por extenso e os casos que o regex errava.
+
 ---
 
 *Documento gerado a partir de brainstorming/validação e servirá de guia para a pipeline AI-DLC (profile: POC) — revisão de aprovação do cliente/aluno antes da implementação.*
 
-*Atualizado em 02/out/2026 — v1.13: autenticação Cognito do dashboard conectada de ponta a ponta (authorizer na rota + login `USER_PASSWORD_AUTH` no Streamlit, sem Hosted UI) e passo a passo de registro de usuários, ver §11 item 7 e ADR-014.*
+*Atualizado em 05/out/2026 — v1.14: interpretação 100% pela LLM no caminho com roteador (lugar via vocabulário do catálogo, visita por citação verificada, ficha completa nos detalhes) e filtro de fotos genéricas no crawler, ver §11 item 8 e ADR-015.*

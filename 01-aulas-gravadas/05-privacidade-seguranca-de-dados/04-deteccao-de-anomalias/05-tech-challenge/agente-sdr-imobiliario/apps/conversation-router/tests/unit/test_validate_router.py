@@ -49,12 +49,12 @@ def test_favorite_never_full_catalog():
 
 
 def test_visit_interest_requires_evidence():
-    # message without visit verb → force false even if LLM said true
+    # citação do LLM não existe na mensagem → alucinação, força false
     raw = {
         "tool": "express_visit_interest",
         "arguments": {},
         "lead_info": {},
-        "memory_updates": {"favorite_property": "Torre Nova", "visit_interest": True},
+        "memory_updates": {"favorite_property": "Torre Nova", "visit_interest": True, "visit_quote": "quero visitar"},
     }
     out = validate_router_output(raw, _state(), message="gostei da Torre Nova")
     assert out["memory_updates"]["visit_interest"] is False
@@ -66,7 +66,7 @@ def test_visit_interest_with_evidence_persists():
         "tool": "express_visit_interest",
         "arguments": {},
         "lead_info": {},
-        "memory_updates": {"favorite_property": "Torre Nova", "visit_interest": True},
+        "memory_updates": {"favorite_property": "Torre Nova", "visit_interest": True, "visit_quote": "quero visitar"},
     }
     out = validate_router_output(raw, _state(), message="quero visitar a Torre Nova")
     assert out["memory_updates"]["visit_interest"] is True
@@ -124,3 +124,20 @@ def test_invalid_commercial_intent_is_dropped():
     out = validate_router_output(raw, _state())
 
     assert "intent" not in out["lead_info"]
+
+
+def test_visit_interest_accepts_any_phrasing_when_quote_is_real():
+    """Sem lista de frases: paráfrase/transcrição vale se o trecho citado existe na mensagem."""
+    raw = {
+        "tool": "express_visit_interest", "arguments": {}, "lead_info": {},
+        "memory_updates": {"visit_interest": True, "visit_quote": "dar uma olhada no local"},
+    }
+    out = validate_router_output(raw, _state(), message="Eu queria... dar uma olhada no local, sabe?")
+    assert out["memory_updates"]["visit_interest"] is True
+
+
+def test_visit_interest_without_quote_is_rejected():
+    raw = {"tool": "express_visit_interest", "arguments": {}, "lead_info": {},
+           "memory_updates": {"visit_interest": True}}
+    out = validate_router_output(raw, _state(), message="quero visitar")
+    assert out["memory_updates"]["visit_interest"] is False

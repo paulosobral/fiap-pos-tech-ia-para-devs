@@ -655,3 +655,29 @@ def test_fallback_and_complex_defaults_are_not_retired_models():
     """claude-3-haiku e claude-3.5-sonnet foram desativados no OpenRouter (404)."""
     assert lm.DEFAULT_MODEL_FALLBACK != "anthropic/claude-3-haiku"
     assert lm.DEFAULT_MODEL_COMPLEX != "anthropic/claude-3.5-sonnet"
+
+
+class TestFichaCompleta:
+    PROP = {
+        "id": "gi-1", "title": "Sala X", "region": "Centro", "area_util": 30, "vagas": 1,
+        "andar": 7, "elevadores": 2, "entrega": "imediata", "condominio_m2": 0, "laje": False,
+        "source_url": "https://site/imovel/1", "images": ["https://cdn/a.jpg"],
+        "description": "Sala com copa.", "regions": [],
+    }
+
+    def _user_block(self, monkeypatch, properties):
+        captured = {}
+        monkeypatch.setattr(lm.litellm, "completion",
+                            lambda **kw: captured.update(kw) or _make_completion("ok"))
+        lm.generate_reply("tem elevador?", "resposta", {}, properties, api_key="k")
+        return captured["messages"][1]["content"]
+
+    def test_focused_property_sends_full_sheet_without_urls_ids_or_unknowns(self, monkeypatch):
+        block = self._user_block(monkeypatch, [self.PROP])
+        assert '"elevadores": 2' in block and '"andar": 7' in block and '"entrega": "imediata"' in block
+        assert "condominio_m2" not in block and "laje" not in block  # 0/False = não informado
+        assert "https://" not in block and "gi-1" not in block
+
+    def test_long_lists_stay_compact(self, monkeypatch):
+        block = self._user_block(monkeypatch, [dict(self.PROP, title=f"S{i}") for i in range(4)])
+        assert "elevadores" not in block

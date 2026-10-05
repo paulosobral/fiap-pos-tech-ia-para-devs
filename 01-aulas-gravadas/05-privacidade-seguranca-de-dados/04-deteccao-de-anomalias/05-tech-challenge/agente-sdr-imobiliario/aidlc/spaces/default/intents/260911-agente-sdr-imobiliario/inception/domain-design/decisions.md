@@ -300,3 +300,31 @@ A unidade u7-dashboard (code-generation) já havia deixado explícito em seu `co
 **Alternatives Rejected**
 - **Hosted UI/OIDC completo (`st.login()`, conforme o sketch do PRD)**: rejeitado nesta rodada por exigir domínio fixo + ALB (custo fora do orçamento da POC) para uma `callback_url` estável — o dashboard roda em ECS com IP público efêmero.
 - **Resolver a ADR-005 (migrar de fato para Streamlit Community Cloud) para então usar Hosted UI**: fora de escopo desta rodada — tratado como drift pré-existente, não reaberto aqui.
+
+---
+
+## ADR-015: Interpretação de Linguagem Natural 100% pela LLM (com Roteador Ativo) e Filtro de Fotos no Crawler
+
+**Context**
+Conversas reais de teste (texto digitado e transcrição de áudio) expuseram que regex e palavras-chave ainda decidiam "entendi / não entendi" no caminho em que a LLM está ativa, desfazendo ou corrompendo o que ela interpretou: `extract_lead_structure` gravava como região qualquer palavra após "em/na/no" (`em qualquer momento`, `no terreno`, `na garagem`) e não entendia `mil metros quadrados`; `_OPTIONS_REQUEST_RE` cancelava o `request_human` escolhido pela LLM se a mensagem contivesse "opção"/"lista"/"tudo"; `visit_interest` só valia com uma lista fixa de frases; uma regex fixa tratava "pra quem" nas perguntas de reserva; o casamento de região comparava tokens ("São Caetano" casava com "São João Clímaco"). Em paralelo, o CMS da Gonçalves anexa aos anúncios uma colagem das fachadas da própria imobiliária (215 fotos em ~9 formatos) e um ícone cinza de "sem foto" — o bot enviava isso como "foto do imóvel".
+
+**Decision**
+1. Com `llm_router` ativo, **só a LLM interpreta** `lead_info` (metragem, bairro/cidade, orçamento, prazo, pessoas), favorito/rejeitado, intenção de visita e pedido de humano. `extract_lead_structure` e `_apply_commercial_memory` (regex) rodam apenas sem roteador ou quando a chamada falha (plano B da ADR-011).
+2. O roteador recebe o vocabulário do catálogo (`known_places()`: cidade → bairros) e grava o nome exato; `_region_matches` compara texto normalizado (sem acento/pontuação), sem stopwords.
+3. `visit_interest` exige `visit_quote` (trecho literal da mensagem); `validation.py` só verifica que a citação existe na mensagem. Remove `_VISIT_EVIDENCE_RE`.
+4. `execute_tool("request_human")` não consulta mais palavra-chave da mensagem; removida a ramificação "pra quem/quem reservou" — a regra de nunca inventar quem reservou fica no prompt de resposta.
+5. Para 1–2 imóveis em foco, `generate_reply` recebe a ficha completa (campos não vazios/não zero, sem URLs/ids) + descrição; o prompt manda tratar campo ausente como desconhecido e confirmar com o corretor.
+6. Resposta repetida (≈ mensagem anterior do bot) é descartada em código e vale o texto oficial; reescrita do turno de pedido de contato precisa citar um canal (telefone/WhatsApp/e-mail) — sanidade da **saída**, sem restringir o modo de pedir.
+7. Fotos genéricas são removidas **no crawler** (`drop_generic_images.py`: correlação da miniatura 32×32 sem margens brancas com `generic_image_signature.json`, limiar 0,65 numa lacuna medida: colagem ≥ 0,73 × foto real mais parecida 0,52; 404/410 removidas; erro de rede mantém). O bot não tem lógica de foto genérica. `start.sh` usa sempre o catálogo do crawler limpo; sem crawler, catálogo sintético (sem fotos).
+
+**Consequences**
+**Positivos:** entende transcrição/fala solta/abreviações sem manutenção de regex; erros de interpretação passam a ser corrigidos no prompt (e cobertos pelo quality gate), não por mais remendos em Python; o bot passa a dizer a verdade quando não há foto.
+**Negativos:**
+- Custo fixo de ~500 tokens por turno no roteador (vocabulário do catálogo) e dependência da qualidade do modelo — mitigada pelo quality gate com LLM real (retry 1x só dos que falharem) no deploy.
+- Sem LLM, a interpretação cai para regex simples (degradado, ciente).
+- 32 imóveis (13% do catálogo) ficam sem foto até a imobiliária subir uma foto real.
+
+**Alternatives Rejected**
+- **Ampliar regex/dicionários** (mais ordinais, mais frases de visita, mais sinônimos de lugar): nunca converge; cada fala nova exigiria novo remendo.
+- **Filtrar a foto no bot** (lista de hashes/URLs): a assinatura é específica do CMS de cada imobiliária e pertence à fonte de dados.
+- **Reagir só ao `urlfotoprincipal`/nome de arquivo** (`-z-1-`): o mesmo conteúdo chega em vários nomes/formatos; só o conteúdo discrimina.

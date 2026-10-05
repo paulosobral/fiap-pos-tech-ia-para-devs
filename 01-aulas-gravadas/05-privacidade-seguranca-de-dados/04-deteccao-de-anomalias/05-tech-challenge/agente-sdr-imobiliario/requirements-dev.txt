@@ -8,3 +8,5 @@ scikit-learn>=1.4
 # do dashboard-ui — a imagem do container tem a própria instalação via
 # apps/dashboard-ui/requirements.txt; isso aqui é só pro gate de testes local.
 streamlit>=1.35
+# Pillow: scripts/drop_generic_images.py (crawler) roda dentro do start.sh
+Pillow>=10

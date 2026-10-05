@@ -22,6 +22,7 @@ import json
 import logging
 import os
 import re
+import unicodedata
 from typing import Any
 
 import faiss
@@ -247,31 +248,45 @@ def parse_budget(raw: Any) -> float | None:
     return None
 
 
+def _fold(value: Any) -> str:
+    """Minúsculas, sem acento e sem pontuação — só normalização de texto para comparar."""
+    text = unicodedata.normalize("NFKD", str(value or "")).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
+
+
 def _norm_region(region: Any) -> str | None:
-    if not region:
-        return None
-    value = str(region).lower().strip()
-    return value or None
+    return _fold(region) or None
 
 
-# Palavras que aparecem em dezenas de nomes de bairro/cidade ("São João Clímaco",
-# "Santo André", "Vila Bastos") — sozinhas não identificam um lugar.
-_REGION_STOPWORDS = {"sao", "são", "santo", "santa", "vila", "jardim", "parque", "do", "da", "de", "dos", "das"}
+def known_places(catalog: list[dict[str, Any]] | None = None) -> dict[str, list[str]]:
+    """Vocabulário do catálogo: cidade (corredor) -> bairros. Vai pro roteador LLM, que
+    grava no lead_info o nome EXATO do lugar ("scs", "sao caetano", "são caetano do sul"
+    -> "São Caetano do Sul") em vez de o código tentar adivinhar por palavra."""
+    items = catalog if catalog is not None else _load_default()
+    places: dict[str, set[str]] = {}
+    for prop in items:
+        city = str(prop.get("corredor") or "").strip()
+        if not city:
+            continue
+        bucket = places.setdefault(city, set())
+        for name in (prop.get("region"), *(prop.get("regions") or [])):
+            if name and str(name).strip():
+                bucket.add(str(name).strip())
+    return {city: sorted(names) for city, names in sorted(places.items())}
 
 
 def _region_matches(region: str, prop: dict[str, Any]) -> bool:
-    """Bairro (region/regions) OU cidade (corredor) OU título. Antes o corredor
-    era ignorado e qualquer token valia — "São Caetano" casava com "São João
-    Clímaco" (token "são") e nunca com os 56 imóveis de São Caetano do Sul."""
-    place = " ".join(
-        str(v)
-        for v in (prop.get("region"), prop.get("corredor"), prop.get("title"), *(prop.get("regions") or []))
-        if v
-    ).lower()
-    if region in place:
-        return True
-    tokens = [t for t in region.split() if len(t) >= 4 and t not in _REGION_STOPWORDS]
-    return bool(tokens) and all(t in place for t in tokens)
+    """Compara o lugar que a LLM gravou (nome do catálogo) com a cidade (corredor) ou o
+    bairro do imóvel — igualdade/contenção de texto normalizado, sem lista de palavras.
+    Entender "scs", "sao caetano" ou "perto da paulista" é trabalho da LLM."""
+    wanted = _fold(region)
+    if not wanted:
+        return False
+    for name in (prop.get("corredor"), prop.get("region"), *(prop.get("regions") or [])):
+        place = _fold(name)
+        if place and (wanted == place or wanted in place or place in wanted):
+            return True
+    return False
 
 
 # --- Busca RAG (FAISS + filtros) ---------------------------------------------

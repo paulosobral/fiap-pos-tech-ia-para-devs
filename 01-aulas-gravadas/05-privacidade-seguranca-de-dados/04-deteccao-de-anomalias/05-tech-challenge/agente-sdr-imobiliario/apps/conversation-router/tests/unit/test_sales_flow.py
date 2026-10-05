@@ -379,7 +379,7 @@ class TestReplyGenerator:
             "tool": "request_schedule",
             "arguments": {},
             "lead_info": {},
-            "memory_updates": {"visit_interest": True},
+            "memory_updates": {"visit_interest": True, "visit_quote": "quero marcar"},
         }
         flow = make_flow(llm_router=router, reply_generator=fake_reply)
         state = flow.invoke(
@@ -1107,9 +1107,16 @@ class TestAgenticRouter:
         )
 
         canned = reply.call_args.args[1]
-        assert "não informa para quem" in canned
+        assert "Disponibilidade: reservado" in canned
         assert "outro cliente" not in canned
         assert state["response"] == "Está reservado no momento, mas posso sugerir outras opções."
+
+    def test_reserved_for_whom_guarantee_lives_in_the_reply_prompt_not_in_a_keyword_branch(self):
+        """Sem regex em 'pra quem': a LLM responde qualquer forma da pergunta, e a regra
+        de nunca inventar quem reservou fica no prompt de humanização."""
+        from service import llm as llm_module
+
+        assert "NÃO informa para quem" in llm_module._REPLY_SYSTEM_PROMPT
 
 
 class TestDiscoveryState:
@@ -1372,7 +1379,10 @@ class TestToolRouting:
                 "response"
             )
 
-    def test_request_human_with_options_stays_conversation(self):
+    def test_request_human_chosen_by_llm_is_respected_even_if_message_mentions_options(self):
+        """Antes o código cancelava o handoff por achar 'opção' na mensagem. Escolher entre
+        'quer ver opções' e 'quer um humano' é interpretação: fica com a LLM (prompt do
+        roteador + quality gate), não com palavra-chave."""
         flow = self._flow(
             router_result={
                 "thought": "x",
@@ -1385,13 +1395,13 @@ class TestToolRouting:
         out = flow.invoke(
             {
                 "current_state": "conversation",
-                "message": "quero ver mais opções",
+                "message": "quero falar com o corretor sobre essa opção",
                 "lead_info": {},
                 "context": {},
                 "properties": [{"title": "A"}],
             }
         )
-        assert out.get("current_state") == "conversation"
+        assert out.get("current_state") == "handoff"
 
     def test_decline_routes_followup(self):
         flow = self._flow(
@@ -1505,7 +1515,7 @@ class TestLeadCompletionAndPhotos:
     def test_rewrite_that_drops_contact_ask_is_discarded(self):
         flow = make_flow(
             llm_router=self._router("request_human"),
-            reply_generator=lambda *a, **k: "Ótimo! O corretor vai te chamar no WhatsApp em breve.",
+            reply_generator=lambda *a, **k: "Perfeito! Qual dia e horário funciona melhor pra você?",
         )
         state = flow.invoke({
             "current_state": "conversation",
@@ -1516,7 +1526,7 @@ class TestLeadCompletionAndPhotos:
         assert "me passa seu telefone" in state["response"]
 
     def test_rewrite_that_keeps_contact_ask_is_used(self):
-        natural = "Show! Me passa seu WhatsApp que o corretor já te chama."
+        natural = "Show! Me informe seu WhatsApp que o corretor já te chama."
         flow = make_flow(
             llm_router=self._router("request_human"),
             reply_generator=lambda *a, **k: natural,
@@ -1587,3 +1597,34 @@ class TestRegionMatching:
         assert _strip_meta_notes("Gostou?\n\n*(Segue as fotos!)*") == "Gostou?"
         assert _strip_meta_notes("Ok\n[Fotos enviadas]\nE aí?") == "Ok\n\nE aí?"
         assert _strip_meta_notes("Tem 3 vagas (cobertas).") == "Tem 3 vagas (cobertas)."
+
+
+class TestReplyEchoGuard:
+    LIST_REPLY = (
+        "Entendi, você busca espaços em Santo André com cerca de 1000 m². Destaco estas:\n"
+        "1. Terreno no Campestre: 502 m², R$ 4,5 mil/mês.\n2. Sobrado no Jardim: 600 m²."
+    )
+
+    def _flow(self, generated):
+        router = lambda message, lead_info, current_state, **kw: {
+            "tool": "property_detail", "arguments": {"property_ref": "1"}, "lead_info": {}, "memory_updates": {},
+        }
+        return make_flow(llm_router=router, reply_generator=lambda *a, **k: generated)
+
+    def _invoke(self, flow):
+        return flow.invoke({
+            "current_state": "conversation", "message": "1",
+            "properties": [{"id": "t", "title": "Terreno Campestre", "region": "Campestre", "area_util": 502}],
+            "conversation_history": [{"role": "user", "content": "santo andré"},
+                                     {"role": "assistant", "content": self.LIST_REPLY}],
+            "context": {},
+        })
+
+    def test_reply_that_echoes_previous_bot_message_falls_back_to_official_text(self):
+        state = self._invoke(self._flow(self.LIST_REPLY))
+        assert state["response"] != self.LIST_REPLY
+        assert "Terreno Campestre" in state["response"]
+
+    def test_different_reply_is_kept(self):
+        natural = "O terreno no Campestre tem 502 m² e custa R$ 4,5 mil/mês. Quer ver mais algum detalhe dele?"
+        assert self._invoke(self._flow(natural))["response"] == natural

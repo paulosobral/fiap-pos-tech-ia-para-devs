@@ -120,10 +120,13 @@ def test_request_schedule_gate_ok_no_favorite():
     assert r.current_state_hint == "scheduling"
 
 
-def test_request_human_options_regex_stays_conversation():
+def test_request_human_is_decided_by_the_llm_not_by_message_keywords():
+    """Antes, 'opção'/'lista'/'tudo' na mensagem cancelava o handoff que a LLM escolheu —
+    'quero falar com o corretor sobre essa opção' nunca chegava no corretor."""
     state = _state()
-    r = execute_tool("request_human", {}, state, message="quero ver mais opções")
-    assert r.current_state_hint == "conversation"
+    state["missing_contact_fields"] = ["name"]  # telefone e e-mail já informados
+    r = execute_tool("request_human", {}, state, message="quero falar com o corretor sobre essa opção")
+    assert r.current_state_hint == "handoff"
 
 
 def test_decline_followup():

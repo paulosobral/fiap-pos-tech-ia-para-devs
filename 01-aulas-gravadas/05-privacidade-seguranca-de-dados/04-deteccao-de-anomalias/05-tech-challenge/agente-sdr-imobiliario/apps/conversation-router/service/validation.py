@@ -4,11 +4,6 @@ import re
 from difflib import SequenceMatcher
 from typing import Any
 
-_VISIT_EVIDENCE_RE = re.compile(
-    r"\b(?:quero visitar|vamos marcar|posso conhecer|tem agenda|quero marcar|"
-    r"agendar|marcar visita|conhecer o espa[çc]o)\b",
-    re.IGNORECASE,
-)
 _FUZZY_THRESHOLD = 0.55
 _MEMORY_KEYS = ("favorite_property", "visit_interest")
 _KNOWN_LEAD_FIELDS = (
@@ -88,6 +83,11 @@ def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).strip()
 
 
+def _quote_in_message(quote: Any, message: str) -> bool:
+    q = _norm(str(quote or ""))
+    return bool(q) and q in _norm(message or "")
+
+
 def _fuzzy_shown(name: str | None, shown: list[dict[str, Any]]) -> str | None:
     if not name:
         return None
@@ -137,8 +137,11 @@ def validate_router_output(
     clean_mem["favorite_property"] = _fuzzy_shown(
         str(fp) if fp not in (None, "") else None, shown
     )
+    # A LLM decide se há intenção de visita e cita o trecho literal da mensagem que mostra
+    # isso; o código só confere que a citação existe (anti-alucinação) — sem lista de frases,
+    # então "queria dar uma olhada no local" vale tanto quanto "quero visitar".
     want_visit = bool(mem.get("visit_interest"))
-    has_evidence = bool(_VISIT_EVIDENCE_RE.search(message or ""))
+    has_evidence = _quote_in_message(mem.get("visit_quote"), message)
     clean_mem["visit_interest"] = bool(want_visit and has_evidence)
     clean_mem = {k: clean_mem[k] for k in _MEMORY_KEYS if k in clean_mem}
 

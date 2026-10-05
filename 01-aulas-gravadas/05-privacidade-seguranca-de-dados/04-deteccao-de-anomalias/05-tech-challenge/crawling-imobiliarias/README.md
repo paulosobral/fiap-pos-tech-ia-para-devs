@@ -102,12 +102,33 @@ mkdir -p output/abc
   -o output/properties_merged.json
 ```
 
-Para popular diretamente o arquivo consumido pelo `agente-sdr-imobiliario`:
+Depois do merge, **remova as fotos genéricas** antes de entregar ao bot (ver
+seção abaixo) e só então popule o arquivo consumido pelo `agente-sdr-imobiliario`:
 
 ```bash
-cp output/properties_merged.json \
+.venv/bin/python3 scripts/drop_generic_images.py output/properties_merged.json \
+  -o output/properties_clean.json
+cp output/properties_clean.json \
   ../agente-sdr-imobiliario/apps/conversation-router/data/properties.json
 ```
+
+## Fotos genéricas da imobiliária (por que existe `drop_generic_images.py`)
+
+O CMS anexa a ~1/3 dos anúncios uma **colagem das fachadas da própria Gonçalves
+Imóveis** — às vezes como a única foto (imóveis sem foto), às vezes no meio/fim
+das fotos reais — e, sem foto nenhuma, devolve o ícone cinza `house1.png`. Sem
+tratamento, o bot mandava "a foto do imóvel" e chegava o prédio da imobiliária.
+
+- O ícone é descartado pelo spider (`PLACEHOLDER_IMAGE_MARKERS`).
+- A colagem **não dá pra filtrar por URL** (é servida de `/Imoveis/<codigo>/` como
+  qualquer foto, em ~9 formatos/recortes). `scripts/drop_generic_images.py` compara a
+  miniatura de cada foto (cinza 32x32, sem margens brancas) com
+  `scripts/generic_image_signature.json` por correlação; o limiar 0,65 fica numa
+  lacuna medida: colagem ≥ 0,73, foto real mais parecida 0,52. Foto que não baixa é
+  mantida; 404/410 é removida; imóvel que fica sem foto sai com `images: []`
+  (o bot passa a dizer que não há foto em vez de mandar a errada).
+- Resultados ficam em cache (`output/.generic_image_cache.json`): re-rodar só baixa
+  as fotos novas. Se aparecer outra imagem genérica, gere uma nova assinatura.
 
 (O pipeline também suporta `-s POPULATE_TARGET_PATH=<caminho>` para gravar
 direto numa cidade só, sem mesclagem — útil só quando não há mais de um
@@ -121,8 +142,6 @@ Em `agente-sdr-imobiliario`, `apps/conversation-router/data/properties.json`
 antes dos gates de teste, e depois carregado na tabela DynamoDB
 `sdr-properties` pela fase 5d.5 (`scripts/load_properties_dynamodb.py`).
 
-Ou seja: popular o arquivo com os dados deste spider é válido para uso/teste
-local imediato, mas **qualquer novo `start.sh` vai sobrescrever com os 120
-imóveis sintéticos de `seed_properties.py`**, a menos que o pipeline de build
-seja ajustado para chamar este spider em vez do gerador sintético (não feito
-aqui — decisão que cabe ao dono do projeto).
+O `start.sh` só gera os imóveis sintéticos de `seed_properties.py` quando
+`data/properties.json` **não existe**; um arquivo já populado com os dados deste
+spider (passo acima) é preservado e é o que vai para o DynamoDB.

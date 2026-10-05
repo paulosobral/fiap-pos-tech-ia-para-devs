@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import re
+from difflib import SequenceMatcher
 from typing import Any, Callable, TypedDict
 
 logger = logging.getLogger(__name__)
@@ -101,12 +102,10 @@ _REJECT_LIKE_RE = re.compile(
 )
 
 
-_CONTACT_CHANNEL_RE = re.compile(r"telefone|whats|e-?mail|celular|n[úu]mero", re.IGNORECASE)
-_CONTACT_ASK_RE = re.compile(
-    r"\?|\bme (?:passa|manda|envia|informa|diz)\b|\bpode(?:ria)? (?:me )?"
-    r"(?:passar|enviar|mandar|informar)\b|\bqual (?:é )?(?:o )?seu\b",
-    re.IGNORECASE,
-)
+# Sanidade da SAÍDA (não interpreta o lead): a resposta do turno de pedido de contato tem que
+# falar de um canal. Pegou o bug real em que a reescrita virou "qual dia e horário?" e o lead
+# nunca informava telefone/e-mail. O jeito de pedir é livre ("me informe", "pode deixar...").
+_CONTACT_CHANNEL_RE = re.compile(r"telefone|whats|zap|e-?mail|celular|n[úu]mero", re.IGNORECASE)
 
 
 # Linha inteira entre ()/[] (com ou sem *itálico*) é nota de bastidor do modelo
@@ -118,10 +117,18 @@ def _strip_meta_notes(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", _META_NOTE_LINE_RE.sub("", text)).strip()
 
 
+def _repeats_previous_reply(text: str, history: list[dict[str, str]] | None) -> bool:
+    """Eco: o modelo devolveu (quase) a mensagem anterior do bot em vez de responder
+    o pedido atual — visto no turno "1" depois de uma lista (reenviou a lista)."""
+    last = next((t.get("content") or "" for t in reversed(history or []) if t.get("role") == "assistant"), "")
+    if len(text) < 40 or len(last) < 40:
+        return False
+    norm = lambda s: re.sub(r"\W+", " ", s.lower()).strip()[:400]
+    return SequenceMatcher(None, norm(text), norm(last)).ratio() >= 0.85
+
+
 def _asks_for_contact(text: str) -> bool:
-    """Canal citado E em forma de pedido — "o corretor vai te chamar no
-    WhatsApp" cita o canal mas é promessa, não pedido (bug real 03/10)."""
-    return bool(_CONTACT_CHANNEL_RE.search(text) and _CONTACT_ASK_RE.search(text))
+    return bool(_CONTACT_CHANNEL_RE.search(text))
 
 
 def _photo_key(prop: dict[str, Any]) -> str:
@@ -415,9 +422,11 @@ class SalesFlow:
     def _node_preprocess(self, state: FlowState) -> FlowState:
         message = state.get("message", "")
         context = state.setdefault("context", {})
-        extracted = extract_lead_structure(
-            message
-        )  # baseline regex — rede de segurança
+        # Com roteador LLM ativo, SÓ ele interpreta metragem/bairro/orçamento (entende
+        # transcrição de áudio, número por extenso, fala solta). O regex captura lixo
+        # ("em qualquer momento" -> região) e fica como plano B: sem LLM ou se ela falhar.
+        extracted = extract_lead_structure(message) if self.llm_router is None else {}
+        router_failed = False
         if extracted:
             stored = dict(context.get("lead_info") or {})
             stored.update(extracted)
@@ -562,6 +571,11 @@ class SalesFlow:
                     "llm_router falhou; usando extração regex + FSM determinístico (fallback ADR-011)",
                     exc_info=True,
                 )
+                router_failed = True
+                fallback_info = extract_lead_structure(message)
+                if fallback_info:
+                    merged = {**merged, **fallback_info}
+                    context["lead_info"] = {**(context.get("lead_info") or {}), **fallback_info}
 
         if resume_pending:
             from service.tools import execute_tool
@@ -583,7 +597,9 @@ class SalesFlow:
                 context.pop("pending_contact_action", None)
 
         state["lead_info"] = merged
-        self._apply_commercial_memory(state)
+        if self.llm_router is None or router_failed:
+            # favorito/rejeitado por regex só no plano B; com LLM vem de memory_updates
+            self._apply_commercial_memory(state)
         return state
 
     def _apply_commercial_memory(self, state: FlowState) -> None:
@@ -680,16 +696,6 @@ class SalesFlow:
                 p = tr.detail
                 price = p.get("price_text") or p.get("price") or "sob consulta"
                 disp = p.get("disponibilidade", "")
-                message = state.get("message", "").lower()
-                if re.search(r"\b(?:pra|para) quem\b|\bquem reservou\b", message):
-                    state["response"] = (
-                        f"O cadastro informa que {p.get('title', 'o imóvel')} está {disp}, "
-                        "mas não informa para quem. Posso pedir ao corretor que confirme."
-                        if disp == "reservado"
-                        else "Não tenho no cadastro a informação de para quem seria a reserva. "
-                        "Posso pedir ao corretor que confirme."
-                    )
-                    return state
                 disp_line = f" Disponibilidade: {disp}." if disp else ""
                 state["response"] = (
                     f"{p.get('title', 'Imóvel')} — {p.get('region', '')}, "
@@ -1198,7 +1204,9 @@ class SalesFlow:
                 contact_request=bool(state.get("_contact_request")),
             )
             generated = _strip_meta_notes(generated or "")
-            if generated:
+            if generated and _repeats_previous_reply(generated, state.get("conversation_history")):
+                logger.warning("Reescrita da LLM repetiu a mensagem anterior; mantendo texto oficial")
+            elif generated:
                 if state.get("_contact_request") and not _asks_for_contact(generated):
                     # Reescrita perdeu o pedido de contato (bug real: virou pergunta
                     # de horário) — sem ele o lead nunca chega ao corretor.

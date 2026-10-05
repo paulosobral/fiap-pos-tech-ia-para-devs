@@ -40,7 +40,10 @@ _TITLES = {p["title"] for p in _SHOWN}
 
 
 def _route(message: str, **kwargs) -> dict:
+    from service.properties_catalog import known_places
+
     kwargs.setdefault("shown_properties", _SHOWN)
+    kwargs.setdefault("places", known_places())  # igual à produção (handler.llm_route)
     return llm.extract_and_route(
         message,
         lead_info={},
@@ -177,3 +180,132 @@ def test_deictic_reference_resolves_to_item_in_focus():
     assert result["tool"] == "property_detail", result
     ref = (result.get("arguments") or {}).get("property_ref")
     assert _resolve_in_shown(str(ref), _SHOWN) is _SHOWN[1], ref
+
+
+def test_specific_property_request_delivers_it_instead_of_search_mismatch():
+    """Chat real 05/10: lead busca 1000 m², pede 'a primeira opção' (terreno de 502 m²) e o
+    bot respondia 'abaixo da metragem que você busca / não tenho 1000 m²' em vez de apresentar
+    o imóvel pedido. A resposta tem que trazer o imóvel (metragem e preço)."""
+    prop = {
+        "id": "t", "title": "Terreno para alugar, Campestre - Santo André/SP", "region": "Campestre",
+        "area_util": 502, "price_text": "R$ 4.5 mil/mês", "images": [],
+        "description": "Espaço amplo para uso comercial em Santo André (Campestre), com 502 m² de terreno.",
+    }
+    for message in ("1", "eu falei que quero ver a primeira opção"):
+        reply = llm.generate_reply(
+            message=message,
+            canned_response="Terreno para alugar, Campestre - Santo André/SP — Campestre, 502.0 m², "
+                            "R$ 4.5 mil/mês. Disponibilidade: disponível. Quer que eu compare com outra opção?",
+            lead_info={"intent": "rent", "area": "1000 metros quadrados", "region": "Santo André"},
+            properties=[prop],
+            api_key=API_KEY,
+            last_tool="property_detail",
+            conversation_history=[
+                {"role": "user", "content": "santo andré, 1000 metros quadrados"},
+                {"role": "assistant", "content": "Destaco: 1. Terreno no Campestre, 502 m², R$ 4,5 mil/mês. "
+                                                 "2. Sobrado no Jardim, 600 m², R$ 26 mil/mês."},
+            ],
+        )
+        low = reply.lower()
+        assert "502" in low and "4,5" in low, (message, reply)
+        assert "no momento só tenho" not in low and "não tenho disponíve" not in low, (message, reply)
+
+
+# --- Interpretação 100% pela LLM: fala/transcrição, lugar, metragem, detalhes --------------------
+
+import re  # noqa: E402
+
+from service.properties_catalog import known_places  # noqa: E402
+
+
+def _num(value) -> float | None:
+    if isinstance(value, (int, float)):
+        return float(value)
+    m = re.search(r"\d[\d.,]*", str(value or ""))
+    if not m:
+        return None
+    raw = m.group(0).rstrip(".,")
+    if re.fullmatch(r"\d{1,3}(\.\d{3})+", raw):
+        raw = raw.replace(".", "")
+    return float(raw.replace(",", "."))
+
+
+def _extract(message: str, lead_info: dict | None = None) -> dict:
+    return llm.extract_and_route(
+        message, lead_info=lead_info or {"intent": "rent"}, current_state="conversation",
+        api_key=API_KEY, places=known_places(),
+    )["lead_info"]
+
+
+@pytest.mark.parametrize(
+    "message, area, city",
+    [
+        ("santo andré, 1000 metros quadrados", 1000, "Santo André"),
+        ("mil metros quadrados em santo andre", 1000, "Santo André"),
+        ("uns mil e duzentos metros lá no scs", 1200, "São Caetano do Sul"),
+        ("quero algo em sao bernardo com uns 500 metros", 500, "São Bernardo do Campo"),
+    ],
+)
+def test_spoken_area_and_place_are_interpreted_by_the_llm(message, area, city):
+    info = _extract(message)
+    assert _num(info.get("area")) == area, (message, info)
+    assert info.get("region") == city, (message, info)
+
+
+@pytest.mark.parametrize(
+    "message",
+    ["pode ser em qualquer momento", "quero ver os detalhes no terreno", "tem vaga na garagem?", "sim, por favor"],
+)
+def test_words_that_are_not_places_do_not_become_region(message):
+    """O regex antigo gravava 'qualquer momento', 'terreno', 'garagem' como região."""
+    assert not _extract(message).get("region"), message
+
+
+def test_spoken_budget_is_interpreted():
+    info = _extract("uns quinze mil por mês")
+    assert _num(info.get("budget")) == 15000, info
+
+
+def test_visit_intent_in_free_words_is_accepted_with_a_real_quote():
+    from service.validation import validate_router_output
+
+    message = "eu queria dar uma olhada no local pessoalmente, sabe"
+    raw = _route(message, favorite_property=_SHOWN[0]["title"])
+    out = validate_router_output(raw, {"properties": _SHOWN}, message=message)
+    assert out["memory_updates"].get("visit_interest") is True, raw
+
+
+def test_human_request_mentioning_an_option_is_not_turned_into_a_list():
+    result = _route("quero falar com o corretor sobre essa opção", favorite_property=_SHOWN[0]["title"])
+    assert result["tool"] == "request_human", result
+
+
+_FICHA = {
+    "id": "x", "title": "Sala comercial - Centro", "region": "Centro", "area_util": 45, "vagas": 1,
+    "andar": 7, "elevadores": 2, "entrega": "imediata", "price_text": "R$ 3 mil/mês", "mode": "rent",
+    "disponibilidade": "reservado", "images": [],
+}
+
+
+def _detail_reply(question: str, **prop_overrides) -> str:
+    prop = {**_FICHA, **prop_overrides}
+    return llm.generate_reply(
+        message=question,
+        canned_response=f"{prop['title']} — {prop['region']}, {prop['area_util']} m², {prop['price_text']}.",
+        lead_info={}, properties=[prop], api_key=API_KEY, last_tool="property_detail",
+    ).lower()
+
+
+def test_any_detail_in_the_sheet_is_answerable_without_keyword_mapping():
+    reply = _detail_reply("em que andar fica e tem elevador?")
+    assert "7" in reply and ("elevador" in reply or "2" in reply), reply
+
+
+def test_detail_missing_from_the_sheet_is_not_invented():
+    reply = _detail_reply("quanto é o IPTU?")
+    assert "corretor" in reply or "confirm" in reply, reply
+
+
+def test_reserved_for_whom_is_not_invented():
+    reply = _detail_reply("está reservado pra quem?")
+    assert "corretor" in reply or "não" in reply, reply

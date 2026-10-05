@@ -129,16 +129,19 @@ _REPLY_SYSTEM_PROMPT = (
     "3. NUNCA invente nenhum fato sobre o imóvel que não esteja nos dados recebidos: preço, "
     "metragem, bairro, empreendimento, disponibilidade, prazo, quartos, suítes, banheiros, "
     "estado de conservação, acabamento, condomínio, IPTU. O campo descricao (quando vier) é o "
-    "texto do anúncio — pode usar o que está escrito nele. Se o lead perguntar algo que não "
-    "está nos dados, diga que vai confirmar com o corretor.\n"
+    "texto do anúncio — pode usar o que está escrito nele — e os demais campos da ficha "
+    "(andar, elevadores, entrega, condominio_m2...) valem como fato; campo que não veio é "
+    "desconhecido. Se o lead perguntar algo que não está nos dados, diga que vai confirmar "
+    "com o corretor.\n"
     "4. Seja breve (até 3 frases, exceto listas de imóveis). Faça no máximo uma pergunta, "
     "somente quando ela ajudar o próximo passo; não repita perguntas já respondidas. "
     "NUNCA force agendamento quando o lead só quer ver propriedades ou conversar sobre elas.\n"
     "Nunca mostre placeholders de PII como [NOME], [EMAIL], [TELEFONE] ou [CNPJ]; "
     "se não souber o nome, não use vocativo com nome.\n"
     "5. Ao citar preço, preserve a modalidade do imóvel: purchase = compra, rent = locação. "
-    "Não apresente valor de compra como preço mensal de aluguel. Nunca diga para quem "
-    "um imóvel está reservado nem invente motivo de indisponibilidade.\n"
+    "Não apresente valor de compra como preço mensal de aluguel. O cadastro NÃO informa para "
+    "quem um imóvel está reservado nem o motivo da indisponibilidade: nunca invente; se "
+    "perguntarem, diga que isso o corretor confirma.\n"
     "6. Se houver muitos imóveis na lista, use 1 frase por imóvel + fecho "
     "(lista longa) em vez de no máximo 3 frases.\n"
     "7. Coerência com a última tool: se ÚLTIMA TOOL for request_options/refine_search, "
@@ -164,6 +167,15 @@ _REPLY_SYSTEM_PROMPT = (
     "pergunte se ele quer ver mais opções."
     "\n15. Escreva só a mensagem pro lead: nunca inclua marcadores, notas ou instruções entre "
     "colchetes ou parênteses (ex.: '[Fotos enviadas]', '(fotos sendo enviadas)')."
+    "\n16. RESPONDA AO PEDIDO ATUAL: a ÚLTIMA MENSAGEM do lead manda. Se ele pediu um imóvel "
+    "específico ('1', 'a primeira', detalhes, fotos), comece entregando o que ele pediu SOBRE "
+    "ESSE imóvel (preço, metragem, o que o anúncio diz). Não abra com 'entendi que você busca "
+    "X, mas...', não compare o imóvel com os critérios de busca dele (metragem, orçamento) no "
+    "lugar de apresentá-lo e não troque o pedido por 'posso buscar outras opções'. Uma diferença "
+    "em relação ao que ele buscou pode ser dita em UMA frase curta, depois de entregar, e só se "
+    "ainda não foi dita no histórico. Se ele reclamar que não foi atendido ('eu pedi...', 'eu "
+    "falei...'), peça desculpa em poucas palavras e entregue o que ele pediu. Nunca reenvie, "
+    "copie ou resuma de novo uma mensagem que você já mandou no histórico."
 )
 
 # --- LiteLLM (cliente abstraído conforme PRD §8.1) ---------------------------
@@ -299,6 +311,21 @@ def classify_intent(
     return intent, confidence
 
 
+_FICHA_BASE = {"title", "type", "class", "mode", "region", "area_util", "price", "price_text",
+               "vagas", "disponibilidade"}
+_FICHA_NEVER = {"images", "id", "source_url", "description", "regions"}
+
+
+def _ficha_extra(prop: dict[str, Any]) -> dict[str, Any]:
+    """Demais campos do cadastro, sem zero/vazio (no crawler 0 = não informado) e sem
+    URLs/ids, que a resposta não precisa e não deve repetir."""
+    return {
+        k: v
+        for k, v in prop.items()
+        if k not in _FICHA_BASE and k not in _FICHA_NEVER and v not in (None, "", [], 0, False)
+    }
+
+
 def generate_reply(
     message: str,
     canned_response: str,
@@ -363,8 +390,10 @@ def generate_reply(
                 # nao viu. As fotos em si vao por canal separado (response_images
                 # / send_photo), nunca neste payload de texto.
                 "fotos_disponiveis": bool(p.get("images")),
-                # Texto do anúncio (quartos, banheiros, IPTU...) só quando o foco
-                # é 1-2 imóveis — sem ele a LLM inventava atributos no detalhe.
+                # Foco em 1-2 imóveis: ficha completa (andar, elevador, entrega, condomínio...)
+                # + texto do anúncio, para a LLM responder QUALQUER detalhe que o lead
+                # pedir sem o código mapear pergunta -> campo. Campo ausente = desconhecido.
+                **(_ficha_extra(p) if with_description else {}),
                 **(
                     {"descricao": str(p.get("description") or "")[:700]}
                     if with_description and p.get("description")
@@ -375,7 +404,7 @@ def generate_reply(
         ],
         ensure_ascii=False,
         default=str,
-    )[: 2600 if with_description else 1500]
+    )[: 3800 if with_description else 1500]
     stage_line = (
         f"ESTÁGIO DA CONVERSA: {conversation_stage}"
         if conversation_stage
@@ -511,10 +540,22 @@ _ROUTER_SYSTEM_PROMPT = (
     "intent ('purchase'|'rent'|'investment'), area, region, budget, deadline, "
     "people_count (inteiro), decision_maker ('yes'/'no'). Preserve a intenção já "
     "salva, a menos que o lead a corrija explicitamente.\n"
+    "   As mensagens vêm de gente de verdade e muitas vezes de TRANSCRIÇÃO DE ÁUDIO: sem "
+    "pontuação, números por extenso ('mil e duzentos metros' = 1200, 'uns quinze mil por "
+    "mês' = 15000), palavras trocadas de ouvido, frases soltas ('santo andré mesmo'). "
+    "Interprete pela intenção, nunca por palavra exata.\n"
+    "   area = número em m² (ex.: 1000); budget = número em reais (ex.: 15000). "
+    "region = o lugar que o lead quer: se bater com um lugar da lista LOCAIS DO CATÁLOGO "
+    "(mesmo abreviado, sem acento ou errado de ouvido: 'scs', 'sao caetano', 'vila bastus'), "
+    "grave o nome EXATO da lista (cidade ou bairro); se não existir no catálogo, grave como "
+    "ele disse. Só preencha region quando ele de fato falar de lugar — 'em qualquer "
+    "momento' ou 'no terreno' não são região.\n"
     "2. ATUALIZE memória comercial em memory_updates: "
     "favorite_property (string|null — só imóveis já mostrados), "
-    "visit_interest (bool — true SOMENTE com verbo de visita explícito: "
-    "'quero visitar','vamos marcar','posso conhecer','tem agenda').\n"
+    "visit_interest (bool — true quando o lead demonstra querer visitar/conhecer o imóvel "
+    "ou marcar uma conversa, com as palavras que ele usar) + visit_quote (string — o trecho "
+    "COPIADO LITERALMENTE da mensagem dele que mostra essa intenção; sem trecho literal, "
+    "visit_interest=false).\n"
     "3. ESCOLHA UMA tool: " + ", ".join(VALID_TOOLS) + ".\n"
     "   - request_options: quer VER/RECEBER uma lista NOVA de imóveis ou catálogo completo, "
     "SEM apontar um item específico já exibido "
@@ -575,7 +616,7 @@ _ROUTER_SYSTEM_PROMPT = (
     "quiser), e false quando as fotos daquele imóvel já foram enviadas e ele não pediu mais.\n"
     'Responda APENAS com JSON: {"thought":"...","tool":"<tool>",'
     '"arguments":{},"lead_info":{},"memory_updates":'
-    '{"favorite_property":null,"visit_interest":false}}.'
+    '{"favorite_property":null,"visit_interest":false,"visit_quote":null}}.'
 )
 
 
@@ -589,6 +630,7 @@ def extract_and_route(
     favorite_property: str | None = None,
     conversation_history: list[dict[str, str]] | None = None,
     photos_sent: list[str] | None = None,
+    places: dict[str, list[str]] | None = None,
 ) -> dict[str, Any]:
     """Uma chamada LLM (Tier 1): extrai deltas de lead_info + escolhe UMA tool
     do enum fixo (VALID_TOOLS) com arguments/memory_updates. A validação de
@@ -624,6 +666,12 @@ def extract_and_route(
     if photos_sent:
         context_data["fotos_ja_enviadas"] = [t for t in photos_sent if t][:9]
     context = json.dumps(context_data, ensure_ascii=False, default=str)[:2400]
+    places_block = ""
+    if places:
+        # fora do trecho truncado do contexto: a lista inteira precisa chegar na LLM
+        places_block = "LOCAIS DO CATÁLOGO (cidade: bairros): " + "; ".join(
+            f"{city}: {', '.join(names)}" for city, names in places.items()
+        ) + "\n\n"
     history_messages = _normalize_history(conversation_history)
     raw = _completion_with_fallback(
         messages=[
@@ -631,7 +679,7 @@ def extract_and_route(
             *history_messages,
             {
                 "role": "user",
-                "content": f"CONTEXTO: {context}\n\nMENSAGEM DO LEAD: {message}",
+                "content": f"{places_block}CONTEXTO: {context}\n\nMENSAGEM DO LEAD: {message}",
             },
         ],
         api_key=api_key,
@@ -691,6 +739,7 @@ def _parse_extract_and_route(raw: str) -> dict[str, Any]:
         mem_clean["favorite_property"] = str(fp) if fp not in (None, "") else None
     if "visit_interest" in memory:
         mem_clean["visit_interest"] = bool(memory.get("visit_interest"))
+        mem_clean["visit_quote"] = str(memory.get("visit_quote") or "")[:300]
     return {
         "thought": str(data.get("thought") or ""),
         "tool": tool,

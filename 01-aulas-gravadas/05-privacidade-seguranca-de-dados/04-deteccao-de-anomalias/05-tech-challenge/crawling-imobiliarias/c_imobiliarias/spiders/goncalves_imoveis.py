@@ -30,6 +30,11 @@ BASE_URL = "https://www.goncalvesimoveis.com.br/"
 # os valores de "valor" retornados (ex.: aluguel R$ 4.500 x venda R$ 1.437.000).
 FINALIDADE_MODE = {1: "rent", 2: "purchase"}
 
+# Ícone cinza de "sem foto" do Imoview: o CMS devolve isso em urlfotoprincipal quando
+# o imóvel não tem foto — não é foto do imóvel. (A colagem das fachadas da imobiliária
+# não dá pra filtrar por URL; ver scripts/drop_generic_images.py.)
+PLACEHOLDER_IMAGE_MARKERS = ("/Front/img/house",)
+
 # codigocidade=3 == "São Paulo" em /retornar-cidades-disponiveis.
 CODIGO_CIDADE_SAO_PAULO = 3
 
@@ -200,6 +205,7 @@ class GoncalvesImoveisSpider(scrapy.Spider):
             main_photo = detail.get("urlfotoprincipal") or listing.get("urlfotoprincipal")
             if main_photo:
                 images = [main_photo]
+        images = [u for u in images if not any(m in u for m in PLACEHOLDER_IMAGE_MARKERS)]
 
         return {
             "id": f"gi-{codigo}",

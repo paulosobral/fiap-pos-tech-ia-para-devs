@@ -7,11 +7,6 @@ from typing import Any, Callable
 
 from service.validation import _ORDINAL_MAP
 
-_OPTIONS_REQUEST_RE = re.compile(
-    r"\b(?:op[çc][ãa]o|op[çc][õo]es|mais im[óo]veis|mostrar|lista|tudo|complet[oa])\b",
-    re.IGNORECASE,
-)
-
 # _ORDINAL_MAP vem de service.validation (fonte canonica, ver import no topo) —
 # nao duplicar vocabulario de ordinais aqui.
 
@@ -233,9 +228,8 @@ def execute_tool(
         return result
 
     if tool == "request_human":
-        if message and _OPTIONS_REQUEST_RE.search(message):
-            result.current_state_hint = "conversation"
-            return result
+        # A decisão de quem quer falar com humano é da LLM (prompt do roteador): nada de
+        # palavra-chave na mensagem desfazendo isso ("falar com o corretor sobre essa opção").
         if contact_unreachable(state):
             return _missing_contact(result, state)
         result.current_state_hint = "handoff"

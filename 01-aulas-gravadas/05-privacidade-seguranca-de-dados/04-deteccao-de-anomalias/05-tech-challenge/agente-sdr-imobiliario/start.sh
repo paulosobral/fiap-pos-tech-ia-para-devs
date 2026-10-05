@@ -26,10 +26,32 @@ echo "compileall OK"
 # testes de conversation-router leem data/*.json (data/ é gitignored, então é gerado
 # aqui). Gerar depois do pytest fazia o gate falhar em clone limpo.
 mkdir -p apps/conversation-router/data
-# properties.json só é gerado sinteticamente se ainda não existir (ex.: dataset
-# real populado por um scraper) — não sobrescreve um catálogo já presente.
-if [ ! -f apps/conversation-router/data/properties.json ]; then
-  "$PY" scripts/seed_properties.py > apps/conversation-router/data/properties.json
+# Catálogo de imóveis: SEMPRE parte do que o crawler gerou, se existir. A cada subida o
+# crawler.output passa por drop_generic_images.py (tira a colagem das fachadas da
+# imobiliária e o ícone "sem foto"; cache em output/, então só baixa foto nova) e o
+# resultado vira o catálogo do bot. Sem crawler -> catálogo sintético (sem fotos).
+CATALOG="apps/conversation-router/data/properties.json"
+CRAWLER_DIR="${CRAWLER_DIR:-$ROOT/../crawling-imobiliarias}"
+CRAWLER_MERGED="$CRAWLER_DIR/output/properties_merged.json"
+CRAWLER_CLEAN="$CRAWLER_DIR/output/properties_clean.json"
+use_synthetic_catalog() {
+  [ -f "$CATALOG" ] && cp "$CATALOG" "$CATALOG.bak"
+  "$PY" scripts/seed_properties.py > "$CATALOG"
+}
+if [ -f "$CRAWLER_MERGED" ]; then
+  echo "Catálogo do crawler encontrado ($CRAWLER_MERGED): removendo fotos genéricas..."
+  if "$PY" "$CRAWLER_DIR/scripts/drop_generic_images.py" "$CRAWLER_MERGED" -o "$CRAWLER_CLEAN"; then
+    cp "$CRAWLER_CLEAN" "$CATALOG"
+  elif [ -f "$CRAWLER_CLEAN" ]; then
+    echo "AVISO: limpeza de fotos falhou; usando a última versão limpa ($CRAWLER_CLEAN)"
+    cp "$CRAWLER_CLEAN" "$CATALOG"
+  else
+    echo "AVISO: limpeza de fotos falhou e não há versão limpa; usando catálogo sintético (sem fotos)"
+    use_synthetic_catalog
+  fi
+else
+  echo "Sem catálogo do crawler em $CRAWLER_MERGED: usando o sintético (sem fotos)"
+  use_synthetic_catalog
 fi
 "$PY" scripts/seed_clients.py > apps/conversation-router/data/clients.json
 echo "RAG seed: $("$PY" -c 'import json;print(len(json.load(open("apps/conversation-router/data/properties.json"))["properties"]))') imóveis + $("$PY" -c 'import json;print(len(json.load(open("apps/conversation-router/data/clients.json"))["clients"]))') clientes sintéticos"

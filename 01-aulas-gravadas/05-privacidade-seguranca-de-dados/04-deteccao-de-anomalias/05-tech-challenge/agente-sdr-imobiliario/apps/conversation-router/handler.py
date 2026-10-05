@@ -19,6 +19,7 @@ try:
     from service.llm import classify_intent as _llm_classify_intent
     from service.llm import extract_and_route as _llm_extract_and_route
     from service.llm import generate_reply as _llm_generate_reply
+    from service.properties_catalog import known_places as _known_places
     from service.properties_catalog import search_properties as _search_properties
     from service.properties_catalog import set_dynamodb_client as _set_properties_dynamo_client
 
@@ -691,6 +692,7 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
                 favorite_property=kwargs.get("favorite_property"),
                 conversation_history=kwargs.get("conversation_history"),
                 photos_sent=kwargs.get("photos_sent"),
+                places=_known_places(),
             )
 
         llm_router = llm_route
