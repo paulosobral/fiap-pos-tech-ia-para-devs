@@ -1628,3 +1628,54 @@ class TestReplyEchoGuard:
     def test_different_reply_is_kept(self):
         natural = "O terreno no Campestre tem 502 m² e custa R$ 4,5 mil/mês. Quer ver mais algum detalhe dele?"
         assert self._invoke(self._flow(natural))["response"] == natural
+
+
+class TestSeveralPropertiesAtOnce:
+    """Chat real 05/10: 'mostre foto desses três' -> 3 fotos do 1º imóvel (e não 1 de cada)."""
+
+    PROPS = [
+        {"id": f"p{i}", "title": f"Sobrado {i}", "region": f"Bairro {i}", "area_util": 100 + i,
+         "price_text": f"R$ {i} milhão", "images": [f"https://cdn/p{i}-{n}.jpg" for n in range(5)]}
+        for i in (1, 2, 3)
+    ]
+
+    def _flow(self, refs, send_photos=True):
+        router = lambda message, lead_info, current_state, **kw: {
+            "tool": "property_detail",
+            "arguments": {"property_refs": refs, "send_photos": send_photos},
+            "lead_info": {}, "memory_updates": {},
+        }
+        return make_flow(llm_router=router)
+
+    def _invoke(self, flow):
+        return flow.invoke({"current_state": "conversation", "message": "mostre foto desses três",
+                            "properties": list(self.PROPS), "context": {}})
+
+    def test_one_photo_of_each_of_the_three(self):
+        state = self._invoke(self._flow(["1", "2", "3"]))
+        assert [p["id"] for p in state["response_properties"]] == ["p1", "p2", "p3"]
+        assert state["response_images"] == ["https://cdn/p1-0.jpg", "https://cdn/p2-0.jpg", "https://cdn/p3-0.jpg"]
+        assert all(t in state["response"] for t in ("Sobrado 1", "Sobrado 2", "Sobrado 3"))
+
+    def test_without_the_photo_decision_no_photos_go(self):
+        assert self._invoke(self._flow(["1", "2", "3"], send_photos=False))["response_images"] == []
+
+    def test_duplicates_and_unknown_refs_fall_back_to_the_single_item_path(self):
+        state = self._invoke(self._flow(["2", "2"]))
+        assert len(state["response_properties"]) == 1
+
+
+class TestAskCriteriaOnlyOnce:
+    def _flow(self):
+        router = lambda message, lead_info, current_state, **kw: {
+            "tool": "refine_search", "arguments": {"ask_criteria": True}, "lead_info": {}, "memory_updates": {},
+        }
+        return make_flow(llm_router=router, properties_rag=lambda info: [{"id": "a", "title": "A", "images": []}])
+
+    def test_second_turn_without_criteria_shows_options_instead_of_asking_again(self):
+        flow = self._flow()
+        first = flow.invoke({"current_state": "conversation", "message": "comprar", "context": {}})
+        assert "região" in first["response"] and not first.get("response_properties")
+        second = flow.invoke({"current_state": "conversation", "message": "cadê as opções",
+                              "context": first["context"]})
+        assert second["response_properties"], second["response"]

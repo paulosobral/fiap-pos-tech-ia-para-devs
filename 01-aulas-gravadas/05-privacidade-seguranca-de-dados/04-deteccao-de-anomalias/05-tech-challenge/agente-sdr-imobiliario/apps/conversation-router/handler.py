@@ -514,10 +514,19 @@ class ConversationRouter:
         if state == "handoff" and conversation.current_state != "handoff":
             lead.status = lead.status or "qualified"
             self._enqueue_crm(lead, conversation, flow_state)
-        leak, _ = self.security.check_output_leak(response, session_pii=contact)
+        leak, label = self.security.check_output_leak(response, session_pii=contact)
         if leak:
-            logger.error("PII leakage in response; using fallback")
-            response = FALLBACK_MESSAGE
+            # Reescrita da LLM barrada: o texto oficial do fluxo (determinístico) costuma estar
+            # limpo — usa ele em vez de largar "Não posso ajudar com isso" no meio da conversa.
+            official = flow_state.get("official_response")
+            if official and official != response and not self.security.check_output_leak(
+                official, session_pii=contact
+            )[0]:
+                logger.warning("Resposta humanizada barrada (%s); enviando o texto oficial", label)
+                response = official
+            else:
+                logger.error("PII leakage in response (%s); using fallback", label)
+                response = FALLBACK_MESSAGE
         conversation.context = flow_state.get("context", conversation.context)
         response_images = flow_state.get("response_images") or []
         return response, state, response_images

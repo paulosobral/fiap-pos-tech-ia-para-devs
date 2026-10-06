@@ -206,8 +206,8 @@ def test_specific_property_request_delivers_it_instead_of_search_mismatch():
                                                  "2. Sobrado no Jardim, 600 m², R$ 26 mil/mês."},
             ],
         )
-        low = reply.lower()
-        assert "502" in low and "4,5" in low, (message, reply)
+        low = reply.lower().replace(",", ".")  # o catálogo diz "R$ 4.5 mil"; a LLM escreve 4.5 ou 4,5
+        assert "502" in low and "4.5" in low, (message, reply)
         assert "no momento só tenho" not in low and "não tenho disponíve" not in low, (message, reply)
 
 
@@ -309,3 +309,117 @@ def test_detail_missing_from_the_sheet_is_not_invented():
 def test_reserved_for_whom_is_not_invented():
     reply = _detail_reply("está reservado pra quem?")
     assert "corretor" in reply or "não" in reply, reply
+
+
+def test_photos_of_several_shown_items_point_to_all_of_them():
+    """Chat real 05/10: 'mostre foto desses três' virou property_detail do 1º imóvel só."""
+    from service.tools import _resolve_in_shown
+
+    result = _route("mostre foto desses três")
+    args = result.get("arguments") or {}
+    assert result["tool"] == "property_detail", result
+    refs = args.get("property_refs") or []
+    assert len(refs) == 3 and args.get("send_photos") is True, result
+    resolved = [_resolve_in_shown(str(r), _SHOWN) for r in refs]
+    assert all(p is not None for p in resolved), refs
+    assert len({id(p) for p in resolved}) == 3, refs  # os três itens, sem repetir nenhum
+
+
+def test_contact_request_reply_does_not_claim_the_lead_was_forwarded():
+    """Chat real 05/10: o bot disse 'Encaminhei seu telefone' sem ter recebido contato nenhum."""
+    for _ in range(3):
+        reply = llm.generate_reply(
+            message="quero marcar a visita",
+            canned_response="Pra eu encaminhar o pedido de visita ao corretor, me passa seu telefone (WhatsApp) ou seu e-mail?",
+            lead_info={}, properties=[_SHOWN[0]], api_key=API_KEY, last_tool="request_schedule",
+            contact_channels={"telefone": False, "email": False}, contact_request=True,
+        ).lower()
+        assert not any(w in reply for w in ("encaminhei", "já avisei", "ele vai te chamar", "ele deve te chamar")), reply
+
+
+def test_full_flow_phone_typed_with_dashes_reaches_handoff_without_the_llm_seeing_it():
+    """Ponta a ponta com LLM real: telefone no formato que antes escapava da máscara."""
+    from service.flow.lead_qualifier import LeadQualifier
+    from service.flow.sales_flow import SalesFlow
+    from service.security_layer import SecurityLayer
+
+    seen_by_llm: list[str] = []
+
+    def router(message, lead_info, current_state, **kw):
+        seen_by_llm.append(message)
+        return llm.extract_and_route(message, lead_info, current_state, api_key=API_KEY,
+                                     shown_properties=kw.get("shown_properties"),
+                                     favorite_property=kw.get("favorite_property"),
+                                     conversation_history=kw.get("conversation_history"), places=known_places())
+
+    class Pii:
+        def __init__(self): self.d = {}
+        def save(self, sid, e):
+            for k, v in e.items(): self.d.setdefault(k, []).extend(v)
+        def load(self, sid): return self.d
+
+    pii = Pii(); sec = SecurityLayer(pii_store=pii)
+    flow = SalesFlow(lead_qualifier=LeadQualifier(), llm_router=router, reply_generator=lambda m, c, *a, **k: c)
+    state = {"current_state": "conversation", "context": {}}
+    for text in ("quero marcar a visita desse imóvel", "(11) 9-7991-8262"):
+        masked = sec.mask(text, session_id="s")
+        contact = pii.load("s")
+        state = flow.invoke({
+            "message": masked, "current_state": state["current_state"], "context": state.get("context", {}),
+            "properties": list(_SHOWN), "favorite_property": _SHOWN[0]["title"], "visit_interest": True,
+            "shown_properties_count": 3,
+            "missing_contact_fields": [f for f, k in (("name", "NOME"), ("email", "EMAIL"), ("phone", "TELEFONE")) if not contact.get(k)],
+        })
+    assert "TELEFONE" in pii.d
+    assert all("7991" not in m for m in seen_by_llm), seen_by_llm
+    assert state["current_state"] in ("handoff", "scheduling"), state["current_state"]
+
+
+def test_lead_closes_end_to_end_from_the_real_chat_of_05_10():
+    """Conversa real que travava: o lead cola o texto do bot ('Centro de Santo André') e
+    diz que gostou; depois pede visita e passa o telefone. O bot nunca pode cair em
+    'Não posso ajudar com isso' e o lead tem que chegar ao handoff com telefone salvo."""
+    from service.flow.lead_qualifier import LeadQualifier
+    from service.flow.sales_flow import SalesFlow
+    from service.properties_catalog import known_places, search_properties
+    from service.security_layer import FALLBACK_MESSAGE, SecurityLayer
+
+    class Pii:
+        def __init__(self): self.d = {}
+        def save(self, sid, e):
+            for k, v in e.items(): self.d.setdefault(k, []).extend(v)
+        def load(self, sid): return self.d
+
+    def router(message, lead_info, current_state, **kw):
+        return llm.extract_and_route(message, lead_info, current_state, api_key=API_KEY,
+                                     shown_properties=kw.get("shown_properties"),
+                                     favorite_property=kw.get("favorite_property"),
+                                     conversation_history=kw.get("conversation_history"),
+                                     photos_sent=kw.get("photos_sent"), places=known_places())
+
+    def reply(message, canned, lead_info, properties, **kw):
+        return llm.generate_reply(message, canned, lead_info, properties, api_key=API_KEY, **kw)
+
+    pii = Pii()
+    sec = SecurityLayer(pii_store=pii)
+    flow = SalesFlow(lead_qualifier=LeadQualifier(), llm_router=router, reply_generator=reply,
+                     properties_rag=lambda info: search_properties(info, top_k=9))
+    state = {"current_state": "intent", "context": {}}
+    history: list[dict[str, str]] = []
+    pasted = "gostei desse 1. Apartamento de 115.6 m² à venda no Centro de Santo André/SP por R$ 0.4 milhão."
+    for text in ("quero comprar em santo andré", "mande foto dos três", pasted, "quero marcar uma visita", "(11) 9-7991-8262"):
+        masked = sec.mask(text, session_id="s")
+        contact = pii.load("s")
+        out = flow.invoke({
+            "message": masked, "current_state": state["current_state"], "context": state.get("context", {}),
+            "lead_info": state.get("context", {}).get("lead_info", {}), "conversation_history": history[-8:],
+            "missing_contact_fields": [f for f, k in (("name", "NOME"), ("email", "EMAIL"), ("phone", "TELEFONE")) if not contact.get(k)],
+        })
+        leaked, _ = sec.check_output_leak(out["response"], session_pii=pii.load("s"))
+        assert not leaked, (text, out["response"])
+        assert out["response"] != FALLBACK_MESSAGE, text
+        history += [{"role": "user", "content": masked}, {"role": "assistant", "content": out["response"]}]
+        state = out
+    assert "NOME" not in pii.d, pii.d  # nenhum lugar virou "pessoa"
+    assert pii.d.get("TELEFONE"), "telefone não foi capturado"
+    assert state["current_state"] == "handoff", (state["current_state"], state["response"])

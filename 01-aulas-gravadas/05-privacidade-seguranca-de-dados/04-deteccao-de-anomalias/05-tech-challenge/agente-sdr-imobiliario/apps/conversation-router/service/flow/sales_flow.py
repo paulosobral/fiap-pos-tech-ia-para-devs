@@ -169,6 +169,7 @@ class FlowState(TypedDict, total=False):
     interests: list[str]
     response_properties: list[dict[str, Any]]
     response_images: list[str]
+    official_response: str  # texto determinístico do turno, antes da reescrita da LLM
     _send_photos: bool  # decisão do roteador LLM (arguments.send_photos)
     _contact_request: bool  # resposta deste turno precisa pedir telefone/e-mail
     _router_action: str | None  # legacy ADR-011 enum action (compat)
@@ -529,7 +530,11 @@ class SalesFlow:
                         validated["tool"] in ("request_options", "refine_search")
                         and args.get("ask_criteria")
                         and not has_criteria
+                        and not context.get("criteria_asked")
                     ):
+                        # No máximo 1 pergunta de critério por conversa: se o lead segue sem
+                        # dar nada, ele quer ver opções — loop de "em qual região?" é pior.
+                        context["criteria_asked"] = True
                         # Decisão da LLM, confirmada em código (não há mesmo critério
                         # nenhum): pergunta antes de buscar — nada é mostrado/memorizado.
                         from service.tools import ToolResult
@@ -687,6 +692,15 @@ class SalesFlow:
             )
             return state
         if tool == "property_detail":
+            if tr is not None and len(tr.details) > 1:
+                lines = "\n".join(
+                    f"{i + 1}. {p.get('title', 'Imóvel')} — {p.get('region', '')}, "
+                    f"{p.get('area_util', '')} m², {p.get('price_text') or p.get('price') or 'sob consulta'}"
+                    for i, p in enumerate(tr.details)
+                )
+                state["response_properties"] = list(tr.details)
+                state["response"] = f"{lines}\n\nQuer que eu detalhe algum deles ou compare?"
+                return state
             if tr is not None and tr.needs_clarification:
                 state["response"] = (
                     "Qual imóvel específico você quer que eu detalhe? "
@@ -1203,6 +1217,7 @@ class SalesFlow:
                 contact_channels=contact_channels,
                 contact_request=bool(state.get("_contact_request")),
             )
+            state["official_response"] = canned
             generated = _strip_meta_notes(generated or "")
             if generated and _repeats_previous_reply(generated, state.get("conversation_history")):
                 logger.warning("Reescrita da LLM repetiu a mensagem anterior; mantendo texto oficial")

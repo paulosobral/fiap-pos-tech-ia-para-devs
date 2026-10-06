@@ -175,7 +175,11 @@ class TestConversationRouter:
 
     def test_crm_lead_data_populated_from_pii_registry(self):
         router, sqs, _ = make_router(with_pii=True)
-        router.handle(update("Meu nome é Maria Oliveira, e-mail joao@empresa.com, telefone +55 11 91234-5678"))
+        # fluxo real: nome vem do perfil do Telegram e só é gravado após o consentimento
+        router.handle(update("oi", first_name="Maria", last_name="Oliveira"))
+        router.handle(update("sim", first_name="Maria", last_name="Oliveira"))
+        router.handle(update("e-mail joao@empresa.com, telefone +55 11 91234-5678",
+                             first_name="Maria", last_name="Oliveira"))
         router.handle(
             update("sala de 200 m² na região de Berrini, orçamento R$ 1.500.000, prazo de 2 meses, 30 pessoas, sou o decisor")
         )

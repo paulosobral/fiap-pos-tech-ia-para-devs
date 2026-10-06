@@ -432,7 +432,9 @@ def generate_reply(
         )
     if contact_request:
         tool_line += (
-            "\nPEDIDO DE CONTATO OBRIGATÓRIO: peça o telefone (WhatsApp) ou o e-mail do lead."
+            "\nPEDIDO DE CONTATO OBRIGATÓRIO: peça o telefone (WhatsApp) ou o e-mail do lead. "
+            "NADA foi encaminhado ao corretor ainda: não diga que encaminhou, avisou ou que ele "
+            "vai ligar/chamar — isso só vale depois que o contato chegar."
         )
     long_list = len(properties) > 3
     max_tokens = 800 if long_list else 280
@@ -574,7 +576,10 @@ _ROUTER_SYSTEM_PROMPT = (
     "resolva property_ref pro TÍTULO EXATO desse item — copiado literalmente da lista "
     "IMÓVEIS JÁ EXIBIDOS abaixo, nunca a palavra da mensagem. Vale pra qualquer forma de "
     "referência, não só as listadas aqui — você entende a lista, não precisa de um padrão fixo. "
-    "Se a mensagem não referenciar nenhum item específico, deixe property_ref de fora.\n"
+    "Se a mensagem não referenciar nenhum item específico, deixe property_ref de fora. "
+    "Se o lead se refere a VÁRIOS itens já exibidos de uma vez ('desses três', 'os dois "
+    "primeiros', 'todos', 'as fotos deles'), use property_detail com arguments.property_refs = "
+    "lista (máx. 3) com o NÚMERO de cada item, e NÃO property_ref — senão só o primeiro é atendido.\n"
     "   - compare_properties: quer COMPARAR opções já mostradas "
     "('diferença entre 1 e 2','compara as duas'); arguments.property_a/property_b opcionais.\n"
     "   - refine_search: AJUSTAR critérios ('mais barato','outra região','sem estacionamento?').\n"
@@ -608,7 +613,10 @@ _ROUTER_SYSTEM_PROMPT = (
     "CRITÉRIOS: se o lead só disse a intenção (comprar/alugar/investir) e ainda não deu NENHUM "
     "critério de busca (região, metragem ou orçamento) nem pediu explicitamente pra ver opções, "
     "use refine_search com arguments.ask_criteria=true — um bom SDR pergunta onde ele procura "
-    "antes de despejar opções. Se ele pediu pra ver opções, mostre (ask_criteria=false).\n"
+    "antes de despejar opções. Se a mensagem é um PEDIDO de opções/lista ('cadê as opções', "
+    "'mostra', 'manda as opções', 'quero ver o que tem'), use request_options com "
+    "ask_criteria=false — o lead pediu, mostre, mesmo sem critério. ask_criteria=true só vale "
+    "quando ele disse a intenção e NÃO pediu pra ver nada.\n"
     "FOTOS: arguments.send_photos (bool) — você decide se as fotos vão junto com esta resposta. "
     "true quando o lead pede fotos/imagens ('manda foto','tem foto?','quero ver','mais fotos'), "
     "ou quando ele está olhando de perto UM imóvel específico cujas fotos ainda não foram "

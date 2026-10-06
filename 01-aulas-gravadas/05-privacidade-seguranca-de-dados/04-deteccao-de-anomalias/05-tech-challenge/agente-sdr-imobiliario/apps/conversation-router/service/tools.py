@@ -17,6 +17,7 @@ class ToolResult:
     tool: str = ""
     properties: list[dict[str, Any]] = field(default_factory=list)
     detail: dict[str, Any] | None = None
+    details: list[dict[str, Any]] = field(default_factory=list)  # lead apontou 2-3 imóveis de uma vez
     comparison: dict[str, Any] | None = None
     memory_updates: dict[str, Any] = field(default_factory=dict)
     needs_clarification: bool = False
@@ -157,9 +158,23 @@ def execute_tool(
         # o regex sobre a mensagem crua (_explicit_shown_reference) e so rede de
         # seguranca para quando nao ha LLM configurada ou ela nao extraiu nada —
         # evita ter que ensinar Python a reconhecer cada forma nova de falar.
+        focus_id = (state.get("context") or {}).get("focus_property_id")
+        # Lead referiu VÁRIOS imóveis já mostrados ("desses três", "as duas primeiras"): a LLM
+        # devolve property_refs (números/títulos) e o código só resolve cada um contra a lista.
+        refs = (arguments or {}).get("property_refs")
+        if isinstance(refs, list) and len(refs) > 1:
+            hits: list[dict[str, Any]] = []
+            for r in refs[:3]:
+                found = _resolve_in_shown(str(r), shown, prefer_id=focus_id)
+                if found is not None and all(found is not h for h in hits):
+                    hits.append(found)
+            if hits:
+                result.detail = hits[0]
+                if len(hits) > 1:
+                    result.details = hits
+                return result
         ref = (arguments or {}).get("property_ref")
         focus = state.get("favorite_property")
-        focus_id = (state.get("context") or {}).get("focus_property_id")
         hit = (
             _resolve_in_shown(ref, shown, prefer_id=focus_id)
             or (_resolve_in_shown(focus, shown, prefer_id=focus_id) if focus else None)
