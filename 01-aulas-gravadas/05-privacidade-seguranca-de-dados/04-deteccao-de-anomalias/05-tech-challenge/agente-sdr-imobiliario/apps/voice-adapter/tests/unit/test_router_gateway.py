@@ -72,3 +72,19 @@ class TestHttpRouterGateway:
         gateway = HttpRouterGateway(http, base_url="http://router.local/", secret_token="sec")
         gateway.reinject(1, "s", "t")
         assert http.post.call_args[0][0] == "http://router.local/internal/inbound-text"
+
+
+class TestRouterReplyImages:
+    def test_reinject_returns_text_plus_the_photos_the_router_decided_to_send(self):
+        gateway, http = make_gateway()
+        resp = make_response(response_text="Seguem as fotos")
+        resp.json.return_value = {"ok": True, "response": "Seguem as fotos", "response_images": ["https://cdn/1.jpg"]}
+        http.post.return_value = resp
+        reply = gateway.reinject(42, "s1", "me manda fotos")
+        assert reply == "Seguem as fotos" and reply.images == ["https://cdn/1.jpg"]
+
+    def test_reply_without_images_is_still_a_plain_string(self):
+        gateway, http = make_gateway()
+        http.post.return_value = make_response(response_text="oi")
+        reply = gateway.reinject(42, "s1", "oi")
+        assert reply == "oi" and reply.images == []

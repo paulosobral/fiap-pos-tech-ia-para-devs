@@ -48,6 +48,19 @@ class TelegramGateway:
             raise GatewayError(f"download rejected with status {response.status_code}")
         return response.content
 
+    def send_photo(self, chat_id: Any, photo_url: str) -> None:
+        """Foto por URL remota: o próprio Telegram baixa do CDN. Falha não derruba o fluxo."""
+        try:
+            response = self._http.post(
+                f"{self._base_url}/bot{self._token}/sendPhoto",
+                json={"chat_id": chat_id, "photo": photo_url},
+                timeout=15,
+            )
+            if not response.ok:
+                logger.error("sendPhoto failed with status %s", response.status_code)
+        except Exception as exc:
+            logger.error("sendPhoto error: %s", exc)
+
     def send_message(self, chat_id: Any, text: str) -> None:
         try:
             response = self._http.post(

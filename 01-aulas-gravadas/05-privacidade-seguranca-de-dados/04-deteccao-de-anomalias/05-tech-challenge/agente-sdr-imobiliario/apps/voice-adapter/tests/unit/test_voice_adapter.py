@@ -108,11 +108,26 @@ class TestVoiceAdapter:
         assert adapter.process_message(message()) == "retry"
         telegram.send_message.assert_not_called()
 
-    def test_transcript_masked_before_reinject(self):
+    def test_transcript_goes_to_the_router_as_typed_text_not_masked(self):
+        """Áudio = texto digitado: o router mascara e guarda o contato (aqui mascarar destruía o
+        e-mail/telefone antes de chegar ao lead e trocava 'Santo André' por [NOME])."""
         adapter, telegram, transcriber, router, _ = make_adapter(
-            transcript="Meu e-mail é joao@empresa.com"
+            transcript="Quero ver em Santo André, meu e-mail é joao@empresa.com"
         )
         adapter.process_message(message())
-        sent = router.reinject.call_args[0][2]
-        assert "joao@empresa.com" not in sent
-        assert "[EMAIL]" in sent
+        assert router.reinject.call_args[0][2] == "Quero ver em Santo André, meu e-mail é joao@empresa.com"
+
+    def test_photos_decided_by_the_router_are_sent_after_the_text(self):
+        from service.router_gateway import RouterReply
+
+        adapter, telegram, _, router, _ = make_adapter()
+        router.reinject.return_value = RouterReply("Seguem as fotos", ["https://cdn/1.jpg", "https://cdn/2.jpg"])
+        adapter.process_message(message())
+        telegram.send_message.assert_called_once()
+        assert [c.args[1] for c in telegram.send_photo.call_args_list] == ["https://cdn/1.jpg", "https://cdn/2.jpg"]
+
+    def test_plain_text_reply_sends_no_photos(self):
+        adapter, telegram, _, router, _ = make_adapter()
+        router.reinject.return_value = "só texto"
+        adapter.process_message(message())
+        telegram.send_photo.assert_not_called()

@@ -34,7 +34,6 @@ from typing import Any
 import boto3
 
 from infra.session_store import SessionLookup
-from service.pii import PiiMasker
 from service.router_gateway import HttpRouterGateway
 from service.telegram_gateway import TelegramGateway
 from service.transcriber import WhisperTranscriber
@@ -71,7 +70,6 @@ def _build_adapter() -> VoiceAdapter:
         transcriber=transcriber,
         router=router,
         sessions=sessions,
-        masker=PiiMasker(),
     )
 
 

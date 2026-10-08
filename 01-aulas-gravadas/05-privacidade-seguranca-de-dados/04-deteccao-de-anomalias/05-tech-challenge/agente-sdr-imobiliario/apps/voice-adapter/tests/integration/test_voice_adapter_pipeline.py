@@ -50,12 +50,34 @@ class TestVoiceAdapterPipeline:
         router.reinject.assert_called_once_with(42, "s1", "Quero um espaço para 20 pessoas")
         telegram.send_message.assert_called_once_with(42, "Quero um espaço para 20 pessoas")
 
-    def test_transcript_masked_end_to_end(self):
-        adapter, *_ = make_adapter(transcript="Meu e-mail é joao@empresa.com")
+    def test_audio_transcript_enters_the_flow_like_typed_text_and_router_masks_and_stores_it(self):
+        """O adapter manda a transcrição crua; o MESMO caminho do texto digitado (SecurityLayer do
+        router) mascara antes da LLM e guarda o contato — antes o adapter mascarava e o contato
+        nunca chegava ao lead."""
+        import importlib.util
+        from pathlib import Path
+
+        # carregado por caminho: os dois apps têm um pacote `service` e o import normal colide
+        path = Path(__file__).resolve().parents[3] / "conversation-router" / "service" / "security_layer.py"
+        spec = importlib.util.spec_from_file_location("router_security_layer", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        SecurityLayer = module.SecurityLayer
+
+        spoken = "Santo André, meu e-mail é joao@empresa.com e o telefone é (11) 9-7991-8262"
+        adapter, *_ = make_adapter(transcript=spoken)
         adapter.handle_event({"Records": [sqs_record("r1", json.dumps(voice_message()))]})
         sent = adapter.router.reinject.call_args[0][2]
-        assert "[EMAIL]" in sent
-        assert "joao@empresa.com" not in sent
+        assert sent == spoken
+
+        class Pii:
+            saved: dict = {}
+            def save(self, sid, extracted): self.saved.update(extracted)
+
+        pii = Pii()
+        masked = SecurityLayer(pii_store=pii).mask(sent, session_id="s")
+        assert masked == "Santo André, meu e-mail é [EMAIL] e o telefone é [TELEFONE]"
+        assert set(pii.saved) == {"EMAIL", "TELEFONE"}
 
     def test_mixed_batch_drops_invalid_without_failure(self):
         adapter, *_ = make_adapter()

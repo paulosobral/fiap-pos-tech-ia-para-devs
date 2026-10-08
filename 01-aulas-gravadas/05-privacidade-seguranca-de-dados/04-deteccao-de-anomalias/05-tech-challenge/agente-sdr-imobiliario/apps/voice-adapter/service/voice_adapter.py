@@ -4,7 +4,6 @@ import json
 import logging
 from typing import Any
 
-from service.pii import PiiMasker
 from service.router_gateway import RouterError, RouterGateway
 from service.telegram_gateway import FALLBACK_MESSAGE, GatewayError, TelegramGateway
 from service.transcriber import AudioConversionError, Transcriber, TranscriptionError
@@ -29,13 +28,11 @@ class VoiceAdapter:
         transcriber: Transcriber,
         router: RouterGateway,
         sessions: Any | None = None,
-        masker: PiiMasker | None = None,
     ) -> None:
         self.telegram = telegram
         self.transcriber = transcriber
         self.router = router
         self.sessions = sessions
-        self.masker = masker or PiiMasker()
 
     def handle_event(self, event: dict[str, Any]) -> dict[str, Any]:
         failures: list[dict[str, str]] = []
@@ -90,19 +87,25 @@ class VoiceAdapter:
             log_event("empty_transcript", session_id=session_id)
             self._send_fallback(telegram_user_id)
             return OUTCOME_DROP
-        masked = self.masker.mask(transcript)
+        # A transcrição entra no fluxo como se a pessoa tivesse DIGITADO: o texto vai cru ao router
+        # (canal interno autenticado, igual ao webhook do Telegram), que mascara contato antes de
+        # qualquer LLM e guarda telefone/e-mail cifrados. Mascarar aqui destruía o contato (nunca
+        # chegava ao lead) e trocava "Santo André" por [NOME].
+        text = transcript.strip()
         try:
-            response_text = self.router.reinject(telegram_user_id, session_id, masked)
+            response_text = self.router.reinject(telegram_user_id, session_id, text)
         except RouterError as exc:
             log_event("reinject_failed", session_id=session_id, error=str(exc))
             return OUTCOME_RETRY
         if response_text:
             self.telegram.send_message(telegram_user_id, response_text)
+        for photo_url in getattr(response_text, "images", None) or []:
+            self.telegram.send_photo(telegram_user_id, photo_url)
         log_event(
             "voice_transcribed",
             session_id=session_id,
             message_id=message["message_id"],
-            chars=len(masked),
+            chars=len(text),
         )
         return OUTCOME_OK
 

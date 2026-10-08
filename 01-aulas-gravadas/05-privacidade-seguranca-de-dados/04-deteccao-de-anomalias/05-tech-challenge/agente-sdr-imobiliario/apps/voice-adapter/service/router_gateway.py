@@ -10,6 +10,19 @@ class RouterError(Exception):
     pass
 
 
+class RouterReply(str):
+    """Texto da resposta do router + as fotos do turno (`.images`). É uma `str` de propósito:
+    quem só usa o texto não muda, e a voz passa a enviar as fotos que o router decidiu mandar
+    (antes o `response_images` do `/internal/inbound-text` era descartado aqui)."""
+
+    images: list[str]
+
+    def __new__(cls, text: str, images: list[str] | None = None) -> "RouterReply":
+        obj = super().__new__(cls, text)
+        obj.images = list(images or [])
+        return obj
+
+
 class RouterGateway(Protocol):
     def reinject(self, telegram_user_id: int, session_id: str, text: str) -> None: ...
 
@@ -53,4 +66,5 @@ class HttpRouterGateway:
         if response.status_code >= 300:
             logger.error("router rejected re-injection with status %s", response.status_code)
             raise RouterError(f"router rejected with status {response.status_code}")
-        return response.json().get("response", "")
+        body = response.json()
+        return RouterReply(body.get("response", ""), body.get("response_images") or [])

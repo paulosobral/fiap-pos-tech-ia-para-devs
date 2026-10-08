@@ -80,3 +80,17 @@ class TestTelegramGateway:
         gateway, http = make_gateway()
         http.post.side_effect = RuntimeError("network down")
         gateway.send_message(42, "olá")
+
+    def test_send_photo_posts_remote_url(self):
+        gateway, http = make_gateway()
+        http.post.return_value = response()
+        gateway.send_photo(42, "https://cdn/1.jpg")
+        assert http.post.call_args[0][0].endswith("/sendPhoto")
+        assert http.post.call_args.kwargs["json"] == {"chat_id": 42, "photo": "https://cdn/1.jpg"}
+
+    def test_send_photo_failure_never_breaks_the_flow(self):
+        gateway, http = make_gateway()
+        http.post.return_value = response(ok=False, status_code=400)
+        gateway.send_photo(42, "https://cdn/dead.jpg")
+        http.post.side_effect = RuntimeError("network down")
+        gateway.send_photo(42, "https://cdn/1.jpg")
