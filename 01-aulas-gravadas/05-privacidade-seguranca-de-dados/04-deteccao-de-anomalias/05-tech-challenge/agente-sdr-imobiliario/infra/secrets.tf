@@ -87,3 +87,25 @@ resource "aws_ssm_parameter" "llm_model_complex" {
   value       = var.llm_model_complex
   overwrite   = true
 }
+
+locals {
+  hubspot_enabled = var.hubspot_mcp_client_id != "" && var.hubspot_mcp_client_secret != "" && var.hubspot_mcp_refresh_token != ""
+}
+
+resource "aws_secretsmanager_secret" "hubspot_mcp" {
+  name                    = "sdr/hubspot-mcp"
+  recovery_window_in_days = 0
+}
+resource "aws_secretsmanager_secret_version" "hubspot_mcp" {
+  count     = local.hubspot_enabled ? 1 : 0
+  secret_id = aws_secretsmanager_secret.hubspot_mcp.id
+  secret_string = jsonencode({
+    client_id     = var.hubspot_mcp_client_id
+    client_secret = var.hubspot_mcp_client_secret
+    refresh_token = var.hubspot_mcp_refresh_token
+  })
+  # O refresh token roda a cada renovação (uso único): applies seguintes não podem sobrescrever o atual.
+  lifecycle {
+    ignore_changes = [secret_string]
+  }
+}

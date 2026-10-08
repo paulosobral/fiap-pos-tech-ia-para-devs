@@ -487,7 +487,7 @@ Por serem leads **reais**, não existe anonimização total da operação; o obj
 
 **Decisão da POC:** manter o **CRM simulado (CSV/Excel)** como fonte da esteira Kanban, com o `crm-adapter` (MCP) já desenhado para plugar HubSpot/Kenlo/Facilita sem alterar o `sales-flow`. Isso demonstra a integração "pronta para conectar" sem depender de um CRM externo real.
 
-> **Atualização (ADR-016):** o alvo passou a ser **HubSpot real via MCP remoto** (`https://mcp.hubspot.com`, OAuth 2.1 + PKCE; não aceita token de app privado). O CSV fica como fallback. Para ligar: criar um *MCP connector* na conta HubSpot, autorizar uma vez (ex.: MCP Inspector) e preencher `HUBSPOT_MCP_CLIENT_ID`, `HUBSPOT_MCP_CLIENT_SECRET` e `HUBSPOT_MCP_REFRESH_TOKEN` em `secrets.local.env`. **Implementação do cliente MCP pendente** até descobrir as tools reais (`list_tools`).
+> **Atualização (ADR-016):** o alvo passou a ser **HubSpot real via MCP remoto** (`https://mcp.hubspot.com`, OAuth 2.1 + PKCE; não aceita token de app privado). O CSV fica como fallback. Para ligar: criar um *MCP connector* na conta HubSpot, autorizar uma vez (ex.: MCP Inspector) e preencher `HUBSPOT_MCP_CLIENT_ID`, `HUBSPOT_MCP_CLIENT_SECRET` e `HUBSPOT_MCP_REFRESH_TOKEN` em `secrets.local.env`. O refresh token vem de `scripts/hubspot_authorize.py` (ver README §8.3). **Implementado**: `crm-adapter` cria/atualiza o contato via tools `search_crm_objects` e `manage_crm_objects`.
 
 ### 8.10 Áudio no Telegram (voice)
 

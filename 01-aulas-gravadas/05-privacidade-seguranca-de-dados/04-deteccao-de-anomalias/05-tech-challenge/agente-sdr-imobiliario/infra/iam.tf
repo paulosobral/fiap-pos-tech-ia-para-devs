@@ -40,7 +40,14 @@ resource "aws_iam_policy" "sdr_lambda" {
           aws_secretsmanager_secret.telegram_bot_token.arn,
           aws_secretsmanager_secret.internal_secret_token.arn,
           aws_secretsmanager_secret.llm_api_key.arn,
+          aws_secretsmanager_secret.hubspot_mcp.arn,
         ]
+      },
+      {
+        Sid      = "SecretsManagerHubspotRotate"
+        Effect   = "Allow"
+        Action   = ["secretsmanager:PutSecretValue"]
+        Resource = aws_secretsmanager_secret.hubspot_mcp.arn
       },
       {
         Sid    = "SSMParameterStore"

@@ -305,3 +305,4 @@ infra/*.tfvars
 
 # Credenciais locais (gitignored)
 secrets.local.env
+hubspot_mcp_tools.json

@@ -113,3 +113,23 @@ variable "llm_model_complex" {
   type        = string
   default     = "anthropic/claude-sonnet-4.5"
 }
+
+variable "hubspot_mcp_client_id" {
+  description = "Client ID do MCP connector do HubSpot (OAuth 2.1 + PKCE). Vazio = crm-adapter usa o CRM simulado (CSV)."
+  type        = string
+  default     = ""
+}
+
+variable "hubspot_mcp_client_secret" {
+  description = "Client secret do MCP connector do HubSpot."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "hubspot_mcp_refresh_token" {
+  description = "Refresh token inicial (scripts/hubspot_authorize.py). É de uso único: o crm-adapter regrava o novo na secret a cada renovação."
+  type        = string
+  default     = ""
+  sensitive   = true
+}

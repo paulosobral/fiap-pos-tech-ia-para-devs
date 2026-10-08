@@ -7,6 +7,23 @@ cd "$ROOT/infra"
 
 export AWS_PAGER=""
 
+# O refresh token do HubSpot é de uso único e o crm-adapter o renova na secret sdr/hubspot-mcp:
+# o valor do secrets.local.env fica velho. Salva o vigente ANTES do destroy para o próximo start.sh.
+REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}"
+HS_JSON=$(aws secretsmanager get-secret-value --region "$REGION" --secret-id sdr/hubspot-mcp \
+  --query SecretString --output text 2>/dev/null || true)
+if [ -n "$HS_JSON" ] && [ -f "$ROOT/secrets.local.env" ]; then
+  HS_JSON="$HS_JSON" ENV_FILE="$ROOT/secrets.local.env" python3 - <<'PY' && echo "HubSpot: refresh token vigente salvo em secrets.local.env" || echo "HubSpot: não consegui salvar o refresh token (rode scripts/hubspot_authorize.py antes do próximo start.sh)"
+import json, os, re
+token = json.loads(os.environ["HS_JSON"]).get("refresh_token")
+assert token
+path = os.environ["ENV_FILE"]
+text = open(path, encoding="utf-8").read()
+text = re.sub(r"^HUBSPOT_MCP_REFRESH_TOKEN=.*$", lambda _m: "HUBSPOT_MCP_REFRESH_TOKEN=" + token, text, flags=re.M)
+open(path, "w", encoding="utf-8").write(text)
+PY
+fi
+
 terraform init -input=false >/dev/null 2>&1 || true
 if terraform state list >/dev/null 2>&1; then
   terraform destroy -auto-approve -input=false
@@ -18,7 +35,6 @@ fi
 # AWS auto-cria /aws/lambda/sdr-* quando uma Lambda é invocada por schedule entre
 # o destroy e o próximo apply. Sem isso, o start.sh falha com ResourceAlreadyExistsException.
 echo "Limpando log groups órfãos..."
-REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}"
 for prefix in "/aws/lambda/sdr-" "/ecs/sdr-"; do
   groups=$(aws logs describe-log-groups --region "$REGION" --log-group-name-prefix "$prefix" --query "logGroups[].logGroupName" --output text 2>/dev/null || true)
   if [ -n "$groups" ]; then

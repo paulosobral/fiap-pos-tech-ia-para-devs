@@ -107,7 +107,7 @@ TELEGRAM_BOT_TOKEN=<seu_token_bot_telegram>
 LLM_API_KEY=<sua_chave_openrouter>
 HUBSPOT_MCP_CLIENT_ID=<client_id_hubspot>
 HUBSPOT_MCP_CLIENT_SECRET=<client_secret_hubspot>
-HUBSPOT_MCP_REFRESH_TOKEN=<refresh_token_hubspot>
+HUBSPOT_MCP_REFRESH_TOKEN=<gerado por scripts/hubspot_authorize.py — ver seção 8.3>
 ```
 
 ### 3. Deploy Completo
@@ -176,35 +176,48 @@ Para alterar:
 aws ssm put-parameter --name "/sdr/llm-model-primary" --value "anthropic/claude-3.5-haiku" --type String --overwrite
 ```
 
-### 8. Configurações no HubSpot (CRM)
+### 8. Configurações no HubSpot via MCP
 
-#### 8.1 Criar Aplicação HubSpot
+O projeto usa o **servidor MCP oficial do HubSpot** (`https://mcp.hubspot.com`) para integração com o CRM. Este servidor usa OAuth 2.1 + PKCE e não aceita token de app privado.
 
-1. Acesse [developers.hubspot.com](https://developers.hubspot.com/)
-2. Crie uma nova aplicação
-3. Configure OAuth 2.1 scopes necessários
-4. Copie `Client ID` e `Client Secret`
+#### 8.1 Criar o MCP Connector no HubSpot (uma vez)
 
-#### 8.2 Obter Refresh Token
+1. Na conta de desenvolvedor do HubSpot, crie um **MCP connector** (plataforma de desenvolvedor nova).
+2. No campo **Redirect URL**, informe exatamente `http://localhost:6274/oauth/callback/debug`.
+3. Anote o **Client ID** e o **Client secret** gerados.
 
-Use o MCP Inspector ou um fluxo OAuth manual para obter o primeiro refresh token:
+> O MCP do HubSpot **não aceita** token de app privado: só OAuth 2.1 + PKCE.
 
-```bash
-# Via MCP Inspector (recomendado)
-# Autorize o connector e copie o refresh token
-```
-
-#### 8.3 Configurar no Projeto
-
-Atualize `secrets.local.env` com as credenciais:
+#### 8.2 Preencher `secrets.local.env`
 
 ```bash
-HUBSPOT_MCP_CLIENT_ID=<client_id>
-HUBSPOT_MCP_CLIENT_SECRET=<client_secret>
-HUBSPOT_MCP_REFRESH_TOKEN=<refresh_token>
+HUBSPOT_MCP_CLIENT_ID=<client id do connector>
+HUBSPOT_MCP_CLIENT_SECRET=<client secret do connector>
+HUBSPOT_MCP_REFRESH_TOKEN=          # deixe vazio: o passo 8.3 preenche
 ```
 
-**Nota:** O `crm-adapter` roda automaticamente a renovação do refresh token e grava o novo valor, então este é usado apenas para semear o primeiro uso.
+#### 8.3 ⚠️ PASSO IMPORTANTE: autorizar o app e obter o refresh token
+
+O refresh token **só existe depois que você autoriza o app no navegador**. Sem ele a infra sobe, mas o `crm-adapter` cai no CRM simulado (CSV) e **nenhum lead chega ao HubSpot**. Faça isto **antes** do `./start.sh`:
+
+```bash
+.venv/bin/python scripts/hubspot_authorize.py
+```
+
+O script abre o navegador na tela de autorização do HubSpot (se não abrir, a URL aparece no terminal), recebe o retorno em `localhost:6274`, troca o código pelos tokens e grava `HUBSPOT_MCP_REFRESH_TOKEN` no `secrets.local.env`. Ele também lista as tools do MCP em `hubspot_mcp_tools.json` (gitignored).
+
+- A porta **6274** precisa estar livre durante a autorização.
+- O refresh token é de **uso único**: cada renovação devolve um novo e invalida o anterior. Se você rodar o script de novo ou usar o token local por outro caminho, o valor anterior morre. Por isso o `start.sh` envia o token do arquivo para o Secrets Manager (`sdr/hubspot-mcp`) e, depois disso, **o `crm-adapter` é quem mantém o token atualizado** na secret.
+- O `stop.sh` salva o token vigente da secret no `secrets.local.env` antes de destruir a infra, então o próximo `start.sh` sobe com token válido. Se a infra foi destruída por outro caminho (`terraform destroy` direto, console AWS) e a Lambda já tinha renovado o token, o do arquivo está morto: rode o script de novo.
+- Para só renovar e listar as tools (sem navegador): `.venv/bin/python scripts/hubspot_authorize.py --tools`.
+
+#### 8.4 O que o `crm-adapter` grava no HubSpot
+
+Cada lead vira um **contato** (nome, e-mail, telefone, *Lead status* da esteira). A qualificação (score, urgência, intenção, orçamento, prazo, área) vai no campo padrão `message` do contato; não são criadas propriedades customizadas. O contato é localizado por e-mail ou telefone, então reenviar o mesmo lead atualiza em vez de duplicar. No dashboard, o botão **Enviar ao HubSpot** reenvia o lead selecionado pela mesma fila do handoff.
+
+#### 8.5 CRM Simulado (Fallback)
+
+Se você não configurar o HubSpot MCP, o projeto usa um **CRM simulado** (CSV/Excel) como fonte da esteira Kanban. Isso permite testar a POC sem dependência de um CRM externo real.
 
 ### 5. Criar Usuário no AWS Cognito
 

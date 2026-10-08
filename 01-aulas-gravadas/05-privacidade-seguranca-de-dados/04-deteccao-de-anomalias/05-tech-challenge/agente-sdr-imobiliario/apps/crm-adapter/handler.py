@@ -28,12 +28,21 @@ def _http_client() -> Any:
     return requests.Session()
 
 
+def _build_crm(boto3: Any) -> Any:
+    """HubSpot via MCP quando o secret está configurado; senão o CRM simulado (CSV) da POC."""
+    secret_id = os.environ.get("HUBSPOT_SECRET_ID")
+    if secret_id:
+        from service.hubspot_mcp import HubSpotCrmGateway, HubSpotMcpClient, SecretsManagerTokenStore
+
+        store = SecretsManagerTokenStore(boto3.client("secretsmanager"), secret_id)
+        return HubSpotCrmGateway(HubSpotMcpClient(store))
+    return CsvCrmGateway(CsvStore(os.environ.get("CRM_CSV_PATH", "/tmp/crm-leads.csv")))
+
+
 def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
     import boto3
 
-    crm = CsvCrmGateway(
-        CsvStore(os.environ.get("CRM_CSV_PATH", "/tmp/crm-leads.csv"))
-    )
+    crm = _build_crm(boto3)
     sessions = SessionLookup(
         boto3.client("dynamodb"), os.environ.get("SESSIONS_TABLE", "sdr-sessions")
     )

@@ -99,7 +99,10 @@ for a in voice-adapter crm-adapter contact-ingest anomaly-detector followup dash
       --platform manylinux2014_x86_64 --python-version 3.11 --only-binary=:all:
   fi
   find "dist/$a" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
-  find "dist/$a" -maxdepth 2 -name '*.dist-info' -type d -exec rm -rf {} + 2>/dev/null || true
+  # crm-adapter mantém *.dist-info: httpx2/mcp leem a própria versão via importlib.metadata no import
+  if [ "$a" != "crm-adapter" ]; then
+    find "dist/$a" -maxdepth 2 -name '*.dist-info' -type d -exec rm -rf {} + 2>/dev/null || true
+  fi
   ( cd "apps/$a" && zip -qr "../../dist/$a.zip" . )
   ( cd "dist/$a" && zip -qr "../$a.zip" . )
   rm -rf "dist/$a"
@@ -139,6 +142,9 @@ done
 # apply 1: cria o ECR e a infra base (as tasks ainda sem imagem)
 if ! terraform apply -auto-approve -input=false -var="telegram_bot_token=${TELEGRAM_BOT_TOKEN:-}" \
      -var="llm_api_key=${LLM_API_KEY:-}" \
+     -var="hubspot_mcp_client_id=${HUBSPOT_MCP_CLIENT_ID:-}" \
+     -var="hubspot_mcp_client_secret=${HUBSPOT_MCP_CLIENT_SECRET:-}" \
+     -var="hubspot_mcp_refresh_token=${HUBSPOT_MCP_REFRESH_TOKEN:-}" \
      >/tmp/td-apply1.log 2>&1; then
   echo "FALHA: terraform apply (base)"; tail -40 /tmp/td-apply1.log; exit 1
 fi
@@ -197,6 +203,9 @@ echo "imagem publicada: $voice_tag"
 if ! terraform apply -auto-approve -input=false \
      -var="telegram_bot_token=${TELEGRAM_BOT_TOKEN:-}" \
      -var="llm_api_key=${LLM_API_KEY:-}" \
+     -var="hubspot_mcp_client_id=${HUBSPOT_MCP_CLIENT_ID:-}" \
+     -var="hubspot_mcp_client_secret=${HUBSPOT_MCP_CLIENT_SECRET:-}" \
+     -var="hubspot_mcp_refresh_token=${HUBSPOT_MCP_REFRESH_TOKEN:-}" \
      -var="dashboard_ui_image=$dash_tag" \
      -var="voice_adapter_image=$voice_tag" \
      -var="router_image=$router_tag" \

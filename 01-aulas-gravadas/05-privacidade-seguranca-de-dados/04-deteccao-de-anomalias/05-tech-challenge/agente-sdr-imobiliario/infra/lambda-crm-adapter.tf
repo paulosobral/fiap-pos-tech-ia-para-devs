@@ -24,6 +24,8 @@ module "lambda_crm_adapter" {
     FLOW_BASE_URL         = aws_apigatewayv2_api.http.api_endpoint
     SESSIONS_TABLE        = aws_dynamodb_table.sessions.name
     CRM_MAX_RECEIVES      = "5"
+    # Vazio = CRM simulado (CSV). Com as 3 variáveis hubspot_mcp_* o adapter usa o HubSpot via MCP.
+    HUBSPOT_SECRET_ID = local.hubspot_enabled ? aws_secretsmanager_secret.hubspot_mcp.name : ""
   }
 }
 
