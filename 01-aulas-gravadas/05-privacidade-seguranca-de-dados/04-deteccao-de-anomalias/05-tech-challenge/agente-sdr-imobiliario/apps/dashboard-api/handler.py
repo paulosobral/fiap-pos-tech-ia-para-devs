@@ -9,11 +9,14 @@ from infra.alert_store import AlertStoreReader
 from infra.conversation_store import ConversationStore
 from infra.metrics import CloudWatchMeter
 from logs import log_event
+from infra.pii_reader import PiiReader
 from service.kpis import KpiService, utc_now
+from service.leads import LeadNotFoundError, LeadService
 
 logging.getLogger().setLevel(logging.INFO)
 
 API_PATH = "/api/kpis"
+LEADS_PATH = "/api/leads"
 _UNAUTHORIZED_BODY = {"message": "não autenticado — faça login via Cognito"}
 _ERROR_BODY = {"message": "erro interno ao agregar KPIs"}
 _NOT_FOUND_BODY = {"message": "recurso não encontrado"}
@@ -69,6 +72,37 @@ def build_service(
     )
 
 
+def build_lead_service(
+    dynamodb_client: Any, kms_client: Any, sqs_client: Any, env: dict[str, str] | None = None
+) -> LeadService:
+    environment = env if env is not None else os.environ
+    return LeadService(
+        conversations=ConversationStore(dynamodb_client, environment.get("SESSIONS_TABLE", "sdr-sessions")),
+        pii=PiiReader(dynamodb_client, kms_client, environment.get("PII_TABLE", "sdr-pii")),
+        sqs_client=sqs_client,
+        crm_queue_url=environment.get("CRM_QUEUE_URL", ""),
+    )
+
+
+def _handle_leads(method: str, path: str, origin: str) -> dict[str, Any]:
+    """GET /api/leads (lista) e POST /api/leads/{lead_id}/crm (reenvio ao CRM)."""
+    try:
+        import boto3
+
+        service = build_lead_service(boto3.client("dynamodb"), boto3.client("kms"), boto3.client("sqs"))
+        if method == "GET" and path.endswith(LEADS_PATH):
+            return _response(200, {"leads": service.list_leads()}, origin)
+        parts = path.rstrip("/").split("/")
+        if method == "POST" and len(parts) >= 3 and parts[-1] == "crm" and parts[-3] == "leads":
+            return _response(202, service.send_to_crm(parts[-2]), origin)
+    except LeadNotFoundError:
+        return _response(404, {"message": "lead não encontrado"}, origin)
+    except Exception as exc:
+        log_event("leads_request_failed", level=logging.ERROR, error=str(exc))
+        return _response(500, {"message": "erro interno ao processar leads"}, origin)
+    return _response(405, _METHOD_BODY, origin)
+
+
 def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
     origin = os.environ.get("DASHBOARD_ALLOWED_ORIGIN", "*")
     if not isinstance(event, dict):
@@ -78,6 +112,10 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
         return _response(500, _ERROR_BODY, origin)
     method = str(event.get("httpMethod") or event.get("requestContext", {}).get("http", {}).get("method") or "").upper()
     path = str(event.get("path") or event.get("rawPath") or "")
+    if LEADS_PATH in path:
+        if _bearer_token(event) is None:
+            return _response(401, _UNAUTHORIZED_BODY, origin)
+        return _handle_leads(method, path, origin)
     if not path.endswith(API_PATH):
         return _response(404, _NOT_FOUND_BODY, origin)
     if method != "GET":

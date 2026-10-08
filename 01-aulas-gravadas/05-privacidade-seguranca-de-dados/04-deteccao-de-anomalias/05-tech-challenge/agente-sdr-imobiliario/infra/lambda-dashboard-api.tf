@@ -22,6 +22,9 @@ module "lambda_dashboard_api" {
   environment_variables = {
     SESSIONS_TABLE           = aws_dynamodb_table.sessions.name
     ALERTS_TABLE             = aws_dynamodb_table.alerts.name
+    PII_TABLE                = aws_dynamodb_table.pii.name
+    PII_KMS_KEY_ID           = aws_kms_key.pii.key_id
+    CRM_QUEUE_URL            = aws_sqs_queue.crm.url
     CW_NAMESPACE             = "SDR/AgenteImobiliario"
     CW_RESPONSE_METRIC       = "ResponseMs"
     CW_COST_METRIC           = "EstimatedCostUsd"

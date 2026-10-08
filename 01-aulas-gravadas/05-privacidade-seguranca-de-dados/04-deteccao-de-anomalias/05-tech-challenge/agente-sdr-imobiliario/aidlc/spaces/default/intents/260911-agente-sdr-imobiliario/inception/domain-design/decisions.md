@@ -333,3 +333,22 @@ Conversas reais de teste (texto digitado e transcrição de áudio) expuseram qu
 - **Ampliar regex/dicionários** (mais ordinais, mais frases de visita, mais sinônimos de lugar): nunca converge; cada fala nova exigiria novo remendo.
 - **Filtrar a foto no bot** (lista de hashes/URLs): a assinatura é específica do CMS de cada imobiliária e pertence à fonte de dados.
 - **Reagir só ao `urlfotoprincipal`/nome de arquivo** (`-z-1-`): o mesmo conteúdo chega em vários nomes/formatos; só o conteúdo discrimina.
+
+## ADR-016: Dashboard com Leads, Sessão Persistente, Sem Widget de Custo; CRM Real via HubSpot MCP
+
+**Context**
+O dashboard só mostrava contagens: o backoffice não conseguia falar com o lead. O login se perdia a cada F5 (`st.session_state`). O widget de custo LLM lia métricas CloudWatch que nenhum componente emite (sempre R$ 0,00). O CRM da POC (CSV em `/tmp` da Lambda) é efêmero e ilegível pelo time; o PRD (§8.9) prevê HubSpot via MCP.
+
+**Decision**
+1. **Leads no dashboard**: `GET /api/leads` (dashboard-api) lista perfil + conversa mais recente e decifra o contato no registro `sdr-pii` com KMS no momento da leitura; só usuário autenticado no Cognito acessa. Contato completo (sem máscara) porque o objetivo é o backoffice contatar o lead.
+2. **Botão "Enviar ao HubSpot"**: `POST /api/leads/{id}/crm` publica na MESMA fila do handoff (Contrato 4); o `crm-adapter` trata igual à transição automática (mesma idempotência/monotonia de estágio).
+3. **Sessão persistente**: cookie `sdr_session` com id aleatório; o refresh token do Cognito fica no servidor do dashboard (cofre em memória, TTL 12 h). Roubo do cookie não expõe token do Cognito. Reiniciar o container exige novo login.
+4. **Custo LLM removido** do dashboard e das métricas exibidas.
+5. **CRM real = HubSpot via MCP remoto** (`https://mcp.hubspot.com`, OAuth 2.1 + PKCE, refresh token de uso único). O MCP NÃO aceita token de app privado. Credenciais (`HUBSPOT_MCP_CLIENT_ID/_SECRET/_REFRESH_TOKEN`) entram por `secrets.local.env` → Secrets Manager. **Status: pendente** — nomes e argumentos das tools do MCP precisam ser descobertos com `list_tools` numa conexão real antes de fixar o mapeamento do lead; o CSV segue como fallback.
+
+**Alternatives Rejected**
+- Tabela de leads com contato mascarado: o backoffice não conseguiria contatar o lead.
+- API REST do HubSpot atrás da interface MCP: contraria a decisão de usar MCP.
+- Token de app privado para o MCP: não suportado pelo servidor remoto.
+- Cookie com o próprio refresh token: exporia credencial do Cognito no navegador.
+

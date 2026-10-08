@@ -487,6 +487,8 @@ Por serem leads **reais**, não existe anonimização total da operação; o obj
 
 **Decisão da POC:** manter o **CRM simulado (CSV/Excel)** como fonte da esteira Kanban, com o `crm-adapter` (MCP) já desenhado para plugar HubSpot/Kenlo/Facilita sem alterar o `sales-flow`. Isso demonstra a integração "pronta para conectar" sem depender de um CRM externo real.
 
+> **Atualização (ADR-016):** o alvo passou a ser **HubSpot real via MCP remoto** (`https://mcp.hubspot.com`, OAuth 2.1 + PKCE; não aceita token de app privado). O CSV fica como fallback. Para ligar: criar um *MCP connector* na conta HubSpot, autorizar uma vez (ex.: MCP Inspector) e preencher `HUBSPOT_MCP_CLIENT_ID`, `HUBSPOT_MCP_CLIENT_SECRET` e `HUBSPOT_MCP_REFRESH_TOKEN` em `secrets.local.env`. **Implementação do cliente MCP pendente** até descobrir as tools reais (`list_tools`).
+
 ### 8.10 Áudio no Telegram (voice)
 
 **Pergunta do cliente:** se o usuário enviar um áudio no Telegram, o que acontece? Podemos usar o `transcribe_videos` para transcrever e enviar à LLM?
@@ -552,7 +554,10 @@ Por serem leads **reais**, não existe anonimização total da operação; o obj
 - **Linha de métricas** (st.metric): leads hoje/semana · tempo de 1ª resposta (p90) · taxa de qualificação · agendamentos;
 - **Gráficos** (st.bar_chart): volume de intenções (locação/compra/investimento) · leads distribuídos pela roleta (por corretor);
 - **Tabela de anomalias** (st.dataframe): nº alertas 24h, tipo (urgência artificial, bot, off-platform), severidade, sessão;
-- **Custo LLM do mês** (st.progress contra meta de R$ 25) — chamadas OpenRouter.
+- **Tabela de leads** (st.dataframe): nome, telefone, e-mail, score, urgência, intenção, orçamento, área, região, estado e data — o backoffice precisa do contato para falar com o lead. Botão **Enviar ao HubSpot** (reenvia o lead à fila do CRM; o handoff já envia automaticamente);
+- **Cabeçalho**: título, e-mail do usuário logado e botão **Sair**; a sessão sobrevive ao F5 (ADR-016).
+
+> O widget de custo LLM (`st.progress` contra meta) foi **removido** da POC: a métrica nunca era emitida e mostrava sempre R$ 0,00. Custo continua acompanhado no painel do OpenRouter.
 
 **Acesso autenticado — Amazon Cognito:** login do time (~5–10 usuários) via **Hosted UI/OIDC (`st.login`)**; a API `GET /api/kpis` valida o JWT com **Cognito authorizer** no API Gateway. Custo **R$ 0** (free tier 50.000 MAUs). A API de leads continua protegida pelo secret do webhook (não passa por Cognito).
 
@@ -560,20 +565,20 @@ Por serem leads **reais**, não existe anonimização total da operação; o obj
 
 ```mermaid
 block-beta
-    columns 5
-    hd["🏢 W Levitt — Dashboard SDR · gestor@wlevitt.com · sair"]:5
-    m1["Leads hoje — 12"] m2["1ª resposta p90 — 8s"] m3["Taxa qualificação — 34%"] m4["Agendamentos — 5"] m5["Custo LLM — R$ 6,20"]
-    space:5
-    g1["Intenções (st.bar_chart)<br/>locação 7 · investimento 6 · compra 4"]:3
+    columns 4
+    hd["🏢 W Levitt — Dashboard SDR · gestor@wlevitt.com · Sair"]:4
+    m1["Leads hoje — 12"] m2["Leads na semana — 31"] m3["Taxa qualificação — 34%"] m4["Agendamentos — 5"]
+    space:4
+    g1["Intenções (st.bar_chart)<br/>locação 7 · investimento 6 · compra 4"]:2
     g2["Roleta — leads por corretor<br/>Ana 3 · Bruno 4 · Caio 2"]:2
-    an["⚠️ Anomalias (24h) — st.dataframe: 1 alerta · sessão · tipo · severidade"]:5
-    cu["💰 Custo LLM no mês (st.progress): ████████░░ R$ 6,20 / meta R$ 25,00"]:5
+    an["⚠️ Anomalias (24h) — st.dataframe: 1 alerta · sessão · tipo · severidade"]:4
+    ld["👥 Leads — st.dataframe (nome · telefone · e-mail · score · urgência · estado) · [Enviar ao HubSpot]"]:4
     style hd fill:#1f4e5f,color:#ffffff
     style an fill:#fff3cd
-    style cu fill:#e8f5e9
+    style ld fill:#e8f5e9
 ```
 
-> Renderiza em GitHub/VS Code com Mermaid ≥ 11. Layout espelha os widgets do §10.1 (`st.metric`, `st.bar_chart`, `st.dataframe`, `st.progress`).
+> Renderiza em GitHub/VS Code com Mermaid ≥ 11. Layout espelha os widgets do §10.1 (`st.metric`, `st.bar_chart`, `st.dataframe`).
 
 ### 10.3 Esboço do código (Streamlit, ~30 linhas)
 
@@ -607,8 +612,10 @@ r.bar_chart(k["roleta"], x="corretor", y="leads")
 st.subheader(f"⚠️ Anomalias (24h) — {len(k['anomalias'])} alerta(s)")
 st.dataframe(k["anomalias"], use_container_width=True)
 
-st.subheader("💰 Custo LLM no mês")
-st.progress(k["custo"]["pct_meta"], text=f'R$ {k["custo"]["mes"]:.2f} / meta R$ 25,00')
+st.subheader("👥 Leads")
+st.dataframe(leads, use_container_width=True)
+if st.button("Enviar ao HubSpot"):
+    enviar_ao_crm(lead_selecionado)
 
 if st.button("Sair"):
     st.logout()

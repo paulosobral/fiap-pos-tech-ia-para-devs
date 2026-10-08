@@ -63,6 +63,15 @@ resource "aws_apigatewayv2_route" "dashboard_proxy" {
   authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
 }
 
+# Reenvio de lead ao CRM pelo dashboard (POST /api/leads/{id}/crm)
+resource "aws_apigatewayv2_route" "dashboard_proxy_post" {
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "POST /api/{proxy+}"
+  target             = "integrations/${aws_apigatewayv2_integration.dashboard.id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
 # Rotas do conversation-router (HTTP_PROXY -> ECS task)
 resource "aws_apigatewayv2_route" "webhook_telegram" {
   api_id    = aws_apigatewayv2_api.http.id

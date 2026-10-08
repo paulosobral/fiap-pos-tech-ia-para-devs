@@ -179,3 +179,127 @@ class TestRenderSmoke:
     def test_render_error_path_runs(self):
         pytest.importorskip("streamlit")
         dashboard_app.render(None, {"status": 401, "message": "Não autenticado"}, "http://api.local")
+
+
+def _jwt(claims: dict) -> str:
+    import base64
+    import json
+
+    body = base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip("=")
+    return f"h.{body}.s"
+
+
+class TestSessionVault:
+    def test_create_get_drop(self):
+        vault = dashboard_app.SessionVault()
+        sid = vault.create("refresh-1")
+        assert vault.get(sid) == "refresh-1"
+        vault.drop(sid)
+        assert vault.get(sid) is None
+
+    def test_unknown_or_empty_sid(self):
+        vault = dashboard_app.SessionVault()
+        assert vault.get(None) is None
+        assert vault.get("nope") is None
+
+    def test_expires_after_ttl(self):
+        clock = [1000.0]
+        vault = dashboard_app.SessionVault(ttl_seconds=60, now_fn=lambda: clock[0])
+        sid = vault.create("refresh-1")
+        clock[0] += 59
+        assert vault.get(sid) == "refresh-1"
+        clock[0] += 2
+        assert vault.get(sid) is None
+
+    def test_sids_are_unique(self):
+        vault = dashboard_app.SessionVault()
+        assert vault.create("a") != vault.create("a")
+
+
+class TestCognitoRefresh:
+    CONFIG = {"region": "us-east-1", "client_id": "cid"}
+
+    def test_success_returns_id_token(self):
+        class Client:
+            def initiate_auth(self, **kwargs):
+                assert kwargs["AuthFlow"] == "REFRESH_TOKEN_AUTH"
+                assert kwargs["AuthParameters"] == {"REFRESH_TOKEN": "r"}
+                return {"AuthenticationResult": {"IdToken": "new-id"}}
+
+        assert dashboard_app.cognito_refresh("r", self.CONFIG, client=Client()) == ("new-id", None)
+
+    def test_failure_returns_error(self):
+        class Client:
+            def initiate_auth(self, **kwargs):
+                raise RuntimeError("revoked")
+
+        token, error = dashboard_app.cognito_refresh("r", self.CONFIG, client=Client())
+        assert token is None and "revoked" in error
+
+
+class TestIdentityAndCookie:
+    def test_user_label_prefers_email(self):
+        assert dashboard_app.user_label(_jwt({"email": "a@b.com", "cognito:username": "u"})) == "a@b.com"
+
+    def test_user_label_falls_back(self):
+        assert dashboard_app.user_label(_jwt({"cognito:username": "u"})) == "u"
+        assert dashboard_app.user_label("lixo") == "usuário"
+        assert dashboard_app.user_label(None) == "usuário"
+
+    def test_cookie_script_sets_and_clears(self):
+        assert "sdr_session=abc_-1" in dashboard_app.cookie_script("abc_-1", 60)
+        assert "max-age=0" in dashboard_app.cookie_script("x", 0)
+
+    def test_cookie_script_rejects_unsafe_value(self):
+        with pytest.raises(AssertionError):
+            dashboard_app.cookie_script("a';alert(1)//", 60)
+
+
+class TestMainLogin:
+    def test_main_without_session_shows_login_without_error(self, monkeypatch):
+        st = pytest.importorskip("streamlit")
+        from streamlit.testing.v1 import AppTest
+
+        script = (
+            "import app\n"
+            "app.main()\n"
+        )
+        monkeypatch.setenv("DASHBOARD_API_URL", "")
+        monkeypatch.setenv("COGNITO_CLIENT_ID", "cid")
+        monkeypatch.setenv("COGNITO_REGION", "us-east-1")
+        at = AppTest.from_string(script).run(timeout=20)
+        assert not at.exception
+
+
+class TestLeads:
+    LEADS = [{"lead_id": "L1", "name": "Ana", "phone": "11999990000", "email": "a@x.com", "score": 80}]
+
+    def test_fetch_leads_ok_and_errors(self):
+        ok = FakeHttp(FakeResponse(200, {"leads": self.LEADS}))
+        assert dashboard_app.fetch_leads("http://api", "t", http=ok) == (self.LEADS, None)
+        assert ok.calls[0]["url"] == "http://api/api/leads"
+        leads, error = dashboard_app.fetch_leads("http://api", "t", http=FakeHttp(FakeResponse(401)))
+        assert leads is None and error["status"] == 401
+        leads, error = dashboard_app.fetch_leads("http://api", "t", http=FakeHttp(error=RuntimeError("x")))
+        assert leads is None and "indisponível" in error["message"]
+
+    def test_send_lead_to_crm(self):
+        class Http:
+            def __init__(self, status):
+                self.status, self.calls = status, []
+
+            def post(self, url, timeout=None, headers=None):
+                self.calls.append(url)
+                return FakeResponse(self.status)
+
+        http = Http(202)
+        assert dashboard_app.send_lead_to_crm("http://api", "t", "L1", http=http)[0] is True
+        assert http.calls == ["http://api/api/leads/L1/crm"]
+        assert dashboard_app.send_lead_to_crm("http://api", "t", "L1", http=Http(404)) == (False, "Lead não encontrado.")
+        assert dashboard_app.send_lead_to_crm("http://api", "t", "L1", http=Http(500))[0] is False
+
+    def test_render_leads_runs(self):
+        pytest.importorskip("streamlit")
+        dashboard_app.render_leads(self.LEADS, None, "http://api", "t")
+        dashboard_app.render_leads([], None, "http://api", "t")
+        dashboard_app.render_leads(None, {"status": 500, "message": "x"}, "http://api", "t")
