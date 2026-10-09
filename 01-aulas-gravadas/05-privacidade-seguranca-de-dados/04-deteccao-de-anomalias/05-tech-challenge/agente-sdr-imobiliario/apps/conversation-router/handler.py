@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from typing import Any
 
 from infra.session_store import SessionStore
@@ -61,6 +62,33 @@ def _llm_api_key() -> str | None:
             exc_info=True,
         )
         return None
+
+
+def _format_phone(raw: str) -> str:
+    """Telefone BR legível: (11) 97991-8262. Formato desconhecido volta como veio."""
+    digits = re.sub(r"\D", "", raw or "")
+    if len(digits) > 11 and digits.startswith("55"):
+        digits = digits[2:]
+    if len(digits) == 11:
+        return f"({digits[:2]}) {digits[2:7]}-{digits[7:]}"
+    if len(digits) == 10:
+        return f"({digits[:2]}) {digits[2:6]}-{digits[6:]}"
+    return raw
+
+
+def _contact_confirmation(before: dict[str, list[str]], after: dict[str, list[str]]) -> str:
+    """Ecoa pro lead o contato que acabou de chegar nesta mensagem, para ele corrigir erro de
+    digitação. Feito em código (o número nunca passa pela LLM) depois do check de vazamento."""
+    parts: list[str] = []
+    new_phones = [v for v in after.get("TELEFONE", []) if v not in before.get("TELEFONE", [])]
+    new_emails = [v for v in after.get("EMAIL", []) if v not in before.get("EMAIL", [])]
+    if new_phones:
+        parts.append(f"telefone {_format_phone(new_phones[-1])}")
+    if new_emails:
+        parts.append(f"e-mail {new_emails[-1]}")
+    if not parts:
+        return ""
+    return f"Anotei seu {' e '.join(parts)}. Se algo estiver errado, é só me mandar o correto."
 
 
 def _crm_lead_name(contact: dict[str, list[str]], lead: Any) -> str:
@@ -445,6 +473,11 @@ class ConversationRouter:
         if violation:
             logger.warning("Guardrail violation: %s", reason)
             return FALLBACK_MESSAGE, conversation.current_state, []
+        contact_before = (
+            self.pii_store.load(conversation.session_id)
+            if self.pii_store is not None
+            else {}
+        )
         masked = self.security.mask(text, session_id=conversation.session_id)
         contact = (
             self.pii_store.load(conversation.session_id)
@@ -527,6 +560,10 @@ class ConversationRouter:
             else:
                 logger.error("PII leakage in response (%s); using fallback", label)
                 response = FALLBACK_MESSAGE
+        if response != FALLBACK_MESSAGE:
+            confirmation = _contact_confirmation(contact_before, contact)
+            if confirmation:
+                response = f"{response}\n\n{confirmation}"
         conversation.context = flow_state.get("context", conversation.context)
         response_images = flow_state.get("response_images") or []
         return response, state, response_images

@@ -22,11 +22,21 @@ from typing import Any, Callable, TypedDict
 logger = logging.getLogger(__name__)
 
 CONFIDENCE_THRESHOLD = 0.6
+# Quantos imóveis de uma lista recebem foto no mesmo turno (1ª foto de cada).
+MAX_PHOTO_PROPERTIES = 4
 INTENT_CONFIRM_QUESTION = "Só pra eu entender melhor: você está pensando em comprar, alugar ou investir em um imóvel comercial?"
 
 # Recusa de consentimento LGPD: determinística (sem LLM), mas tolerante a variações
 # próximas das 4 formas originais ("não", "nao", "não quero", "nao quero").
 _CONSENT_REFUSAL_RE = re.compile(r"^\s*n[ãa]o(\s+quero)?\s*[.!]?\s*$", re.IGNORECASE)
+# Aceite explícito (também determinístico, LGPD): a resposta tem que COMEÇAR com uma forma clara
+# de "sim". Qualquer outra coisa ("compra", "quero um escritório") não é consentimento: reperguntamos.
+_CONSENT_ACCEPT_RE = re.compile(
+    r"^\W*(sim|s|ss|sss|claro|ok|okay|okey|pode|podemos|podem|aceito|concordo|autorizo|"
+    r"beleza|blz|combinado|certo|isso|positivo|yes|uhum|aham|bora|vamos|vamo|"
+    r"com certeza|tudo bem|de acordo|pode ser|pode sim|pode continuar|fechado)\b",
+    re.IGNORECASE,
+)
 
 # Variações do fecho de "mostrei opções, o que achou?" — evita repetir a mesma
 # frase literal em todo ponto do fluxo que lista/reoferece imóveis.
@@ -115,6 +125,28 @@ _META_NOTE_LINE_RE = re.compile(r"^\s*\**\s*[\(\[][^\n]*[\)\]]\s*\**\s*$", re.MU
 
 def _strip_meta_notes(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", _META_NOTE_LINE_RE.sub("", text)).strip()
+
+
+# O Telegram é enviado como texto puro: **negrito** e # títulos aparecem literais pro lead.
+_MD_BOLD_RE = re.compile(r"(\*\*|__)(.+?)\1", re.DOTALL)
+_MD_HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+", re.MULTILINE)
+
+
+def _plain_text(text: str) -> str:
+    return _MD_HEADING_RE.sub("", _MD_BOLD_RE.sub(r"\2", text))
+
+
+# Reescrita que AFIRMA estar mandando fotos ("aqui estão as fotos", "seguem as imagens")
+# quando nenhuma foto vai junto: promessa falsa (bug real). Validação de saída, não leitura do lead.
+_PHOTO_CLAIM_RE = re.compile(
+    r"(aqui\s+(est[ãa]o|vai|v[êe]m)|seguem?|segue|estou\s+(enviando|mandando)|"
+    r"te\s+(envio|mando)|mandei|enviei|enviando)[^.!?\n]{0,60}\b(fotos?|imagens?)\b",
+    re.IGNORECASE,
+)
+
+
+def _claims_photos(text: str) -> bool:
+    return bool(_PHOTO_CLAIM_RE.search(text))
 
 
 def _repeats_previous_reply(text: str, history: list[dict[str, str]] | None) -> bool:
@@ -841,12 +873,17 @@ class SalesFlow:
         return state
 
     def _node_elicitation(self, state: FlowState) -> FlowState:
-        from service.security_layer import REFUSAL_MESSAGE
+        from service.security_layer import CONSENT_REASK_MESSAGE, REFUSAL_MESSAGE
 
         message = state.get("message", "")
         if _CONSENT_REFUSAL_RE.match(message):
             state["response"] = REFUSAL_MESSAGE
             state["current_state"] = "followup"
+            state["consent_recorded"] = False
+            return state
+        if not _CONSENT_ACCEPT_RE.match(message):
+            # Sem "sim" explícito não há consentimento: reperguntar, não coletar nada.
+            state["response"] = CONSENT_REASK_MESSAGE
             state["consent_recorded"] = False
             return state
         state["current_state"] = "intent"
@@ -1189,10 +1226,10 @@ class SalesFlow:
         self._decide_photos(state)
         if self.reply_generator is None:
             return state
-        from service.security_layer import CONSENT_MESSAGE, REFUSAL_MESSAGE
+        from service.security_layer import CONSENT_MESSAGE, CONSENT_REASK_MESSAGE, REFUSAL_MESSAGE
 
         canned = state.get("response")
-        if not canned or canned in (CONSENT_MESSAGE, REFUSAL_MESSAGE):
+        if not canned or canned in (CONSENT_MESSAGE, CONSENT_REASK_MESSAGE, REFUSAL_MESSAGE):
             return state
         missing = state.get("missing_contact_fields")
         contact_channels = (
@@ -1218,8 +1255,10 @@ class SalesFlow:
                 contact_request=bool(state.get("_contact_request")),
             )
             state["official_response"] = canned
-            generated = _strip_meta_notes(generated or "")
-            if generated and _repeats_previous_reply(generated, state.get("conversation_history")):
+            generated = _plain_text(_strip_meta_notes(generated or ""))
+            if generated and not state.get("response_images") and _claims_photos(generated) and not _claims_photos(canned):
+                logger.warning("Reescrita da LLM prometeu fotos que não vão; mantendo texto oficial")
+            elif generated and _repeats_previous_reply(generated, state.get("conversation_history")):
                 logger.warning("Reescrita da LLM repetiu a mensagem anterior; mantendo texto oficial")
             elif generated:
                 if state.get("_contact_request") and not _asks_for_contact(generated):
@@ -1265,7 +1304,7 @@ class SalesFlow:
             key = _photo_key(props[0])
             sent[key] = int(sent.get(key, 0)) + len(images)
         else:
-            for prop in props[:3]:
+            for prop in props[:MAX_PHOTO_PROPERTIES]:
                 if prop.get("images"):
                     key = _photo_key(prop)
                     sent[key] = max(int(sent.get(key, 0)), 1)
@@ -1290,7 +1329,7 @@ class SalesFlow:
             start = int(sent.get(_photo_key(prop), 0))
             images.extend((prop.get("images") or [])[start : start + 3])
         else:
-            for prop in response_properties[:3]:
+            for prop in response_properties[:MAX_PHOTO_PROPERTIES]:
                 photos = prop.get("images") or []
                 if photos and not sent.get(_photo_key(prop)):
                     images.append(photos[0])

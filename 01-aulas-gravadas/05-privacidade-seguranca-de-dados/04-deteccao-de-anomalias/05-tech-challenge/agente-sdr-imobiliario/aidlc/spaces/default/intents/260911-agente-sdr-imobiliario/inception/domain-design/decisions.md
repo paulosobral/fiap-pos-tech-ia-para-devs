@@ -352,3 +352,20 @@ O dashboard só mostrava contagens: o backoffice não conseguia falar com o lead
 - Token de app privado para o MCP: não suportado pelo servidor remoto.
 - Cookie com o próprio refresh token: exporia credencial do Cognito no navegador.
 
+## ADR-017: Consentimento LGPD Só com Aceite Explícito; Ajustes de Experiência da Conversa
+
+**Context**
+Numa conversa real o bot pediu consentimento ("Podemos continuar?"), o lead respondeu "compra" e o fluxo gravou `consent_recorded=True` — qualquer resposta que não fosse "não" valia como aceite. Na mesma conversa o bot prometeu fotos que não enviou, narrou falha interna ("desencontro nos filtros"), demorou para dizer que o catálogo não tinha o tipo pedido (sala comercial) e mostrou `**negrito**` literal no Telegram.
+
+**Decision**
+1. **Consentimento explícito e determinístico (sem LLM)**: só aceite que COMEÇA com uma forma clara de "sim" (`sim`, `ok`, `pode`, `claro`, `aceito`, `concordo`...) grava consentimento. Recusa ("não") segue encerrando. Qualquer outra resposta reapresenta o pedido (`CONSENT_REASK_MESSAGE`, texto fixo, nunca reescrito pela LLM) e mantém o estado `elicitation`, sem coletar dados.
+2. **Trava de promessa de fotos**: se a reescrita da LLM afirma estar enviando fotos e nenhuma vai no turno, vale o texto oficial (mesmo padrão da trava do pedido de contato). Limite de fotos por lista subiu de 3 para 4 imóveis.
+3. **Texto puro**: markdown (`**negrito**`, `#`) é removido da resposta humanizada (o envio ao Telegram não usa `parse_mode`).
+4. **Eco do contato**: ao chegar telefone/e-mail novo, o handler anexa "Anotei seu telefone (11) 97991-8262…" DEPOIS do check de vazamento, em código — o número nunca passa pela LLM.
+5. **Prompt de humanização** (regras 17–19): não narrar mecânica interna; dizer logo, em uma frase, quando o tipo de imóvel do catálogo difere do pedido; variar aberturas e não comentar o tom do lead.
+
+**Alternatives Rejected**
+- Classificar o aceite por LLM: consentimento é decisão jurídica, precisa ser previsível e auditável.
+- Tratar qualquer mensagem como aceite implícito: não é consentimento livre e informado.
+- Filtrar por tipo de imóvel na busca: fora do escopo desta rodada (o `lead_info` não tem `property_type`); tratado só na comunicação.
+

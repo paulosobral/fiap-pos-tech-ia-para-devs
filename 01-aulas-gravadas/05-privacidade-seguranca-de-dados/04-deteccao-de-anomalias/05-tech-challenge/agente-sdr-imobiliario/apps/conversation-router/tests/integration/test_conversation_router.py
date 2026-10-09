@@ -457,3 +457,29 @@ class TestConversationRouter:
         handler_module.handler({"body": '{"message": "olá"}'}, None)
         assert captured.get("llm_router") is None
         monkeypatch.undo()
+
+
+class TestConsentAndContactConfirmation:
+    def _texts(self, telegram):
+        return [c.args[1] for c in telegram.send_message.call_args_list]
+
+    def test_message_other_than_yes_does_not_record_consent(self):
+        router, _, telegram = make_router(with_pii=True)
+        router.handle(update("oi", update_id=1))
+        router.handle(update("compra", update_id=2))
+        _, conversation = router.store.get_by_telegram_user(42)
+        assert conversation.consent_recorded is False
+        assert conversation.current_state == "elicitation"
+        assert "consentimento" in self._texts(telegram)[-1].lower()
+        router.handle(update("sim", update_id=3))
+        _, conversation = router.store.get_by_telegram_user(42)
+        assert conversation.consent_recorded is True
+
+    def test_phone_is_echoed_back_formatted(self):
+        router, _, telegram = make_router(with_pii=True)
+        router.handle(update("oi", update_id=1))
+        router.handle(update("sim", update_id=2))
+        router.handle(update("meu telefone é (11)979918262", update_id=3))
+        assert "(11) 97991-8262" in self._texts(telegram)[-1]
+        router.handle(update("quero alugar uma sala", update_id=4))
+        assert "Anotei seu telefone" not in self._texts(telegram)[-1]

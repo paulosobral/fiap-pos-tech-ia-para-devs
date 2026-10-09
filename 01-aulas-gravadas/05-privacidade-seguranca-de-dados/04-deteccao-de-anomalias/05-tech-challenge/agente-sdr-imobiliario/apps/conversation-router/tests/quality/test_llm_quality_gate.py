@@ -423,3 +423,40 @@ def test_lead_closes_end_to_end_from_the_real_chat_of_05_10():
     assert "NOME" not in pii.d, pii.d  # nenhum lugar virou "pessoa"
     assert pii.d.get("TELEFONE"), "telefone não foi capturado"
     assert state["current_state"] == "handoff", (state["current_state"], state["response"])
+
+
+_APTS = [
+    {"title": "Apartamento 64 m² - Centro de Santo André", "type": "apartamento", "region": "Centro",
+     "area_util": 64, "price_text": "R$ 375 mil", "mode": "purchase"},
+    {"title": "Apartamento 115 m² - Centro de Santo André", "type": "apartamento", "region": "Centro",
+     "area_util": 115, "price_text": "R$ 400 mil", "mode": "purchase"},
+]
+
+
+def test_reply_says_type_mismatch_upfront_without_narrating_internals_or_markdown():
+    reply = llm.generate_reply(
+        message="me traz todas as salas comerciais que tem",
+        canned_response="Encontrei estas opções: 1. Apartamento 64 m² por R$ 375 mil; 2. Apartamento 115 m² por R$ 400 mil.",
+        lead_info={"region": "Santo André"},
+        properties=_APTS,
+        api_key=API_KEY,
+        last_tool="request_options",
+    )
+    low = reply.lower()
+    assert "apartamento" in low and ("sala" in low or "comercia" in low), reply
+    assert "**" not in reply and "desencontro" not in low and "filtro" not in low, reply
+
+
+def test_reply_does_not_promise_photos_when_none_are_sent():
+    from service.flow.sales_flow import _claims_photos
+
+    reply = llm.generate_reply(
+        message="mande as fotos dessas opções",
+        canned_response="Esses são os imóveis que mostrei. Qual te chamou mais atenção?",
+        lead_info={},
+        properties=_APTS,
+        api_key=API_KEY,
+        last_tool="property_detail",
+        photos_sending=0,
+    )
+    assert not _claims_photos(reply), reply

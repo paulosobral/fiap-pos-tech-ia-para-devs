@@ -164,7 +164,7 @@ def execute_tool(
         refs = (arguments or {}).get("property_refs")
         if isinstance(refs, list) and len(refs) > 1:
             hits: list[dict[str, Any]] = []
-            for r in refs[:3]:
+            for r in refs[:4]:
                 found = _resolve_in_shown(str(r), shown, prefer_id=focus_id)
                 if found is not None and all(found is not h for h in hits):
                     hits.append(found)

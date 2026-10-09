@@ -246,4 +246,9 @@ CONSENT_MESSAGE = (
 
 REFUSAL_MESSAGE = "Entendido. Se mudar de ideia, envie /start novamente"
 
+CONSENT_REASK_MESSAGE = (
+    "Antes de seguir, preciso do seu consentimento LGPD para coletar e usar seus dados no "
+    "atendimento. Pode confirmar respondendo 'sim'? Se preferir não, responda 'não'."
+)
+
 FALLBACK_MESSAGE = "Não posso ajudar com isso"
