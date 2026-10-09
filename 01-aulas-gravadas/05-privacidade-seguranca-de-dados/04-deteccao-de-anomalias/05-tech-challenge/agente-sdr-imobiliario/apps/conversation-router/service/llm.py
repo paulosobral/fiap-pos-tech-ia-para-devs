@@ -182,7 +182,10 @@ _REPLY_SYSTEM_PROMPT = (
     "escritório) e o campo type dos IMÓVEIS é outro (apartamento, sobrado...), diga isso LOGO, em "
     "UMA frase, e apresente o que há de mais próximo ou pergunte se ele quer ver mesmo assim — "
     "sem fazer antes novas perguntas de refinamento e sem se contradizer em relação ao histórico."
-    "\n19. Texto puro: sem markdown (nada de **negrito**, # títulos). Não abra duas respostas "
+    "\n19. Você NÃO tem busca em segundo plano nem alertas: o que a busca encontrou já está nos "
+    "dados desta resposta. Nunca diga 'um momento', 'vou buscar', 'já volto' nem 'te aviso quando "
+    "surgir' — apresente o resultado agora ou diga, em uma frase, que não há o que ele pediu."
+    "\n20. Texto puro: sem markdown (nada de **negrito**, # títulos). Não abra duas respostas "
     "seguidas com a mesma fórmula ('Entendi que...', 'Perfeito!'), não comente o tom do lead "
     "('entendi sua urgência') e, quando ele estiver irritado, responda direto ao pedido."
 )
@@ -539,6 +542,7 @@ _KNOWN_LEAD_FIELDS = (
     "area",
     "region",
     "budget",
+    "budget_min",
     "deadline",
     "people_count",
     "decision_maker",
@@ -548,14 +552,19 @@ _ROUTER_SYSTEM_PROMPT = (
     "Você é o roteador de conversa de um SDR imobiliário B2B. A cada mensagem do lead, "
     "faça três coisas:\n"
     "1. EXTRAIA dados de negócio citados (só os que aparecerem): "
-    "intent ('purchase'|'rent'|'investment'), area, region, budget, deadline, "
+    "intent ('purchase'|'rent'|'investment'), area, region, budget, budget_min, deadline, "
     "people_count (inteiro), decision_maker ('yes'/'no'). Preserve a intenção já "
     "salva, a menos que o lead a corrija explicitamente.\n"
     "   As mensagens vêm de gente de verdade e muitas vezes de TRANSCRIÇÃO DE ÁUDIO: sem "
     "pontuação, números por extenso ('mil e duzentos metros' = 1200, 'uns quinze mil por "
     "mês' = 15000), palavras trocadas de ouvido, frases soltas ('santo andré mesmo'). "
     "Interprete pela intenção, nunca por palavra exata.\n"
-    "   area = número em m² (ex.: 1000); budget = número em reais (ex.: 15000). "
+    "   area = número em m² (ex.: 1000); budget = TETO em reais (ex.: 15000): 'até X', 'no "
+    "máximo X', 'tenho X', 'orçamento de X'. budget_min = PISO em reais: 'a partir de X', "
+    "'acima de X', 'mais de X', 'no mínimo X'. Quem diz só o piso NÃO tem teto — preencha só "
+    "budget_min e deixe budget de fora (nunca copie o piso para budget). Faixa 'entre X e Y' "
+    "ou 'de X a Y': budget_min=X e budget=Y. Se o lead trocar de ideia ('na verdade até Y'), "
+    "mande o campo novo. "
     "region = o lugar que o lead quer: se bater com um lugar da lista LOCAIS DO CATÁLOGO "
     "(mesmo abreviado, sem acento ou errado de ouvido: 'scs', 'sao caetano', 'vila bastus'), "
     "grave o nome EXATO da lista (cidade ou bairro); se não existir no catálogo, grave como "

@@ -311,7 +311,8 @@ def search_properties(
     requested_mode = "purchase" if intent == "investment" else intent
     region = _norm_region(lead_info.get("region"))
     area_m2 = _area_m2(lead_info.get("area"))
-    budget = parse_budget(lead_info.get("budget"))
+    budget = parse_budget(lead_info.get("budget"))  # teto
+    budget_min = parse_budget(lead_info.get("budget_min"))  # piso ("a partir de")
 
     # Do not substitute rent listings when the lead asked to buy (or vice versa).
     mode_candidates = (
@@ -327,6 +328,8 @@ def search_properties(
     for prop in mode_candidates:
         price = _fprice(prop.get("price"))
         if budget and (price is None or price > budget * 1.25):
+            continue
+        if budget_min and price is not None and price < budget_min * 0.8:
             continue
         candidates.append(prop)
 
@@ -360,7 +363,12 @@ def search_properties(
         if region and _region_matches(region, prop):
             score += _REGION_BONUS
         price = _fprice(prop.get("price"))
-        if budget and price is not None and price <= budget:
+        if (
+            (budget or budget_min)
+            and price is not None
+            and (not budget or price <= budget)
+            and (not budget_min or price >= budget_min)
+        ):
             score += _PRICE_WITHIN_BUDGET
         parea = _farea(prop.get("area_util"))
         if area_m2 and parea is not None:

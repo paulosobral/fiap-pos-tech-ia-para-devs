@@ -64,6 +64,13 @@ def _llm_api_key() -> str | None:
         return None
 
 
+def _crm_text(value: Any) -> str | None:
+    """O contrato do CRM (Contrato 4) só aceita texto ou null; a LLM devolve números (1000)."""
+    if value in (None, ""):
+        return None
+    return str(int(value)) if isinstance(value, float) and value.is_integer() else str(value)
+
+
 def _format_phone(raw: str) -> str:
     """Telefone BR legível: (11) 97991-8262. Formato desconhecido volta como veio."""
     digits = re.sub(r"\D", "", raw or "")
@@ -618,9 +625,12 @@ class ConversationRouter:
         # Urgência derivada dos MESMOS fatores do qualifier (R3/ticket) e persistida no Lead.
         urgency = lead.urgency or self.flow.qualifier.urgency(info)
         lead.urgency = urgency
-        lead.budget = info.get("budget") or lead.budget
-        lead.deadline = info.get("deadline") or lead.deadline
-        lead.area = info.get("area") or lead.area
+        budget_text = _crm_text(info.get("budget")) or (
+            f"a partir de {_crm_text(info.get('budget_min'))}" if info.get("budget_min") else None
+        )
+        lead.budget = budget_text or lead.budget
+        lead.deadline = _crm_text(info.get("deadline")) or lead.deadline
+        lead.area = _crm_text(info.get("area")) or lead.area
         self.sqs.send_message(
             QueueUrl=self.crm_queue_url,
             MessageBody=json.dumps(
@@ -634,9 +644,9 @@ class ConversationRouter:
                         "score": lead.score,
                         "urgency": urgency,
                         "intent": lead.intent,
-                        "budget": info.get("budget"),
-                        "deadline": info.get("deadline"),
-                        "area": info.get("area"),
+                        "budget": budget_text,
+                        "deadline": _crm_text(info.get("deadline")),
+                        "area": _crm_text(info.get("area")),
                     },
                     "session_id": conversation.session_id,
                     "timestamp": utc_now_iso(),

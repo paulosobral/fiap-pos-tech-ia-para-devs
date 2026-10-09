@@ -149,6 +149,24 @@ def _claims_photos(text: str) -> bool:
     return bool(_PHOTO_CLAIM_RE.search(text))
 
 
+# Promessa de trabalho futuro que o bot não cumpre: a busca roda DENTRO do turno (o resultado já
+# está na resposta) e não existe alerta/aviso posterior. "Um momento!", "vou buscar...", "te aviso
+# quando surgir" deixam o lead esperando uma mensagem que nunca vem (bug real: "cade?").
+# Não pega "vou confirmar com o corretor", que é legítimo (regra 3 do prompt de humanização).
+_FUTURE_WORK_RE = re.compile(
+    r"\bum\s+momento(zinho)?\b|\baguard[ea]\b|\bj[áa]\s+(volto|retorno)\b|"
+    r"\bj[áa]\s+te\s+(retorno|aviso|trago|mando|mostro)\b|"
+    r"\bvou\s+(buscar|procurar|pesquisar|refinar|ajustar\s+a\s+(busca|pesquisa))\b|"
+    r"\bestou\s+(buscando|procurando|pesquisando)\b|"
+    r"\bte\s+avis[oe]\s+(assim|quando|se)\b|\bcri(o|e|ar)\s+um\s+alerta\b",
+    re.IGNORECASE,
+)
+
+
+def _promises_future_work(text: str) -> bool:
+    return bool(_FUTURE_WORK_RE.search(text))
+
+
 def _repeats_previous_reply(text: str, history: list[dict[str, str]] | None) -> bool:
     """Eco: o modelo devolveu (quase) a mensagem anterior do bot em vez de responder
     o pedido atual — visto no turno "1" depois de uma lista (reenviou a lista)."""
@@ -1258,6 +1276,8 @@ class SalesFlow:
             generated = _plain_text(_strip_meta_notes(generated or ""))
             if generated and not state.get("response_images") and _claims_photos(generated) and not _claims_photos(canned):
                 logger.warning("Reescrita da LLM prometeu fotos que não vão; mantendo texto oficial")
+            elif generated and _promises_future_work(generated) and not _promises_future_work(canned):
+                logger.warning("Reescrita da LLM prometeu trabalho futuro inexistente; mantendo texto oficial")
             elif generated and _repeats_previous_reply(generated, state.get("conversation_history")):
                 logger.warning("Reescrita da LLM repetiu a mensagem anterior; mantendo texto oficial")
             elif generated:

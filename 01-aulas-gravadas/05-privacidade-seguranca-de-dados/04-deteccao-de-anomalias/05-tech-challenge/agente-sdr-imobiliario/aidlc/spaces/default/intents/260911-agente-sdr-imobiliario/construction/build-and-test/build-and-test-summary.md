@@ -9,27 +9,27 @@
 |---|---|---|
 | Unit (por unit, do Code Generation) | `construction/*/code-generation/unit-test-instructions.md` | executado |
 | Integration | `integration-test-instructions.md` | executado |
-| Quality gate (LLM real, TaaC) | `apps/conversation-router/tests/quality/` | executado: 40/40 (inclui anomalias ponta a ponta) |
+| Quality gate (LLM real, TaaC) | `apps/conversation-router/tests/quality/` | executado: 48/48 (inclui anomalias ponta a ponta e piso/teto de orçamento) |
 | Performance | `performance-test-instructions.md` | alvos e2e deferidos (`performance-validation`) |
 | Security | `security-test-instructions.md` | suíte local executada; DAST deferido |
 
 ## Expectativa de cobertura por unit
-Piso contratado 80%; obtido (2026-10-08): u1 88.70 · u2 99.38 · u3 99.13 · u4 100.00 · u5 99.01 · u6 98.52 · u7-api 97.70 · u7-ui 80.32 (no limite). u1 caiu de 96.51 porque o código cresceu (roteador tool-agent, fotos, contato) com parte do caminho exercitada só pelo gate com LLM real.
+Piso contratado 80%; obtido (2026-10-08): u1 88.54 · u2 99.38 · u3 99.13 · u4 100.00 · u5 99.01 · u6 98.52 · u7-api 97.70 · u7-ui 80.32 (no limite). u1 caiu de 96.51 porque o código cresceu (roteador tool-agent, fotos, contato) com parte do caminho exercitada só pelo gate com LLM real.
 
 ## Target Verification Matrix
 Verdicts finais (sem `Pending`): `Met` = verificado nesta execução; `Unverified` = não executável localmente, com Owning Stage agendado no plano; `Not Met` = gap de feature (finding do gate).
 
 | Target ID | Source | Expected | Actual | Evidence | Owning Stage | Verdict |
 |---|---|---|---|---|---|---|
-| T-COV-u1 | Testing Contract (80%) | ≥80% | 88.70% | pytest --cov (ver `test-results.md`) | — | Met |
+| T-COV-u1 | Testing Contract (80%) | ≥80% | 88.54% | pytest --cov (ver `test-results.md`) | — | Met |
 | T-COV-u2 | idem | ≥80% | 99.38% | pytest --cov u2 | — | Met |
 | T-COV-u3 | idem | ≥80% | 99.13% | pytest --cov u3 | — | Met |
 | T-COV-u4 | idem | ≥80% | 100.00% | pytest --cov u4 | — | Met |
 | T-COV-u5 | idem | ≥80% | 99.01% | pytest --cov u5 | — | Met |
 | T-COV-u6 | idem | ≥80% | 98.52% | pytest --cov u6 | — | Met |
 | T-COV-u7 | idem (api e ui) | ≥80% | 97.70% api / 80.32% ui | pytest --cov u7 | — | Met (ui no limite) |
-| T-QUALITY-GATE | Plano de naturalidade §5 / ADR-019 | gate LLM real verde antes do deploy | 40/40 em 7 min 21 s | `test-results.md` | — | Met |
-| T-TESTS-PER-COMP | Testing Contract | 5–8+ por componente | 38–440 por unit (999 no total) | suítes | — | Met |
+| T-QUALITY-GATE | Plano de naturalidade §5 / ADR-019/020 | gate LLM real verde antes do deploy | 48/48 em 6 min 39 s | `test-results.md` | — | Met |
+| T-TESTS-PER-COMP | Testing Contract | 5–8+ por componente | 38–460 por unit (1019 no total) | suítes | — | Met |
 | T-CI-MERGE | Testing Contract | execução em CI antes do merge | Pending no pipeline local | este estágio | **ci-pipeline** | Unverified |
 | NFR2.1 | requirements | logs JSON | log_event em todas as units (caplog) | suítes | — | Met |
 | NFR2.2 | requirements (traceability u2) | conforme design | OK por traceability + suítes | suítes | — | Met |
@@ -76,7 +76,7 @@ Verdicts finais (sem `Pending`): `Met` = verificado nesta execução; `Unverifie
 
 ## Readiness assessment
 - **build-ready**: ✓ (compileall + suítes verdes)
-- **test-ready**: ✓ (999 unit/integration passed / 0 failed; gate LLM real 40/40; segurança executável local Met)
+- **test-ready**: ✓ (1019 unit/integration passed / 0 failed; gate LLM real 48/48; segurança executável local Met)
 - **deployment-ready**: ✓ na prática (infra aplicada e recriada várias vezes); formalmente pendentes `deployment-pipeline` (NFR4.1 EventBridge DLQ) e `ci-pipeline` (T-CI-MERGE)
 
 ## Known limitations / outstanding items (surfaced no gate)

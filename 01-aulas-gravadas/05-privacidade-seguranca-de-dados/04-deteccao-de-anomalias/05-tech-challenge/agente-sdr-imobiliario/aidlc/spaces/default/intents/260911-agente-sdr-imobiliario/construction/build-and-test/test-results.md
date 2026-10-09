@@ -8,7 +8,7 @@
 ## Resultados por unit (unitários + integração; sem o gate LLM)
 | Unit | Passed | Failed | Skipped | Cobertura | Piso 80% |
 |---|---|---|---|---|---|
-| u1 conversation-router | 440 | 0 | 0 | 88,70% (584 linhas sem cobertura de 5166) | ✓ |
+| u1 conversation-router | 460 | 0 | 0 | 88,54% (600 linhas sem cobertura de 5237) | ✓ |
 | u2 voice-adapter | 75 | 0 | 0 | 99,38% | ✓ |
 | u3 crm-adapter | 129 | 0 | 0 | 99,13% | ✓ |
 | u4 contact-ingest | 71 | 0 | 0 | 100,00% | ✓ |
@@ -17,11 +17,11 @@
 | u7 dashboard-api | 72 | 0 | 0 | 97,70% | ✓ |
 | u7 dashboard-ui | 38 | 0 | 0 | 80,32% (no limite) | ✓ |
 
-**Total: 999 passed, 0 failed, 0 skipped** (run anterior, 2026-09-21: 624 passed, 5 skipped).
+**Total: 1019 passed, 0 failed, 0 skipped** (run anterior, 2026-09-21: 624 passed, 5 skipped).
 
 ## Gate de qualidade com LLM real (`apps/conversation-router/tests/quality`)
-- **40 passed, 0 failed** em 7 min 21 s (OpenRouter real, mesmo tiering de produção).
-- Cobre: resolução de referências/ordinais, navegação, listas, fotos, contato/telefone (inclusive falado), fechamento de lead ponta a ponta, tipo de imóvel diferente do pedido sem narrar bastidor/markdown, promessa de fotos, e **anomalias ponta a ponta** (chat noturno negativo → alerta + restrição → `/api/kpis`; chat normal → sem alerta).
+- **48 passed, 0 failed** em 6 min 39 s (re-executado após a ADR-020) (OpenRouter real, mesmo tiering de produção).
+- Cobre: resolução de referências/ordinais, navegação, listas, fotos, contato/telefone (inclusive falado), fechamento de lead ponta a ponta, tipo de imóvel diferente do pedido sem narrar bastidor/markdown, promessa de fotos, e piso vs teto de orçamento interpretados pela LLM, promessa de trabalho futuro, e **anomalias ponta a ponta** (chat noturno negativo → alerta + restrição → `/api/kpis`; chat normal → sem alerta).
 
 ## Integração (subset executado junto das suítes)
 - `apps/*/tests/integration/` sem falhas, incluindo `test_anomaly_pipeline.py` (contrato U5↔U1), `test_conversation_router.py` (consentimento explícito, eco de contato) e as rotas `/api/leads` do dashboard-api.
@@ -40,4 +40,4 @@
 - Saídas brutas ficaram no scratchpad da sessão (não versionadas). Reproduzir com os comandos de `build-instructions.md`.
 
 ## Loop-Back Log
-(nenhuma entrada — nenhum command failure neste estágio. Dois achados corrigidos durante a rodada, antes do run final: falta de `import re` no handler e `dist-info` removido do pacote do crm-adapter.)
+(nenhuma entrada — nenhum command failure no run final. Achados corrigidos durante a rodada: falta de `import re` no handler; `dist-info` removido do pacote do crm-adapter; `budget`/`area`/`deadline` numéricos da LLM rejeitados pelo contrato do CRM (ADR-020).)

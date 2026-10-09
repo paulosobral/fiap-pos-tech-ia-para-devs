@@ -11,6 +11,7 @@ _KNOWN_LEAD_FIELDS = (
     "area",
     "region",
     "budget",
+    "budget_min",
     "deadline",
     "people_count",
     "decision_maker",

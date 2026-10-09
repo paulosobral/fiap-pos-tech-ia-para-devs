@@ -33,8 +33,8 @@ COVERAGE_FILE=/tmp/.cov-u1 .venv/bin/python -m pytest apps/conversation-router/t
 ```
 
 ## Metas
-- Cobertura ≥ 80% por unit (piso do contrato; atual: u1 88,70%, dashboard-ui 80,32%, demais ≥ 97,70%).
-- Gate com LLM real: 40/40 (executado pelo `start.sh` antes do deploy).
+- Cobertura ≥ 80% por unit (piso do contrato; atual: u1 88,54%, dashboard-ui 80,32%, demais ≥ 97,70%).
+- Gate com LLM real: 48/48 (executado pelo `start.sh` antes do deploy).
 - 0 falhas nos boundaries listados acima; qualquer falha em integration é bloqueante do estágio.
 
 ## Gestão de dados de teste

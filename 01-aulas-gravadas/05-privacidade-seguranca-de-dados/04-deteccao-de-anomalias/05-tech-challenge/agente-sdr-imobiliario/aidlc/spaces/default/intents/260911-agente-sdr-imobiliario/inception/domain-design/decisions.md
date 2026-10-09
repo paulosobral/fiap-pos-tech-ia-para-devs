@@ -399,3 +399,18 @@ O detector (FR9) tinha 87 testes unitários/integração, mas nenhum cobria o ca
 - Baixar o limite de produção só para demonstrar: decisão de produto, não de teste.
 - Mocar o LLM: o objetivo é exercitar a conversa real, incluindo o tamanho das respostas do bot que entra na média.
 
+## ADR-020: Orçamento com Piso e Teto Interpretados pela LLM; Trava de Promessa de Trabalho Futuro; CRM Só com Texto
+
+**Context**
+Conversa real: "São Bernardo a partir de 1000 reais" virou "orçamento até mil reais" (piso lido como teto). Na mesma conversa o bot disse "Vou buscar apartamentos... Um momento!" quando a busca já tinha rodado no turno; o lead perguntou "cade?" e o bot pediu desculpa pela demora. Investigando, os logs mostraram a LLM devolvendo `budget` como número (1000) e o `crm-adapter` só aceita texto nesse campo — o lead seria descartado na fila (`message_rejected`, sem retry).
+
+**Decision**
+1. **Piso e teto vêm da LLM**, sem regra no código: o roteador extrai `budget` (teto: "até", "no máximo", "tenho X") e `budget_min` (piso: "a partir de", "acima de", "pra cima"); faixa preenche os dois; piso sem teto não copia o piso para `budget`. O código só aplica: busca exclui preço abaixo de 80% do piso (tolerância simétrica ao teto ×1,25) com o mesmo fail-open do teto, e o score favorece quem cabe na faixa; o qualifier usa `budget` ou, na falta, `budget_min`.
+2. **Trava de promessa de trabalho futuro** (mesmo padrão da trava de fotos): se a reescrita promete "um momento", "vou buscar", "já volto", "te aviso quando surgir" ou "crio um alerta" e o texto oficial não promete, vale o texto oficial. "Vou confirmar com o corretor" continua permitido. O prompt de humanização ganhou a regra 19 (não há busca em segundo plano nem alertas).
+3. **CRM só recebe texto**: `budget`, `deadline` e `area` passam por `_crm_text` antes de ir à fila (`budget_min` sem teto vai como "a partir de X").
+
+**Alternatives Rejected**
+- Regex/lista de expressões ("a partir de", "acima de") para separar piso de teto: nunca converge e contraria o ADR-015.
+- Guardar só um valor e perguntar "é mínimo ou máximo?": a LLM entende a frase; perguntar de novo piora a experiência.
+- Alterar o contrato do crm-adapter para aceitar números: o contrato (Contrato 4) é anterior e tem outros produtores/testes; converter na origem é mais simples.
+

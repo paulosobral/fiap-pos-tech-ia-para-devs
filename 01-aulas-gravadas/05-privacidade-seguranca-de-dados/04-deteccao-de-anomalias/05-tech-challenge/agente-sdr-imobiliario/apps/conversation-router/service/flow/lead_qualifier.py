@@ -37,7 +37,7 @@ class LeadQualifier:
         if deadline_score >= 20:
             factors.append("prazo curto")
 
-        budget_score = self._budget_score(info.get("budget"))
+        budget_score = self._budget_score(info.get("budget") or info.get("budget_min"))
         score += budget_score
         if budget_score >= 20:
             factors.append("orçamento definido e alto")
@@ -72,7 +72,7 @@ class LeadQualifier:
         high = os dois; medium = exatamente um; low = nenhum.
         """
         urgent_deadline = self._deadline_score(info.get("deadline")) >= 30
-        high_budget = self._budget_score(info.get("budget")) >= 30
+        high_budget = self._budget_score(info.get("budget") or info.get("budget_min")) >= 30
         if urgent_deadline and high_budget:
             return "high"
         if urgent_deadline or high_budget:

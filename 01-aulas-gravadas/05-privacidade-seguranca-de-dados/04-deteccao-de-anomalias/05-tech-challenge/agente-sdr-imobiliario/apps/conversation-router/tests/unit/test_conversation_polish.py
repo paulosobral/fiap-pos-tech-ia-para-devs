@@ -116,3 +116,77 @@ class TestContactConfirmation:
         data = {"TELEFONE": ["11979918262"]}
         assert handler_module._contact_confirmation(data, dict(data)) == ""
         assert handler_module._contact_confirmation({}, {}) == ""
+
+
+from service.flow.sales_flow import _promises_future_work
+from service.properties_catalog import search_properties
+
+
+class TestFutureWorkGuard:
+    @pytest.mark.parametrize(
+        "text",
+        ["Vou buscar apartamentos em São Bernardo. Um momento!", "Estou buscando opções pra você",
+         "Já volto com as opções", "Te aviso assim que surgir uma sala", "Aguarde só um instante",
+         "Vou ajustar a busca para residenciais", "Posso criar um alerta para você"],
+    )
+    def test_detects_promises_that_never_come_true(self, text):
+        assert _promises_future_work(text)
+
+    @pytest.mark.parametrize(
+        "text",
+        ["Vou confirmar isso com o corretor e te retorno por aqui", "Achei 3 opções em São Bernardo",
+         "Não temos apartamentos nessa faixa. Quer ver as salas?", "O corretor entra em contato pelo WhatsApp",
+         "Vou te mostrar mais opções"],
+    )
+    def test_ignores_legitimate_text(self, text):
+        assert not _promises_future_work(text)
+
+    def test_promise_keeps_official_text(self):
+        flow = make_flow(reply_generator=lambda *a, **k: "Desculpa! Vou buscar agora. Um momento!")
+        state = flow.invoke({"current_state": "intent", "message": "quero alugar agora"})
+        assert "momento" not in state["response"].lower()
+
+
+class TestBudgetFloorAndCeiling:
+    CATALOG = [
+        {"id": str(i), "title": f"Imóvel {price}", "mode": "rent", "price": price, "region": "Centro",
+         "area_util": 50, "description": "sala"}
+        for i, price in enumerate((500, 900, 1000, 1500, 3000, 8000))
+    ]
+
+    def _prices(self, **lead):
+        info = {"intent": "rent", **lead}
+        return sorted(p["price"] for p in search_properties(info, top_k=6, catalog=self.CATALOG)[:3])
+
+    def test_floor_only_prefers_prices_from_the_floor_up(self):
+        assert self._prices(budget_min=1000) == [1000, 1500, 3000]
+
+    def test_ceiling_only_prefers_prices_up_to_the_ceiling(self):
+        assert self._prices(budget=1000) == [500, 900, 1000]
+
+    def test_range_keeps_prices_inside_it(self):
+        assert self._prices(budget_min=900, budget=1500) == [900, 1000, 1500]
+
+    def test_floor_is_a_known_lead_field(self):
+        from service import llm, validation
+
+        assert "budget_min" in llm._KNOWN_LEAD_FIELDS and "budget_min" in validation._KNOWN_LEAD_FIELDS
+
+    def test_router_prompt_teaches_floor_vs_ceiling_to_the_llm(self):
+        from service import llm
+
+        prompt = llm._ROUTER_SYSTEM_PROMPT
+        assert "budget_min" in prompt and "PISO" in prompt and "TETO" in prompt
+
+    def test_qualifier_scores_floor_only_budget(self):
+        q = LeadQualifier()
+        assert q._budget_score("100000") == q._budget_score("100000")
+        assert q.urgency({"deadline": "urgente, 1 mês", "budget_min": "R$ 200.000"}) in ("medium", "high")
+
+
+class TestCrmGetsTextOnly:
+    def test_crm_text_converts_numbers(self):
+        assert handler_module._crm_text(1000) == "1000"
+        assert handler_module._crm_text(1000.0) == "1000"
+        assert handler_module._crm_text("R$ 5 mil") == "R$ 5 mil"
+        assert handler_module._crm_text(None) is None and handler_module._crm_text("") is None

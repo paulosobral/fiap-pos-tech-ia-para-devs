@@ -460,3 +460,57 @@ def test_reply_does_not_promise_photos_when_none_are_sent():
         photos_sending=0,
     )
     assert not _claims_photos(reply), reply
+
+
+def _budget_of(message: str) -> dict:
+    out = llm.extract_and_route(message, {"intent": "rent"}, "conversation", api_key=API_KEY)
+    return out["lead_info"]
+
+
+def _num(value) -> float | None:
+    from service.properties_catalog import parse_budget
+
+    return parse_budget(value)
+
+
+@pytest.mark.parametrize(
+    "message,floor,ceiling",
+    [
+        ("São Bernardo a partir de 1000 reais", 1000, None),
+        ("quero algo acima de 10 mil por mês", 10000, None),
+        ("pode ser de mil e quinhentos pra cima", 1500, None),
+        ("até 2 mil reais", None, 2000),
+        ("no máximo quinze mil", None, 15000),
+        ("tenho uns 5 mil por mês", None, 5000),
+        ("entre 1500 e 3000 reais", 1500, 3000),
+    ],
+)
+def test_llm_tells_budget_floor_from_ceiling(message: str, floor, ceiling):
+    """O código não tem regra para 'a partir de': é a LLM que separa piso (budget_min) de teto
+    (budget). Bug real: 'a partir de 1000' virou 'até mil reais'."""
+    info = _budget_of(message)
+    got_floor, got_ceiling = _num(info.get("budget_min")), _num(info.get("budget"))
+    assert got_floor == floor, (message, info)
+    assert got_ceiling == ceiling, (message, info)
+
+
+def test_reply_does_not_promise_a_search_that_already_ran_or_an_alert():
+    from service.flow.sales_flow import _promises_future_work
+
+    commercial = [
+        {"title": "Salão comercial - São Bernardo", "type": "salão", "region": "São Bernardo", "area_util": 80,
+         "price_text": "R$ 5 mil/mês", "mode": "rent"},
+    ]
+    reply = llm.generate_reply(
+        message="São Bernardo a partir de 1000 reais",
+        canned_response="Encontrei 1 opção em São Bernardo: Salão comercial, 80 m², R$ 5 mil/mês.",
+        lead_info={"intent": "rent", "region": "São Bernardo", "budget_min": 1000},
+        properties=commercial,
+        api_key=API_KEY,
+        last_tool="refine_search",
+        conversation_history=[
+            {"role": "user", "content": "quero apartamento residencial pra morar"},
+            {"role": "assistant", "content": "Os imóveis que separei são comerciais. Qual região e orçamento?"},
+        ],
+    )
+    assert not _promises_future_work(reply), reply
