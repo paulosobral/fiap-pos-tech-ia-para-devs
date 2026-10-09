@@ -573,12 +573,25 @@ block-beta
     g2["Roleta — leads por corretor<br/>Ana 3 · Bruno 4 · Caio 2"]:2
     an["⚠️ Anomalias (24h) — st.dataframe: 1 alerta · sessão · tipo · severidade"]:4
     ld["👥 Leads — st.dataframe (nome · telefone · e-mail · score · urgência · estado) · [Enviar ao HubSpot]"]:4
-    style hd fill:#1f4e5f,color:#ffffff
+    style hd fill:#0B1D3A,color:#D8A858
     style an fill:#fff3cd
     style ld fill:#e8f5e9
 ```
 
 > Renderiza em GitHub/VS Code com Mermaid ≥ 11. Layout espelha os widgets do §10.1 (`st.metric`, `st.bar_chart`, `st.dataframe`).
+
+### 10.4 Identidade visual (logo e paleta)
+
+O dashboard usa a identidade do logo da W Levitt (prédios dourados + balão de chat sobre fundo azul-marinho):
+
+| Papel | Cor | Onde entra |
+|---|---|---|
+| Fundo | `#0B1D3A` (azul-marinho) | `backgroundColor` do tema; cabeçalho do sketch |
+| Superfícies/cartões | `#13294F` | `secondaryBackgroundColor` (métricas, tabelas) |
+| Destaque / primária | `#D8A858` (dourado) | `primaryColor` (botões, foco) e barras dos gráficos |
+| Texto | `#F4EBD6` (creme) | `textColor` |
+
+O tema fica em `apps/dashboard-ui/.streamlit/config.toml` (tema nativo do Streamlit, sem CSS injetado) e o logo em `apps/dashboard-ui/assets/logo.png` (cópia idêntica do `Designer.png` da raiz do repo, sem redimensionar), exibido no cabeçalho ao lado do título. O mesmo logo é o **favicon** da aba do navegador (miniatura gerada em memória). Os dois arquivos são copiados para a imagem do container no `Dockerfile`. As cores dos gráficos usam a mesma constante dourada (`BRAND_GOLD`) para não divergir do tema.
 
 ### 10.3 Esboço do código (Streamlit, ~30 linhas)
 

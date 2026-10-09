@@ -1,0 +1,7 @@
+# Paleta do logo W Levitt: azul-marinho + dourado (ver PRD §10.4 / ADR-018).
+[theme]
+base = "dark"
+primaryColor = "#D8A858"
+backgroundColor = "#0B1D3A"
+secondaryBackgroundColor = "#13294F"
+textColor = "#F4EBD6"

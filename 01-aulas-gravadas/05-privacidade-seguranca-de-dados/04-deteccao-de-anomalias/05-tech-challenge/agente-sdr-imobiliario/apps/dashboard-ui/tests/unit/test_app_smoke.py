@@ -303,3 +303,57 @@ class TestLeads:
         dashboard_app.render_leads(self.LEADS, None, "http://api", "t")
         dashboard_app.render_leads([], None, "http://api", "t")
         dashboard_app.render_leads(None, {"status": 500, "message": "x"}, "http://api", "t")
+
+
+class TestBranding:
+    ROOT = __import__("pathlib").Path(dashboard_app.__file__).parent
+
+    def test_logo_is_the_original_designer_png(self):
+        import hashlib
+        import os
+
+        assert os.path.exists(dashboard_app.LOGO_PATH)
+        original = self.ROOT.parents[1] / "Designer.png"  # logo oficial na raiz do repo
+        if original.exists():  # no container só existe a cópia; no repo as duas têm que ser idênticas
+            digest = lambda p: hashlib.sha256(open(p, "rb").read()).hexdigest()
+            assert digest(dashboard_app.LOGO_PATH) == digest(original)
+
+    def test_theme_uses_logo_palette(self):
+        theme = (self.ROOT / ".streamlit" / "config.toml").read_text(encoding="utf-8").lower()
+        assert dashboard_app.BRAND_GOLD.lower() in theme
+        assert 'backgroundcolor = "#0b1d3a"' in theme
+
+    def test_dockerfile_ships_assets_and_theme(self):
+        docker = (self.ROOT / "Dockerfile").read_text(encoding="utf-8")
+        assert "COPY assets assets" in docker and "COPY .streamlit .streamlit" in docker
+
+    def test_header_renders_with_logo(self):
+        pytest.importorskip("streamlit")
+        from streamlit.testing.v1 import AppTest
+
+        script = (
+            "import app, streamlit as st\n"
+            "st.session_state['id_token'] = 'h.e30.s'\n"
+            "app._render_header(st)\n"
+        )
+        at = AppTest.from_string(script).run(timeout=20)
+        assert not at.exception
+        assert any(b.label == "Sair" for b in at.button)
+
+
+class TestFavicon:
+    def test_page_icon_is_the_logo_thumbnail(self):
+        icon = dashboard_app.page_icon()
+        assert not isinstance(icon, str)
+        assert max(icon.size) <= 128
+
+    def test_page_icon_falls_back_to_emoji_without_logo(self, monkeypatch):
+        monkeypatch.setattr(dashboard_app, "LOGO_PATH", "/nao/existe.png")
+        assert dashboard_app.page_icon() == "🏢"
+
+    def test_both_page_configs_use_the_icon(self):
+        import inspect
+
+        source = inspect.getsource(dashboard_app)
+        assert source.count("page_icon=page_icon()") == 2
+        assert 'page_title="Dashboard SDR' not in source

@@ -369,3 +369,33 @@ Numa conversa real o bot pediu consentimento ("Podemos continuar?"), o lead resp
 - Tratar qualquer mensagem como aceite implícito: não é consentimento livre e informado.
 - Filtrar por tipo de imóvel na busca: fora do escopo desta rodada (o `lead_info` não tem `property_type`); tratado só na comunicação.
 
+## ADR-018: Identidade Visual do Dashboard (Logo W Levitt + Tema Azul-Marinho/Dourado)
+
+**Context**
+O dashboard usava o tema padrão do Streamlit, sem relação com a marca. O logo da W Levitt tem paleta própria (azul-marinho e dourado).
+
+**Decision**
+1. **Tema nativo** em `apps/dashboard-ui/.streamlit/config.toml` (`base=dark`, primária `#D8A858`, fundo `#0B1D3A`, superfície `#13294F`, texto `#F4EBD6`), extraído por amostragem de pixels do logo. Sem CSS injetado/`unsafe_allow_html`.
+2. **Logo** em `apps/dashboard-ui/assets/logo.png` (cópia idêntica, byte a byte, do `Designer.png` da raiz do repo — o logo oficial, ícone de prédio + balão de chat; um teste compara o hash das duas), exibido no cabeçalho ao lado do título; ausência do arquivo não quebra a tela.
+2b. **Favicon da aba** = o mesmo logo (miniatura de 128 px gerada em memória por `page_icon()`, sem alterar o arquivo), via `st.set_page_config(page_icon=...)`; sem isso o Streamlit mostra o ícone padrão dele. Sem o arquivo, cai no emoji 🏢.
+3. **Gráficos** usam `BRAND_GOLD` (mesmo valor do `primaryColor`); teste garante que tema e constante não divergem.
+4. `Dockerfile` copia `assets/` e `.streamlit/` (sem isso o container sobe com o tema padrão).
+
+**Alternatives Rejected**
+- CSS customizado via `st.markdown(unsafe_allow_html=True)`: frágil entre versões do Streamlit e amplia superfície de injeção.
+- Reduzir/recomprimir o logo: o arquivo oficial é usado como está (1254×1254, ~1,8 MB) para não haver versão divergente; o Streamlit o exibe a 64 px.
+
+## ADR-019: Gate de Qualidade Ponta a Ponta das Anomalias (Chat com LLM Real → Detector → Dashboard)
+
+**Context**
+O detector (FR9) tinha 87 testes unitários/integração, mas nenhum cobria o caminho completo: conversa real no bot → alerta gravado → alerta visível no dashboard. Simular anomalia pelo Telegram também era incerto: a nota (0–1) soma volume de mensagens (0,3), tamanho médio (0,2), palavras negativas (0,3) e horário fora de 08–19h (0,2); as mensagens do bot entram na média e diluem o resultado, e o limite de produção é 0,7.
+
+**Decision**
+1. Novo gate com LLM real em `apps/conversation-router/tests/quality/test_anomaly_e2e_quality.py`, executado pelo mesmo passo de qualidade do `start.sh` (pula sem chave de LLM). O chat roda no `ConversationRouter` com a fiação de produção e relógio fixo; as conversas gravadas alimentam o handler REAL do `anomaly-detector` e depois o `dashboard-api` (`GET /api/kpis`), cada um em subprocesso (módulos `handler/service/infra` colidem entre apps).
+2. Casos: (a) chat noturno com 4 mensagens negativas de 3500 caracteres gera alerta, restringe o agendamento (FR9.4) e aparece no dashboard sem `features` (FR7.4); (b) chat comercial normal de dia não gera alerta (sem falso positivo).
+3. O teste usa limite 0,4 (parâmetro `ANOMALY_THRESHOLD`); o limite de produção (0,7) segue inalterado — com ele a demo exigiria ~20 mensagens enormes à noite, e de dia nunca dispara (máximo 0,8 sem o fator horário, na prática bem menos).
+
+**Alternatives Rejected**
+- Baixar o limite de produção só para demonstrar: decisão de produto, não de teste.
+- Mocar o LLM: o objetivo é exercitar a conversa real, incluindo o tamanho das respostas do bot que entra na média.
+

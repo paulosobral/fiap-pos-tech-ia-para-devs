@@ -65,7 +65,7 @@ agente-sdr-imobiliario/
 │   └── POSTECH - Hacka PRD Agente_SDR_Imobiliario - Fase 5.md
 ├── .aidlc/                     # Framework AI-DLC (metodologia de desenvolvimento)
 ├── documentos/                 # Documentos do projeto (PRD, enunciados)
-└── Designer.png                # Diagrama da arquitetura
+└── Designer.png                # Logo da W Levitt (ícone de prédio + balão de chat); copiado sem alteração para apps/dashboard-ui/assets/logo.png
 ```
 
 ## Como Subir Localmente

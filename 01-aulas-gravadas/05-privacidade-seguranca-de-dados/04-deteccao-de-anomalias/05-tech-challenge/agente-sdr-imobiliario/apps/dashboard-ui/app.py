@@ -78,6 +78,9 @@ def cognito_respond_new_password(
     return {"tokens": resp["AuthenticationResult"]}, None
 
 
+LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "logo.png")
+PAGE_TITLE = "Dashboard SDR Imobiliário"
+BRAND_GOLD = "#D8A858"  # mesma cor de primaryColor em .streamlit/config.toml
 SESSION_COOKIE = "sdr_session"
 SESSION_TTL_SECONDS = 12 * 3600
 
@@ -159,6 +162,19 @@ def cookie_script(value: str, max_age: int) -> str:
         "<script>window.parent.document.cookie = "
         f"'{SESSION_COOKIE}={value}; path=/; max-age={max_age}; SameSite=Strict';</script>"
     )
+
+
+def page_icon() -> Any:
+    """Favicon da aba: o logo (Streamlit usa o ícone dele se não for informado). Miniatura em
+    memória — o arquivo do logo não é alterado; sem o arquivo, cai num emoji."""
+    try:
+        from PIL import Image
+
+        icon = Image.open(LOGO_PATH)
+        icon.thumbnail((128, 128))
+        return icon
+    except Exception:
+        return "🏢"
 
 
 def fetch_kpis(
@@ -275,7 +291,7 @@ def _render_error(error: dict[str, Any], st: Any) -> None:
 def render(kpis: dict[str, Any] | None, error: dict[str, Any] | None, api_url: str) -> None:
     import streamlit as st
 
-    st.set_page_config(page_title="Dashboard SDR Imobiliário", layout="wide")
+    st.set_page_config(page_title=PAGE_TITLE, page_icon=page_icon(), layout="wide")
     if error:
         _render_error(error, st)
         return
@@ -301,8 +317,8 @@ def render(kpis: dict[str, Any] | None, error: dict[str, Any] | None, api_url: s
             column.metric(state, funnel.get(state, 0))
 
     chart_left, chart_right = st.columns(2)
-    chart_left.bar_chart(kpis.get("intents", {}), x_label="intenção", y_label="leads")
-    chart_right.bar_chart(kpis.get("route_distribution", {}), x_label="roleta", y_label="leads")
+    chart_left.bar_chart(kpis.get("intents", {}), x_label="intenção", y_label="leads", color=BRAND_GOLD)
+    chart_right.bar_chart(kpis.get("route_distribution", {}), x_label="roleta", y_label="leads", color=BRAND_GOLD)
 
     st.subheader(f"Anomalias (24h) — {len(kpis.get('alerts', []))} alerta(s)")
     alerts = kpis.get("alerts", [])
@@ -363,8 +379,10 @@ def _emit_cookie(st: Any, value: str, max_age: int) -> None:
 
 
 def _render_header(st: Any) -> None:
-    left, mid, right = st.columns([5, 3, 1])
-    left.markdown("### 🏢 W Levitt — Dashboard SDR")
+    logo, left, mid, right = st.columns([1, 5, 3, 1], vertical_alignment="center")
+    if os.path.exists(LOGO_PATH):
+        logo.image(LOGO_PATH, width=64)
+    left.markdown("### W Levitt — Dashboard SDR")
     mid.caption(f"👤 {user_label(st.session_state.get('id_token'))}")
     if right.button("Sair"):
         _vault(st).drop(st.session_state.get("_sid") or _browser_sid(st))
@@ -414,7 +432,7 @@ def _render_login(st: Any, config: dict[str, str]) -> None:
 def main() -> None:
     import streamlit as st
 
-    st.set_page_config(page_title="Dashboard SDR Imobiliário", layout="wide")
+    st.set_page_config(page_title=PAGE_TITLE, page_icon=page_icon(), layout="wide")
     api_url = os.environ.get("DASHBOARD_API_URL", "").strip()
     if not api_url:
         st.error("Configure DASHBOARD_API_URL (endpoint do DashAPI).")
