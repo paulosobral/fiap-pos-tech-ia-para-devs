@@ -1,35 +1,43 @@
-# Test Results — Build and Test (run de 2026-09-21)
+# Test Results — Build and Test (run de 2026-10-08)
 
 ## Build status
 - **compileall `apps`**: exit 0 — BUILD OK.
-- Smoke de import: realizado implicitamente pelas suítes (conftest insere `apps/<app>` no `sys.path`; handlers importados durante os testes). Nenhuma falha.
+- `terraform validate` (infra/): Success. `bash -n start.sh stop.sh`: OK.
+- Pacote do `crm-adapter` (com `mcp`): 27,7 MB compactado (< 50 MB).
 
-## Resultados por unit (comandos das instruction files, rodados 1× cada; `--cov-fail-under=80`)
-| Unit | Comando (resumido) | Exit | Passed | Failed | Skipped | Cobertura | Piso 80% |
-|---|---|---|---|---|---|---|---|
-| u1 conversation-router | `pytest apps/conversation-router/tests --cov=apps/conversation-router --cov-fail-under=80 -q` (dedupe do comando longo da instruction) | 0 | 116 | 0 | 0 | 96.51% | ✓ |
-| u2 voice-adapter | `pytest apps/voice-adapter/tests --cov=apps/voice-adapter --cov-fail-under=80 -q` | 0 | 75 | 0 | 0 | 99.88% | ✓ |
-| u3 crm-adapter | `pytest apps/crm-adapter/tests --cov=apps/crm-adapter --cov-fail-under=80 -q` | 0 | 117 | 0 | 0 | 99.59% | ✓ |
-| u4 contact-ingest | `pytest apps/contact-ingest/tests --cov=apps/contact-ingest --cov-fail-under=80 -q` | 0 | 71 | 0 | 0 | 100.00% | ✓ |
-| u5 anomaly-detector | `pytest apps/anomaly-detector/tests --cov=apps/anomaly-detector --cov-fail-under=80 -q` | 0 | 84 | 0 | 3 | 95.29% | ✓ |
-| u6 followup | `pytest apps/followup/tests --cov=apps/followup --cov-fail-under=80 -q` | 0 | 87 | 0 | 0 | 98.52% | ✓ |
-| u7 dashboard-api | `pytest apps/dashboard-api/tests --cov=apps/dashboard-api --cov-fail-under=80 -q` | 0 | 66 | 0 | 0 | 98.10% | ✓ |
-| u7 dashboard-ui | `pytest apps/dashboard-ui/tests -q` (smoke) | 0 | 8 | 0 | 2 | n/a (smoke) | ✓ |
+## Resultados por unit (unitários + integração; sem o gate LLM)
+| Unit | Passed | Failed | Skipped | Cobertura | Piso 80% |
+|---|---|---|---|---|---|
+| u1 conversation-router | 440 | 0 | 0 | 88,70% (584 linhas sem cobertura de 5166) | ✓ |
+| u2 voice-adapter | 75 | 0 | 0 | 99,38% | ✓ |
+| u3 crm-adapter | 129 | 0 | 0 | 99,13% | ✓ |
+| u4 contact-ingest | 71 | 0 | 0 | 100,00% | ✓ |
+| u5 anomaly-detector | 87 | 0 | 0 | 99,01% | ✓ |
+| u6 followup | 87 | 0 | 0 | 98,52% | ✓ |
+| u7 dashboard-api | 72 | 0 | 0 | 97,70% | ✓ |
+| u7 dashboard-ui | 38 | 0 | 0 | 80,32% (no limite) | ✓ |
 
-**Total: 624 passed, 0 failed, 5 skipped** (5 skipped: 3 em u5 — features dependentes de ambiente; 2 em dashboard-ui — smoke).
+**Total: 999 passed, 0 failed, 0 skipped** (run anterior, 2026-09-21: 624 passed, 5 skipped).
+
+## Gate de qualidade com LLM real (`apps/conversation-router/tests/quality`)
+- **40 passed, 0 failed** em 7 min 21 s (OpenRouter real, mesmo tiering de produção).
+- Cobre: resolução de referências/ordinais, navegação, listas, fotos, contato/telefone (inclusive falado), fechamento de lead ponta a ponta, tipo de imóvel diferente do pedido sem narrar bastidor/markdown, promessa de fotos, e **anomalias ponta a ponta** (chat noturno negativo → alerta + restrição → `/api/kpis`; chat normal → sem alerta).
 
 ## Integração (subset executado junto das suítes)
-- `apps/*/tests/integration/` executados como parte dos comandos acima (0 falhas), incluindo `test_anomaly_pipeline.py` (contrato U5↔U1) e `test_conversation_router.py` (fluxo ponta-a-ponta).
+- `apps/*/tests/integration/` sem falhas, incluindo `test_anomaly_pipeline.py` (contrato U5↔U1), `test_conversation_router.py` (consentimento explícito, eco de contato) e as rotas `/api/leads` do dashboard-api.
 
 ## Segurança (subset)
-- `test_pii_masker.py`, `test_guardrails.py`, `test_pii_mask.py`, stores com TTL, consent — todos dentro dos comandos acima (0 falhas).
-- Grep estático `eval/exec/os.system/subprocess` em `apps` (não-testes): **CLEAN** (nenhuma ocorrência).
+- `test_pii_masker.py`, `test_guardrails.py`, `test_pii_mask.py`, TTL, consentimento explícito (`test_conversation_polish.py`), `check_output_leak` — 0 falhas.
+- Grep estático `eval/exec/os.system/subprocess` em código de produção: **1 ocorrência permitida** — `apps/voice-adapter/service/transcriber.py` (`ffmpeg` com lista de argumentos, sem `shell=True`, com timeout).
+
+## Validação manual contra serviço real (não automatizada)
+- **HubSpot via MCP (FR11.1), 2026-10-08:** `scripts/hubspot_authorize.py` autorizou o connector (OAuth 2.1 + PKCE) e listou 29 tools; `HubSpotCrmGateway` criou o contato de teste, achou o mesmo na 2ª chamada (sem duplicar) e atualizou o estágio. Em seguida um lead real do Telegram chegou ao HubSpot após o deploy.
 
 ## Performance
-- Execução local: não executável com fidelidade (alvo dominado por latência LLM/rede). **NFR1.1/NFR1.2 → Unverified, owner: `performance-validation`** (stage agendado no plano). Benchmark local de lógica: não mandatado (op de guarda disponível em `performance-test-instructions.md`).
+- NFR1.1/NFR1.2 continuam **Unverified** (alvo dominado por latência LLM/rede), owner: `performance-validation`.
 
-## Log de evidência
-- Saídas brutas por suíte: `/tmp/opencode/bt-u{1..6}.log`, `bt-u7-api.log`, `bt-u7-ui.log`; resumo: `/tmp/opencode/bt-results.txt`.
+## Evidência
+- Saídas brutas ficaram no scratchpad da sessão (não versionadas). Reproduzir com os comandos de `build-instructions.md`.
 
 ## Loop-Back Log
-(nenhuma entrada — nenhum command failure ou fix in-stage nesta execução)
+(nenhuma entrada — nenhum command failure neste estágio. Dois achados corrigidos durante a rodada, antes do run final: falta de `import re` no handler e `dist-info` removido do pacote do crm-adapter.)

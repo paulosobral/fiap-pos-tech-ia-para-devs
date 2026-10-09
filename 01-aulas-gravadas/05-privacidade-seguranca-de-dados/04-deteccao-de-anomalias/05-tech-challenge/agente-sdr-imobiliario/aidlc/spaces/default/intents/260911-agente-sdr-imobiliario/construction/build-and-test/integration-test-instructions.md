@@ -16,7 +16,11 @@ Estratégia de teste: **Standard** (test_strategy dos contratos de code-generati
 | u4 contact-ingest | `apps/contact-ingest/tests/integration/` | Ingest de contato → persistência de sessão com TTL → trigger de análise |
 | u5 anomaly-detector | `apps/anomaly-detector/tests/integration/test_anomaly_pipeline.py` | Pipeline completo ingest→features→score→gate, incluindo contrato com a restrição consumida pela U1 |
 | u6 followup | `apps/followup/tests/integration/` | Seleção de leads para follow-up (janela/cadência) → gravação de mensagens |
-| u7 dashboard | `apps/dashboard-api/tests/integration/` | `GET /api/kpis` end-to-end (métricas agregadas a partir dos stores) |
+| u7 dashboard-api | `apps/dashboard-api/tests/integration/` + `tests/unit/test_leads.py` | `GET /api/kpis` end-to-end; `GET /api/leads` (contato decifrado do registro de PII) e `POST /api/leads/{id}/crm` (publica na fila do CRM, mesmo contrato do handoff) |
+| u7 dashboard-ui | `apps/dashboard-ui/tests/unit/test_app_smoke.py` | Login/refresh Cognito, cofre de sessão, header, tabela de leads e botão HubSpot (streamlit `AppTest`) |
+| u3 crm-adapter ↔ HubSpot | `apps/crm-adapter/tests/unit/test_hubspot_mcp.py` | `HubSpotCrmGateway`/`HubSpotMcpClient` com sessão MCP fake: busca por e-mail→telefone, create/update, rotação do refresh token |
+| u1 → u5 → u7 (LLM real) | `apps/conversation-router/tests/quality/test_anomaly_e2e_quality.py` | Chat real grava a conversa → handler real do detector gera alerta + restringe agendamento → `/api/kpis` mostra o alerta sem `features` |
+| u1 (LLM real) | `apps/conversation-router/tests/quality/test_llm_quality_gate.py` | Naturalidade e fechamento de lead ponta a ponta com roteador e humanização reais |
 
 ## Como executar
 ```bash
@@ -29,11 +33,13 @@ COVERAGE_FILE=/tmp/.cov-u1 .venv/bin/python -m pytest apps/conversation-router/t
 ```
 
 ## Metas
-- Cobertura ≥ 80% por unit (piso do contrato; atual ≥ 95.29% em todas).
+- Cobertura ≥ 80% por unit (piso do contrato; atual: u1 88,70%, dashboard-ui 80,32%, demais ≥ 97,70%).
+- Gate com LLM real: 40/40 (executado pelo `start.sh` antes do deploy).
 - 0 falhas nos boundaries listados acima; qualquer falha em integration é bloqueante do estágio.
 
 ## Gestão de dados de teste
 - Dados sintéticos nos fixtures (leads fake, CSVs temporários via `tmp_path`); nenhum dado real de cliente é usado.
 
 ## Testes não executáveis localmente (deferidos)
-- Integração real com Telegram API, OpenRouter (LLM), DynamoDB/SQS/EventBridge e HubSpot via MCP: requerem ambiente provisionado — **owner: deployment-pipeline / deployment-execution / performance-validation** (ver `cross-unit-traceability.md`).
+- Já exercitados com serviço real, **de forma manual** (2026-10-08): OpenRouter (gate de qualidade, automatizado), HubSpot via MCP (contato criado/atualizado, lead real do Telegram) e o stack na AWS (`start.sh`/`stop.sh`).
+- Ainda sem teste automatizado contra a AWS real: webhook Telegram → API Gateway → ECS, DynamoDB/SQS/EventBridge, Cognito/JWT authorizer e o botão do dashboard no navegador — **owner: deployment-execution** (smoke do `start.sh` cobre parte).
