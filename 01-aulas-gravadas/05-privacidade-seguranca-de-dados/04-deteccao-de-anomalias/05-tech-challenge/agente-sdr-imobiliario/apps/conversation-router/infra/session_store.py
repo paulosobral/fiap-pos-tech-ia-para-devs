@@ -18,10 +18,15 @@ class SessionStore:
             KeyConditionExpression="telegram_user_id = :uid",
             ExpressionAttributeValues={":uid": {"N": str(telegram_user_id)}},
         )
-        items = response.get("Items", [])
+        items = [
+            it for it in response.get("Items", [])
+            if self._scalar(it.get("telegram_user_id")) in (None, str(telegram_user_id))
+        ]
         if not items:
             return None, None
-        return self._load(self._scalar(items[0].get("lead_id")))
+        # Cada atendimento encerrado deixa um lead; o usuário volta sempre ao MAIS NOVO.
+        newest = max(items, key=lambda it: str(self._scalar(it.get("created_at")) or ""))
+        return self._load(self._scalar(newest.get("lead_id")))
 
     @staticmethod
     def _scalar(raw: Any) -> str | None:

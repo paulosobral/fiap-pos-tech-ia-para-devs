@@ -124,3 +124,8 @@ Persona acrescentada depois do gate de code-generation; as regras de negócio do
 - Financiamento (adendo da ADR-029): regra 21 do prompt de humanização (nunca oferecer; se perguntado, o corretor explica, sem números). Testes: `test_prompt_forbids_offering_financing_...` e `test_financing_is_never_offered_and_questions_go_to_the_broker` (LLM real).
 
 - Valor do imóvel escolhido (ADR-030): `handler.py` (`format_price`, `chosen_property_price`) manda `property_price` ao CRM no handoff; o orçamento não é preenchido com ele.
+
+## Mudanças posteriores — encerramento no handoff e nova conversa (ADR-031, 2026-10-10)
+
+- `handler.py`: `CLOSING_NOTE` acrescentada na transição para handoff; `_get_or_start` abre lead e sessão novos quando a última conversa está em `handoff`. `infra/session_store.py`: `get_by_telegram_user` escolhe o lead mais novo. `service/llm.py`: regra 22 (handoff = só agradecer e confirmar o corretor).
+- Testes: `tests/unit/test_conversation_closing.py`, `TestNewestLeadPerUser`, `tests/integration/fixtures.py` (DynamoDB falso filtra pelo índice) e, com LLM real, `test_handoff_reply_is_a_plain_goodbye_without_questions_or_offers`.

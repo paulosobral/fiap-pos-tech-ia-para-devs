@@ -41,7 +41,9 @@ class SessionLookup:
         items = response.get("Items", [])
         if not items:
             return None
-        return self._scalar(items[0].get("lead_id"))
+        # Cada atendimento encerrado deixa um lead; vale o mais novo (mesma regra do conversation-router).
+        newest = max(items, key=lambda it: str(self._scalar(it.get("created_at")) or ""))
+        return self._scalar(newest.get("lead_id"))
 
     @staticmethod
     def _scalar(raw: Any) -> str | None:

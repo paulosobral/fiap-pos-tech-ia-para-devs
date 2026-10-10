@@ -35,6 +35,7 @@
 6. **Nome da assistente (ADR-022):** `aws ssm get-parameter --name /sdr/bot-name` devolve `Cecília`; a primeira mensagem do bot no Telegram começa com "Olá! Meu nome é Cecília"; trocar o valor com `put-parameter` vale em até 5 minutos, sem deploy
 7. **Alertas (ADR-024):** `aws dynamodb describe-table --table-name sdr-alerts` lista o GSI `lead-index` com `IndexStatus: ACTIVE`; o log da Lambda `sdr-anomaly-detector` não tem `alert_store_unavailable`, e o X-Ray não mostra `ValidationException`
 8. **Decisão do roteador no log (ADR-025):** depois de uma conversa, o log do `conversation-router` tem uma linha `roteador: tool=... args=... pensamento=...` por mensagem; é por ela que se explica uma escolha de ferramenta inesperada
+11. **Encerramento (ADR-031):** depois de o lead passar o WhatsApp/e-mail, a resposta termina com "Seu atendimento está encerrado…"; a mensagem seguinte recebe a apresentação e o consentimento de novo, e o dashboard mostra DOIS leads para a mesma pessoa (o encerrado e o novo)
 10. **Primeira conversa (ADR-026):** depois de "oi" e "sim", a resposta pergunta compra, locação ou investimento e não lista imóveis; a primeira mensagem diz que o nome vem do perfil do Telegram e que só se pede WhatsApp ou e-mail
 9. **X-Ray sem segredos:** abrir um trace do `followup`/router e confirmar que nenhuma URL com `/bot<TOKEN>/` aparece
 

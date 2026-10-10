@@ -60,3 +60,7 @@ Tracing distribuído acrescentado depois do gate de code-generation. Nenhuma reg
 
 - Só o `botocore` é instrumentado (nunca `patch_all()`, que gravaria a URL do Telegram com o token do bot); sem o SDK, tudo vira no-op.
 - Verificado com o SDK real e um daemon UDP simulado; **não validado numa subida na AWS** (owner: `deployment-execution`).
+
+## Mudanças posteriores — lead mais novo (ADR-031, 2026-10-10)
+
+- `infra/session_store.py`: `_lead_id_by_telegram_user` escolhe o lead mais novo quando o usuário tem vários. O worker de voz não mudou.

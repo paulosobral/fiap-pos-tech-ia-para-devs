@@ -112,14 +112,16 @@ class TestConversationRouter:
         router.handle(update("olá"))
         router.flow.invoke = lambda s: {**s, "current_state": "handoff", "response": "ok"}
         router.handle(update("pode agendar"))
+        # Depois do handoff a conversa está encerrada: a próxima mensagem abre OUTRA (outro lead e sessão),
+        # então o CRM recebe 1 envio por sessão, nunca dois da mesma.
         router.handle(update("oi de novo"))
-        calls = sqs.send_message.call_args_list
         crm_bodies = [
             json.loads(c.kwargs["MessageBody"])
-            for c in calls
+            for c in sqs.send_message.call_args_list
             if "lead_data" in json.loads(c.kwargs["MessageBody"])
         ]
-        assert len(crm_bodies) == 1
+        assert len(crm_bodies) == 2
+        assert len({b["session_id"] for b in crm_bodies}) == 2 and len({b["lead_id"] for b in crm_bodies}) == 2
 
     def test_production_handler_sends_telegram_reply(self, monkeypatch):
         monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "bot-token")

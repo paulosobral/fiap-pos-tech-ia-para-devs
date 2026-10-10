@@ -614,3 +614,24 @@ Perguntar o orçamento ao lead de forma natural antes do handoff ficou de fora, 
 **Consequences**
 - Corretor e dashboard veem os dois valores sem ambiguidade; o score não é distorcido.
 - Sem preço numérico no catálogo, cai no `price_text`; sem favorito ou preço, fica vazio.
+
+## ADR-031: Atendimento Encerrado no Handoff e Nova Conversa a Cada Retorno
+
+**Context**
+Cada pessoa tinha um lead e uma conversa para sempre. Depois de passar o WhatsApp ou e-mail (handoff) a mesma conversa continuava: no chat de 10/10 o bot, já com o contato captado, ainda perguntava "quer que eu te envie mais fotos?". O responsável pediu que, após captar o lead, o bot informe que o atendimento terminou e que qualquer volta comece sempre uma nova conversa. Medição com a LLM real no estágio handoff: 7 de 12 respostas ainda faziam pergunta e 6 de 12 ofereciam fotos, imóveis ou ajuda.
+
+**Decision**
+1. **Encerramento**: na transição para `handoff` o handler acrescenta, de forma determinística, depois do texto da resposta, "Seu atendimento está encerrado: um corretor vai falar com você pelo contato que você passou. Se precisar de outra busca, é só me chamar que começamos uma nova conversa." (só na transição, uma vez). O prompt de humanização (regra 22) manda, no estágio handoff, apenas agradecer e confirmar o corretor, sem perguntas nem ofertas.
+2. **Nova conversa**: se a última conversa do usuário está em `handoff`, a mensagem seguinte cria um lead e uma sessão **novos** (`ConversationRouter._get_or_start`), recomeçando pela apresentação e pelo consentimento. O lead anterior permanece intacto no banco, no dashboard e no HubSpot (cada atendimento é um lead). Recusa de consentimento (`followup`) não encerra: continua a mesma conversa.
+3. **Vários leads por pessoa**: `SessionStore.get_by_telegram_user` e o `SessionLookup` do `voice-adapter` passam a escolher o lead **mais novo** (`created_at`) entre os do usuário, porque o índice por usuário não garante ordem. O DynamoDB falso dos testes passou a filtrar pelo valor consultado, como o real.
+
+**Evidência (LLM real)**: no handoff, perguntas 7/12 → 0/16 e ofertas 6/12 → 0/16; teste permanente `test_handoff_reply_is_a_plain_goodbye_without_questions_or_offers` (6/6).
+
+**Consequences**
+- Um "obrigado" depois do encerramento abre uma conversa nova e recebe a apresentação e o pedido de consentimento; é o custo de "sempre uma nova conversa". Mensagens e consentimento são por atendimento.
+- Contato, nome e consentimento são por sessão: o lead que volta é perguntado de novo (o HubSpot reconhece o mesmo contato por e-mail ou telefone e atualiza em vez de duplicar).
+- **Em aberto**: o `followup` ainda pode reativar leads já em `handoff` (não filtra o estado); não foi alterado.
+
+**Alternatives Rejected**
+- Manter a conversa e só mudar o texto: contraria o pedido e mistura dois atendimentos num lead.
+- Pular o consentimento na nova conversa: o consentimento é por atendimento; decisão reversível se o responsável preferir.

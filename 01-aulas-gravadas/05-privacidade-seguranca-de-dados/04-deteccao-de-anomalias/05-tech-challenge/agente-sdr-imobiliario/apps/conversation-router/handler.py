@@ -89,6 +89,12 @@ def chosen_property_price(context: dict[str, Any]) -> str | None:
     return None
 
 
+CLOSING_NOTE = (
+    "Seu atendimento está encerrado: um corretor vai falar com você pelo contato que você passou. "
+    "Se precisar de outra busca, é só me chamar que começamos uma nova conversa."
+)
+
+
 def _crm_text(value: Any) -> str | None:
     """O contrato do CRM (Contrato 4) só aceita texto ou null; a LLM devolve números (1000)."""
     if value in (None, ""):
@@ -282,7 +288,7 @@ class ConversationRouter:
         if telegram_user_id is None:
             return {"statusCode": 400, "body": json.dumps({"error": "invalid payload"})}
 
-        lead, conversation, created = self.store.get_or_create(telegram_user_id)
+        lead, conversation, created = self._get_or_start(telegram_user_id)
         logger.info(
             "sessao: created=%s telegram_user_id=%s lead_id=%s session_id=%s",
             created, telegram_user_id, lead.lead_id, conversation.session_id,
@@ -497,6 +503,16 @@ class ConversationRouter:
             "body": json.dumps({"ok": True, "lead_id": lead_id, "stage": applied}),
         }
 
+    def _get_or_start(self, telegram_user_id: int) -> tuple[Any, Any, bool]:
+        """Conversa aberta do usuário; se a última foi encerrada (handoff), abre uma NOVA, com lead e sessão
+        novos. O lead anterior continua no dashboard e no CRM, e o atendimento recomeça do início."""
+        lead, conversation, created = self.store.get_or_create(telegram_user_id)
+        if not created and conversation.current_state == "handoff":
+            logger.info("sessao: conversa %s encerrada (handoff); abrindo nova", conversation.session_id)
+            lead, conversation = self.store.create(telegram_user_id)
+            created = True
+        return lead, conversation, created
+
     def _process_lead_message(
         self, lead: Any, conversation: Any, text: str
     ) -> tuple[str, str, list[str]]:
@@ -596,6 +612,8 @@ class ConversationRouter:
             confirmation = _contact_confirmation(contact_before, contact)
             if confirmation:
                 response = f"{response}\n\n{confirmation}"
+            if state == "handoff" and conversation.current_state != "handoff":
+                response = f"{response}\n\n{CLOSING_NOTE}"
         conversation.context = flow_state.get("context", conversation.context)
         response_images = flow_state.get("response_images") or []
         return response, state, response_images

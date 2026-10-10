@@ -461,6 +461,7 @@ O `sales-flow` evoluiu para um **agente single-step com tool-calling**: uma úni
 - **Decisão de fechar (ADR-028)**: quando o lead quer fechar/comprar/alugar um imóvel exibido, a LLM o encaminha ao corretor e grava o imóvel escolhido; sem contato, o bot pede o WhatsApp ou e-mail DO LEAD e nunca oferece o contato do corretor. O roteador decide pela última mensagem (o histórico é contexto já atendido)
 - **Fotos e fatos (ADR-029)**: a humanização sabe quantas fotos o imóvel tem e quantas já foram enviadas; ao pedir "mais fotos" de um imóvel sem mais fotos, o bot diz que essas são as fotos disponíveis em vez de prometer. O preço ou aluguel nunca é apresentado como IPTU ou taxa. O bot não tem dados de financiamento ou condições de pagamento: não oferece o assunto e, se o lead perguntar, diz que o corretor explica.
 - **Valor do imóvel escolhido (ADR-030)**: o orçamento só é preenchido com o que o lead informa; o preço do imóvel que ele escolheu vai em campo separado ("Valor do imóvel") no dashboard, na mensagem ao CRM e no HubSpot.
+- **Encerramento e nova conversa (ADR-031)**: ao captar o contato e encaminhar ao corretor, o bot avisa que o atendimento foi encerrado e que, se o lead voltar, começa uma nova conversa; a mensagem seguinte ao handoff abre um lead e uma sessão novos (cada atendimento é um lead; o anterior permanece no dashboard e no HubSpot). No handoff o bot não faz perguntas nem oferece fotos ou imóveis.
 - **6 estados no grafo**: `greeting | elicitation | conversation | scheduling | handoff | followup`
 - **Gates 100% em código**: consentimento LGPD (o texto do pedido é fixo e o aceite só é gravado com concordância clara; quem interpreta a resposta é a LLM, lendo a conversa, ADR-027); telefone ou e-mail antes de agendar/falar com corretor; score ≥70 para qualificar; restrição de agendamento por anomalia; no máximo 1 pergunta de critério por conversa
 - **Fallback**: tool inválida / exceção do LLM → regex + FSM determinístico
@@ -701,7 +702,7 @@ Isso executa `terraform destroy` e remove todos os recursos AWS (inclusive os da
 | AWS X-Ray | R$ 0 (plano gratuito de 100 mil traces/mês; o `anomaly-detector`, a cada minuto, consome ~43 mil) |
 | **Total POC (sem ECS)** | **~R$ 15-25/mês** |
 
-> O custo dominante da POC é o ECS Fargate, não a LLM. O gate de qualidade (61 testes com LLM real) gasta créditos do OpenRouter a cada deploy. A métrica de custo da LLM **não** é exibida no dashboard (nenhum componente a emitia); o acompanhamento é feito no painel do OpenRouter.
+> O custo dominante da POC é o ECS Fargate, não a LLM. O gate de qualidade (62 testes com LLM real) gasta créditos do OpenRouter a cada deploy. A métrica de custo da LLM **não** é exibida no dashboard (nenhum componente a emitia); o acompanhamento é feito no painel do OpenRouter.
 
 ---
 
@@ -752,18 +753,18 @@ python -m pytest apps/conversation-router/tests/quality -q
 
 | Aplicação | Testes | Cobertura |
 |---|---|---|
-| conversation-router | 552 | 89,5% |
-| voice-adapter | 75 | 99,4% |
+| conversation-router | 561 | 89,6% |
+| voice-adapter | 76 | 99,4% |
 | crm-adapter | 141 | 99,1% |
 | contact-ingest | 77 | 99,9% |
 | anomaly-detector | 93 | 99,0% |
 | followup | 93 | 98,5% |
 | dashboard-api | 86 | 97,9% |
 | dashboard-ui | 49 | 83,3% |
-| **Total** | **1166** | todos ≥ 80% |
+| **Total** | **1176** | todos ≥ 80% |
 | Guarda de infra (`tests/infra`, índices DynamoDB × Terraform) | 4 | — |
 
-**Gate de qualidade com LLM real: 61 testes**, executados pelo `start.sh` antes do deploy: referências a imóveis ("o primeiro", "esse aí"), fotos, contato e telefone falado, piso e teto de orçamento, trava de promessas, fechamento de lead ponta a ponta e anomalias ponta a ponta (chat → detector → dashboard).
+**Gate de qualidade com LLM real: 62 testes**, executados pelo `start.sh` antes do deploy: referências a imóveis ("o primeiro", "esse aí"), fotos, contato e telefone falado, piso e teto de orçamento, trava de promessas, fechamento de lead ponta a ponta e anomalias ponta a ponta (chat → detector → dashboard).
 
 **Validado à mão contra serviços reais:** HubSpot via MCP (contato criado, localizado sem duplicar e atualizado; lead real do Telegram chegando ao CRM) e a infra AWS recriada várias vezes pelo `start.sh`/`stop.sh`.
 

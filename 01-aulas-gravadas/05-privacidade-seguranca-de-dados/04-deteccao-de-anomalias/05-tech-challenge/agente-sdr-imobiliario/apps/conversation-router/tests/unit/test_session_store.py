@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock
 
 from infra.session_store import SessionStore
+from tests.integration.fixtures import FakeDynamo
 
 
 def make_client(lead_item=None, conv_items=None):
@@ -120,3 +121,24 @@ class TestSessionStore:
     def test_get_conversation_missing_returns_none(self):
         store = SessionStore(make_client(), "t")
         assert store.get_conversation("l1", "nope") is None
+
+
+class TestNewestLeadPerUser:
+    def test_with_several_leads_for_the_same_telegram_user_returns_the_newest(self):
+        store = SessionStore(FakeDynamo(), "t")
+        first, _ = store.create(77)
+        second, _ = store.create(77)
+        first.created_at = "2026-10-10T10:00:00+00:00"
+        second.created_at = "2026-10-10T11:00:00+00:00"
+        store.save_lead(first)
+        store.save_lead(second)
+        lead, conversation = store.get_by_telegram_user(77)
+        assert lead.lead_id == second.lead_id and conversation.lead_id == second.lead_id
+
+    def test_other_users_leads_are_never_returned(self):
+        store = SessionStore(FakeDynamo(), "t")
+        store.create(1)
+        mine, _ = store.create(2)
+        lead, _ = store.get_by_telegram_user(2)
+        assert lead.lead_id == mine.lead_id
+        assert store.get_by_telegram_user(3) == (None, None)

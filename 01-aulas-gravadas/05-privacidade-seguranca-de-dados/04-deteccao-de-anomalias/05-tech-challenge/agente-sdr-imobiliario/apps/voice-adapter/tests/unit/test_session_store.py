@@ -77,3 +77,14 @@ class TestSessionLookup:
         store = SessionLookup(client, "sdr-sessions")
         store.get_session("s1", telegram_user_id=42)
         assert client.query.call_args.kwargs["IndexName"] == "telegram-user-index"
+
+
+def test_with_several_leads_for_the_same_user_the_newest_one_is_used():
+    old = {**PROFILE_ITEM, "lead_id": {"S": "old"}, "PK": {"S": "LEAD#old"}, "created_at": {"S": "2026-10-09T10:00:00+00:00"}}
+    new = {**PROFILE_ITEM, "lead_id": {"S": "new"}, "PK": {"S": "LEAD#new"}, "created_at": {"S": "2026-10-10T10:00:00+00:00"}}
+    client = make_client(items=[new, old], conv_item=CONV_ITEM)  # a ordem do índice não é garantida
+    SessionLookup(client, "sdr-sessions").get_session("s1", telegram_user_id=42)
+    assert client.get_item.call_args.kwargs["Key"]["PK"] == {"S": "LEAD#new"}
+    client = make_client(items=[old, new], conv_item=CONV_ITEM)
+    SessionLookup(client, "sdr-sessions").get_session("s1", telegram_user_id=42)
+    assert client.get_item.call_args.kwargs["Key"]["PK"] == {"S": "LEAD#new"}

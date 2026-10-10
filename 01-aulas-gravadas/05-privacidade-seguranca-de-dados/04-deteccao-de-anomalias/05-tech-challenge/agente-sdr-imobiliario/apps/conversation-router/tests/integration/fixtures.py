@@ -18,9 +18,20 @@ class FakeDynamo:
         self.items = {}
 
     def query(self, TableName, IndexName=None, **kw):
+        """Fiel ao índice: filtra pelo valor consultado (lead_id ou telegram_user_id), como o DynamoDB real."""
+        values = kw.get("ExpressionAttributeValues") or {}
+        wanted = next(iter(values.values()), {})
+        wanted_value = next(iter(wanted.values()), None) if wanted else None
         if IndexName == "lead-index":
-            return {"Items": [item for item in self.items.values() if item["SK"]["S"].startswith("CONV#")]}
-        return {"Items": [item for item in self.items.values() if item["SK"]["S"] == "PROFILE"]}
+            return {"Items": [
+                item for item in self.items.values()
+                if item["SK"]["S"].startswith("CONV#") and (wanted_value is None or item["PK"]["S"] == f"LEAD#{wanted_value}")
+            ]}
+        return {"Items": [
+            item for item in self.items.values()
+            if item["SK"]["S"] == "PROFILE"
+            and (wanted_value is None or str(next(iter(item.get("telegram_user_id", {"N": wanted_value}).values()))) == str(wanted_value))
+        ]}
 
     def get_item(self, TableName, Key):
         pk = Key["PK"]["S"]

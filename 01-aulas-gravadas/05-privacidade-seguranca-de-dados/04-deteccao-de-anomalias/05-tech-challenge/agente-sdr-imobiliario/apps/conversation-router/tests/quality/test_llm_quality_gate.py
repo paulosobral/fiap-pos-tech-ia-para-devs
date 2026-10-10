@@ -626,3 +626,20 @@ def test_financing_is_never_offered_and_questions_go_to_the_broker():
                                [prop], api_key=API_KEY, last_tool="provide_info", conversation_history=history).lower()
     assert "corretor" in asked, asked
     assert not re.search(r"\d+\s?%|\d+x|entrada de|taxa de \d|juros de", asked), asked
+
+
+def test_handoff_reply_is_a_plain_goodbye_without_questions_or_offers():
+    """Chat real de 10/10: depois de passar o WhatsApp o bot ainda perguntava "quer que eu te envie mais fotos?".
+    No handoff o atendimento termina (ADR-031): agradece e confirma o corretor, sem pergunta nem oferta."""
+    import re
+
+    prop = {**_FICHA, "mode": "purchase", "price_text": "R$ 850 mil", "images": ["a"]}
+    history = [{"role": "user", "content": "quero fechar esse"}, {"role": "assistant", "content": "Qual o seu WhatsApp ou e-mail?"},
+               {"role": "user", "content": "whatsapp: (11) 97991-8262"}]
+    reply = llm.generate_reply("whatsapp: (11) 97991-8262", "Resumo enviado ao corretor. Obrigado pelo contato!", {"intent": "purchase"},
+                               [prop], api_key=API_KEY, last_tool="request_human", conversation_stage="handoff",
+                               favorite_property=prop["title"], conversation_history=history,
+                               contact_channels={"telefone": True, "email": False}).lower()
+    assert "?" not in reply, reply
+    assert not re.search(r"foto|outr[ao]s? (im[óo]vel|op[cç])|quer que eu|posso (te )?(enviar|mostrar|ajudar)", reply), reply
+    assert "corretor" in reply, reply
