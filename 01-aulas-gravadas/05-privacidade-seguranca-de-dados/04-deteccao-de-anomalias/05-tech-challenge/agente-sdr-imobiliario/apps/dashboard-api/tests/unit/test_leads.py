@@ -147,3 +147,58 @@ def test_send_to_crm_carries_the_chosen_property():
     body = _json.loads(sqs.sent[0]["MessageBody"])
     assert body["lead_data"]["region"] == "São Caetano do Sul"
     assert body["lead_data"]["property"] == "Apartamento à venda, Boa Vista - São Caetano do Sul/SP"
+
+
+class TestChosenPropertyPrice:
+    def test_exact_brazilian_format_for_sale_and_rent(self):
+        from service.leads import format_price
+
+        assert format_price(850000, "purchase", "R$ 0.8 milhão") == "R$ 850.000"
+        assert format_price(4500, "rent", "R$ 4.5 mil/mês") == "R$ 4.500/mês"
+        assert format_price(1250000.0, None) == "R$ 1.250.000"
+
+    def test_falls_back_to_the_catalog_text_or_nothing(self):
+        from service.leads import format_price
+
+        assert format_price(None, "purchase", "R$ 0.8 milhão") == "R$ 0.8 milhão"
+        assert format_price(0, "purchase", None) is None and format_price("abc", "rent") is None
+
+    def test_price_comes_from_the_favorite_among_the_shown_properties(self):
+        from service.leads import chosen_property_price
+
+        ctx = {"favorite_property": "Boa Vista", "properties": [
+            {"title": "Outro", "price": 100000, "mode": "purchase"},
+            {"title": "Boa Vista", "price": 700000, "mode": "purchase", "price_text": "R$ 0.7 milhão"}]}
+        assert chosen_property_price(ctx) == "R$ 700.000"
+        assert chosen_property_price({"favorite_property": "Inexistente", "properties": ctx["properties"]}) is None
+        assert chosen_property_price({"properties": ctx["properties"]}) is None
+
+    def test_lead_row_and_crm_message_carry_the_price(self):
+        import json as _json
+
+        class Conv(FakeConversations):
+            def get_lead_profiles(self):
+                return {"L9": {"lead_id": "L9", "updated_at": "2026-10-10T10:00:00+00:00"}}
+
+            def list_conversations(self):
+                return [{"lead_id": "L9", "session_id": "S9", "created_at": "2026-10-10T09:00:00+00:00", "current_state": "handoff",
+                         "context": {"favorite_property": "Boa Vista", "lead_info": {"intent": "purchase"},
+                                     "properties": [{"title": "Boa Vista", "price": 700000, "mode": "purchase"}]}}]
+
+        sqs = FakeSqs()
+        service = LeadService(Conv(), FakePii(), sqs, "http://queue", now_fn=lambda: NOW)
+        assert service.list_leads()[0]["property_price"] == "R$ 700.000"
+        service.send_to_crm("L9")
+        assert _json.loads(sqs.sent[0]["MessageBody"])["lead_data"]["property_price"] == "R$ 700.000"
+
+    def test_budget_stays_empty_when_the_lead_never_gave_one(self):
+        class Conv(FakeConversations):
+            def get_lead_profiles(self):
+                return {"L9": {"lead_id": "L9"}}
+
+            def list_conversations(self):
+                return [{"lead_id": "L9", "session_id": "S9", "created_at": "2026-10-10T09:00:00+00:00",
+                         "context": {"favorite_property": "Boa Vista", "properties": [{"title": "Boa Vista", "price": 700000}]}}]
+
+        row = LeadService(Conv(), FakePii(), FakeSqs(), "http://queue", now_fn=lambda: NOW).list_leads()[0]
+        assert row["budget"] is None and row["property_price"] == "R$ 700.000"

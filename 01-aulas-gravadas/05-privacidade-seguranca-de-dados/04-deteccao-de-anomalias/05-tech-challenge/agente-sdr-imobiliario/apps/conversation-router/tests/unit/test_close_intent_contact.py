@@ -79,3 +79,25 @@ def test_crm_message_carries_the_chosen_property_and_region():
 def test_rental_price_is_never_presented_as_iptu_rule_in_the_prompt():
     prompt = llm._REPLY_SYSTEM_PROMPT
     assert "NUNCA é IPTU, condomínio ou outra taxa" in prompt and "sem citar nenhum valor" in prompt
+
+
+def test_crm_message_carries_the_chosen_property_price_and_budget_is_not_filled_with_it():
+    import json
+    from tests.integration.fixtures import make_router, telegram_update as update
+
+    router, sqs, _ = make_router(with_pii=True)
+    router.handle(update("oi", update_id=1))
+    router.handle(update("sim", update_id=2))
+    router.handle(update("meu telefone é 11979918262", update_id=3))
+
+    def fake_flow(state):
+        ctx = dict(state.get("context") or {})
+        ctx["favorite_property"] = "Apartamento Boa Vista"
+        ctx["properties"] = [{"title": "Apartamento Boa Vista", "price": 850000, "mode": "purchase", "price_text": "R$ 0.8 milhão"}]
+        ctx["lead_info"] = {"intent": "purchase"}
+        return {**state, "context": ctx, "current_state": "handoff", "response": "ok"}
+
+    router.flow.invoke = fake_flow
+    router.handle(update("quero fechar", update_id=4))
+    data = [json.loads(c.kwargs["MessageBody"]) for c in sqs.send_message.call_args_list if "lead_data" in c.kwargs.get("MessageBody", "")][-1]["lead_data"]
+    assert data["property_price"] == "R$ 850.000" and data["budget"] is None

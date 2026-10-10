@@ -324,6 +324,7 @@ _LEAD_COLUMNS = (
     ("region", "Região"),
     ("deadline", "Prazo"),
     ("property", "Imóvel escolhido"),
+    ("property_price", "Valor do imóvel"),
     ("state", "Estado"),
     ("updated_at", "Atualizado"),
 )

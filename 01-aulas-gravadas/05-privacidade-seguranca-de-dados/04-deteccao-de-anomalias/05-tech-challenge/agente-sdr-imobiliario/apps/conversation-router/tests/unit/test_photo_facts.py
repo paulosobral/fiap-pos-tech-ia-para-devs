@@ -84,3 +84,8 @@ def test_flow_hands_the_counts_to_the_reply_generator():
     flow.invoke({"current_state": "conversation", "message": "tem mais fotos desse?", "context": ctx, "properties": shown,
                  "lead_info": {"intent": "purchase"}})
     assert seen["properties"][0]["_fotos_enviadas"] == 1
+
+
+def test_prompt_forbids_offering_financing_and_sends_questions_to_the_broker():
+    rule = llm._REPLY_SYSTEM_PROMPT
+    assert "NUNCA ofereça esse assunto" in rule and "o corretor explica" in rule and "sem citar números" in rule

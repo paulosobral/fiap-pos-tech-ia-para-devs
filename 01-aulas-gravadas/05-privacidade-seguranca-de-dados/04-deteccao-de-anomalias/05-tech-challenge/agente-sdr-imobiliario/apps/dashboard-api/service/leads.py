@@ -10,6 +10,30 @@ LEADS_LIMIT = 200
 _UNNAMED = "Lead (nome não informado)"
 
 
+def format_price(price: Any, mode: Any = None, fallback: Any = None) -> str | None:
+    """Preço exato em reais, no formato brasileiro: R$ 850.000 ou R$ 4.500/mês. O `price_text` do catálogo
+    é arredondado ("R$ 0.8 milhão"), por isso só serve de plano B quando não há preço numérico."""
+    try:
+        value = float(price)
+    except (TypeError, ValueError):
+        value = 0.0
+    if value <= 0:
+        return str(fallback) if fallback not in (None, "") else None
+    text = f"R$ {value:,.0f}".replace(",", ".")
+    return f"{text}/mês" if str(mode or "").lower() == "rent" else text
+
+
+def chosen_property_price(context: dict[str, Any]) -> str | None:
+    """Valor do imóvel que o lead escolheu: procura o favorito entre os imóveis já exibidos na conversa."""
+    title = context.get("favorite_property")
+    if not title:
+        return None
+    for prop in context.get("properties") or []:
+        if isinstance(prop, dict) and prop.get("title") == title:
+            return format_price(prop.get("price"), prop.get("mode"), prop.get("price_text"))
+    return None
+
+
 class LeadNotFoundError(Exception):
     pass
 
@@ -79,6 +103,7 @@ class LeadService:
                 "area": row["area"],
                 "region": row["region"],
                 "property": row["property"],
+                "property_price": row["property_price"],
             },
         }
         self._sqs.send_message(QueueUrl=self._queue, MessageBody=json.dumps(message))
@@ -110,6 +135,7 @@ class LeadService:
             "region": field("region"),
             "deadline": field("deadline"),
             "property": _text(context.get("favorite_property")),
+            "property_price": chosen_property_price(context),
             "state": _text((conversation or {}).get("current_state")),
             "created_at": _text(profile.get("created_at")),
             "updated_at": _text(profile.get("updated_at")) or _text(profile.get("created_at")),

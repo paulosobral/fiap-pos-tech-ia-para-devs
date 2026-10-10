@@ -121,3 +121,6 @@ Persona acrescentada depois do gate de code-generation; as regras de negócio do
 - `sales_flow.py`: `_with_photo_counts` (em detalhe de 1–2 imóveis, quantas fotos já foram enviadas) e `_PHOTO_CLAIM_RE` reconhece "envio/mando agora mais fotos".
 - `llm.py`: payload com `fotos_total`/`fotos_restantes` (só detalhe); regra 10 (todas as fotos disponíveis, sem prometer mais) e regra 3 (aluguel/preço nunca é IPTU ou taxa).
 - Testes: `tests/unit/test_photo_facts.py` e, no gate com LLM real, `test_more_photos_when_the_property_has_only_one_says_so_instead_of_promising`.
+- Financiamento (adendo da ADR-029): regra 21 do prompt de humanização (nunca oferecer; se perguntado, o corretor explica, sem números). Testes: `test_prompt_forbids_offering_financing_...` e `test_financing_is_never_offered_and_questions_go_to_the_broker` (LLM real).
+
+- Valor do imóvel escolhido (ADR-030): `handler.py` (`format_price`, `chosen_property_price`) manda `property_price` ao CRM no handoff; o orçamento não é preenchido com ele.

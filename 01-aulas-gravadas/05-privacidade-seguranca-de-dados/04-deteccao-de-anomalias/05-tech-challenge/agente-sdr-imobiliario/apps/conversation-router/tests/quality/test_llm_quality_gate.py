@@ -608,3 +608,21 @@ def test_more_photos_when_the_property_has_only_one_says_so_instead_of_promising
     ).lower()
     assert not _claims_photos(reply), reply
     assert re.search(r"todas|única|unica|só|apenas|somente|dispon[ií]veis|não (tenho|há|temos) mais", reply), reply
+
+
+def test_financing_is_never_offered_and_questions_go_to_the_broker():
+    """Chat real de 10/10: o bot perguntou "quer saber sobre condições de financiamento?" sem ter essa informação.
+    Ele não oferece o assunto; se o lead perguntar, remete ao corretor sem inventar número."""
+    import re
+
+    fin = re.compile(r"financ|parcel|entrada|condi[cç][õo]es de pagamento|consórcio|fgts", re.I)
+    prop = {**_FICHA, "mode": "purchase", "price_text": "R$ 850 mil", "disponibilidade": "disponível"}
+    history = [{"role": "user", "content": "tem mais fotos desse?"},
+               {"role": "assistant", "content": "Essas são todas as fotos disponíveis. Quer agendar uma visita?"}]
+    offered = llm.generate_reply("sim", f"{prop['title']} — {prop['region']}. Quer que eu compare com outra opção?", {"intent": "purchase"},
+                                 [prop], api_key=API_KEY, last_tool="property_detail", conversation_history=history)
+    assert not fin.search(offered), offered
+    asked = llm.generate_reply("quais as condições de financiamento?", f"{prop['title']} — {prop['region']}.", {"intent": "purchase"},
+                               [prop], api_key=API_KEY, last_tool="provide_info", conversation_history=history).lower()
+    assert "corretor" in asked, asked
+    assert not re.search(r"\d+\s?%|\d+x|entrada de|taxa de \d|juros de", asked), asked

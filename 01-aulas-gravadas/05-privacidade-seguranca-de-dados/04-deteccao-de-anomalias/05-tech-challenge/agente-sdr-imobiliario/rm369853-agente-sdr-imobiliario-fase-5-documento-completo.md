@@ -459,7 +459,8 @@ O `sales-flow` evoluiu para um **agente single-step com tool-calling**: uma úni
 - **Validação em código**: fuzzy de favorito apenas sobre imóveis já exibidos; gate de evidência de visita
 - **Dados de busca e observabilidade do roteador (ADR-025/026)**: dados de busca que a LLM manda só em `arguments` (ex.: região) são promovidos ao `lead_info`; cada decisão do roteador (ferramenta, argumentos, raciocínio) vai para o log `roteador:`; nas fases de consentimento e de pergunta de intenção a humanização não recebe imóveis guardados de turnos anteriores (a LLM saía do roteiro e listava opções antes de perguntar compra, locação ou investimento)
 - **Decisão de fechar (ADR-028)**: quando o lead quer fechar/comprar/alugar um imóvel exibido, a LLM o encaminha ao corretor e grava o imóvel escolhido; sem contato, o bot pede o WhatsApp ou e-mail DO LEAD e nunca oferece o contato do corretor. O roteador decide pela última mensagem (o histórico é contexto já atendido)
-- **Fotos e fatos (ADR-029)**: a humanização sabe quantas fotos o imóvel tem e quantas já foram enviadas; ao pedir "mais fotos" de um imóvel sem mais fotos, o bot diz que essas são as fotos disponíveis em vez de prometer. O preço ou aluguel nunca é apresentado como IPTU ou taxa.
+- **Fotos e fatos (ADR-029)**: a humanização sabe quantas fotos o imóvel tem e quantas já foram enviadas; ao pedir "mais fotos" de um imóvel sem mais fotos, o bot diz que essas são as fotos disponíveis em vez de prometer. O preço ou aluguel nunca é apresentado como IPTU ou taxa. O bot não tem dados de financiamento ou condições de pagamento: não oferece o assunto e, se o lead perguntar, diz que o corretor explica.
+- **Valor do imóvel escolhido (ADR-030)**: o orçamento só é preenchido com o que o lead informa; o preço do imóvel que ele escolheu vai em campo separado ("Valor do imóvel") no dashboard, na mensagem ao CRM e no HubSpot.
 - **6 estados no grafo**: `greeting | elicitation | conversation | scheduling | handoff | followup`
 - **Gates 100% em código**: consentimento LGPD (o texto do pedido é fixo e o aceite só é gravado com concordância clara; quem interpreta a resposta é a LLM, lendo a conversa, ADR-027); telefone ou e-mail antes de agendar/falar com corretor; score ≥70 para qualificar; restrição de agendamento por anomalia; no máximo 1 pergunta de critério por conversa
 - **Fallback**: tool inválida / exceção do LLM → regex + FSM determinístico
@@ -700,7 +701,7 @@ Isso executa `terraform destroy` e remove todos os recursos AWS (inclusive os da
 | AWS X-Ray | R$ 0 (plano gratuito de 100 mil traces/mês; o `anomaly-detector`, a cada minuto, consome ~43 mil) |
 | **Total POC (sem ECS)** | **~R$ 15-25/mês** |
 
-> O custo dominante da POC é o ECS Fargate, não a LLM. O gate de qualidade (60 testes com LLM real) gasta créditos do OpenRouter a cada deploy. A métrica de custo da LLM **não** é exibida no dashboard (nenhum componente a emitia); o acompanhamento é feito no painel do OpenRouter.
+> O custo dominante da POC é o ECS Fargate, não a LLM. O gate de qualidade (61 testes com LLM real) gasta créditos do OpenRouter a cada deploy. A métrica de custo da LLM **não** é exibida no dashboard (nenhum componente a emitia); o acompanhamento é feito no painel do OpenRouter.
 
 ---
 
@@ -751,18 +752,18 @@ python -m pytest apps/conversation-router/tests/quality -q
 
 | Aplicação | Testes | Cobertura |
 |---|---|---|
-| conversation-router | 550 | 89,6% |
+| conversation-router | 552 | 89,5% |
 | voice-adapter | 75 | 99,4% |
-| crm-adapter | 140 | 99,1% |
+| crm-adapter | 141 | 99,1% |
 | contact-ingest | 77 | 99,9% |
 | anomaly-detector | 93 | 99,0% |
 | followup | 93 | 98,5% |
-| dashboard-api | 81 | 97,8% |
+| dashboard-api | 86 | 97,9% |
 | dashboard-ui | 49 | 83,3% |
-| **Total** | **1152** | todos ≥ 80% |
+| **Total** | **1166** | todos ≥ 80% |
 | Guarda de infra (`tests/infra`, índices DynamoDB × Terraform) | 4 | — |
 
-**Gate de qualidade com LLM real: 60 testes**, executados pelo `start.sh` antes do deploy: referências a imóveis ("o primeiro", "esse aí"), fotos, contato e telefone falado, piso e teto de orçamento, trava de promessas, fechamento de lead ponta a ponta e anomalias ponta a ponta (chat → detector → dashboard).
+**Gate de qualidade com LLM real: 61 testes**, executados pelo `start.sh` antes do deploy: referências a imóveis ("o primeiro", "esse aí"), fotos, contato e telefone falado, piso e teto de orçamento, trava de promessas, fechamento de lead ponta a ponta e anomalias ponta a ponta (chat → detector → dashboard).
 
 **Validado à mão contra serviços reais:** HubSpot via MCP (contato criado, localizado sem duplicar e atualizado; lead real do Telegram chegando ao CRM) e a infra AWS recriada várias vezes pelo `start.sh`/`stop.sh`.
 

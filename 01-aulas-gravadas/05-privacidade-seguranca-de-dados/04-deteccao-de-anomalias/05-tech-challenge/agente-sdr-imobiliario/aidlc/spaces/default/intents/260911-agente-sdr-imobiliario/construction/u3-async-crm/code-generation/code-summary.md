@@ -78,3 +78,5 @@ Tracing distribuído acrescentado depois do gate de code-generation. Nenhuma reg
 ## Mudanças posteriores — região e imóvel escolhido (ADR-028, 2026-10-10)
 
 - `crm_adapter.py`: aceita `region` e `property` (texto ou null) e os repassa; `hubspot_mcp.py`: o resumo do contato mostra "Região" e "Imóvel escolhido". O CSV simulado não muda.
+
+- Valor do imóvel escolhido (ADR-030): `crm_adapter.py` aceita `property_price` e `hubspot_mcp.py` o mostra no resumo do contato, separado do orçamento.

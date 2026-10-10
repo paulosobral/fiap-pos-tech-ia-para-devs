@@ -196,3 +196,8 @@ def test_hubspot_summary_keeps_unknown_values():
 def test_hubspot_summary_includes_region_and_the_chosen_property():
     summary = HubSpotCrmGateway._summary({**LEAD, "region": "São Caetano do Sul", "property": "Apartamento à venda, Boa Vista"})
     assert "Região: São Caetano do Sul" in summary and "Imóvel escolhido: Apartamento à venda, Boa Vista" in summary
+
+
+def test_hubspot_summary_shows_the_chosen_property_price_and_keeps_budget_separate():
+    summary = HubSpotCrmGateway._summary({**LEAD, "budget": None, "property": "Apartamento", "property_price": "R$ 850.000"})
+    assert "Valor do imóvel: R$ 850.000" in summary and "Orçamento" not in summary

@@ -262,6 +262,7 @@ class HubSpotCrmGateway:
             ("Área", lead.get("area")),
             ("Região", lead.get("region")),
             ("Imóvel escolhido", lead.get("property")),
+            ("Valor do imóvel", lead.get("property_price")),
         ]
         body = " | ".join(f"{k}: {v}" for k, v in parts if v not in (None, ""))
         return f"SDR W Levitt (lead {lead.get('lead_id')}) — {body}" if body else ""

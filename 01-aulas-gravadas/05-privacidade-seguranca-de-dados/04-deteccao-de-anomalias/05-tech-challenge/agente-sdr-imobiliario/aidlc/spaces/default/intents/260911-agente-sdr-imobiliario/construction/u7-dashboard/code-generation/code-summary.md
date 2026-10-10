@@ -91,3 +91,5 @@ Tracing distribuído acrescentado depois do gate de code-generation. Nenhuma reg
 
 - `dashboard-api/service/leads.py`: campos que o perfil ainda não tem vêm da conversa (`context.lead_info`); novo `property` (imóvel escolhido); o reenvio ao CRM também leva região e imóvel.
 - `dashboard-ui/app.py`: colunas "Prazo" e "Imóvel escolhido" na tabela de leads.
+
+- Valor do imóvel escolhido (ADR-030): `format_price` e `chosen_property_price` em `dashboard-api/service/leads.py`; coluna "Valor do imóvel" no `dashboard-ui`; o reenvio ao CRM também o leva.

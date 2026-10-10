@@ -8,16 +8,16 @@
 ## Resultados por unit (unitários + integração; sem o gate LLM)
 | Unit | Passed | Failed | Skipped | Cobertura | Piso 80% |
 |---|---|---|---|---|---|
-| u1 conversation-router | 550 | 0 | 0 | 89,61% (620 linhas sem cobertura de 5969) | ✓ |
+| u1 conversation-router | 552 | 0 | 0 | 89,48% (633 linhas sem cobertura de 6016) | ✓ |
 | u2 voice-adapter | 75 | 0 | 0 | 99,38% | ✓ |
-| u3 crm-adapter | 140 | 0 | 0 | 99,12% | ✓ |
+| u3 crm-adapter | 141 | 0 | 0 | 99,12% | ✓ |
 | u4 contact-ingest | 77 | 0 | 0 | 99,91% | ✓ |
 | u5 anomaly-detector | 93 | 0 | 0 | 98,98% | ✓ |
 | u6 followup | 93 | 0 | 0 | 98,52% | ✓ |
-| u7 dashboard-api | 81 | 0 | 0 | 97,80% | ✓ |
+| u7 dashboard-api | 86 | 0 | 0 | 97,88% | ✓ |
 | u7 dashboard-ui | 49 | 0 | 0 | 83,28% (perto do piso) | ✓ |
 
-**Total: 1152 passed, 0 failed, 0 skipped** nas 8 aplicações, mais 4 do guarda de infra (`tests/infra`) = 1156
+**Total: 1166 passed, 0 failed, 0 skipped** nas 8 aplicações, mais 4 do guarda de infra (`tests/infra`) = 1170
 
 ## Gate de qualidade com LLM real (`apps/conversation-router/tests/quality`)
 - **59 passed, 0 failed** em 6 min 30 s (re-executado em 2026-10-10 após ADR-028: decisão de fechar, contato do lead, "última mensagem manda")

@@ -579,7 +579,7 @@ Teste real (10/10): "quero fechar o terceiro" virou `express_visit_interest`, cu
 - A mensagem inicial deixou de citar retenção (90 dias) e o direito de revogar; o comportamento (TTL, "não" encerra) não mudou.
 - O CSV do CRM simulado não ganhou colunas (cabeçalho fixo); os campos novos vão ao HubSpot.
 
-## ADR-029: Fatos de Fotos na Humanização e Valor Nunca Vira IPTU
+## ADR-029: Fatos de Fotos, Valor Nunca Vira IPTU e Sem Oferecer Financiamento
 
 **Context**
 1. Chat real (10/10): o imóvel tinha **1 foto** no catálogo (em 252 imóveis, 180 têm 9; esse tinha 1). O lead pediu "mais fotos" duas vezes. O bot não tinha o que enviar (comportamento certo), mas a resposta foi ruim: na 1ª vez a trava de promessa de fotos descartou a reescrita e devolveu a ficha seca, sem dizer que não havia mais fotos; na 2ª a LLM disse "envio agora mais fotos", uma promessa falsa que a trava não reconhecia ("envio agora" sem "te").
@@ -597,3 +597,20 @@ Fluxo completo reproduzindo o chat (imóvel com 1 foto já enviada, "quero mais 
 - O texto de "essas são as fotos disponíveis" vem da LLM; se ela insistir em prometer, a trava reverte para a ficha seca (comportamento anterior).
 - A taxa residual de oscilação do teste do IPTU deve cair, mas só o `start.sh` seguinte confirma.
 
+**Adendo (2026-10-10) — financiamento e condições de pagamento**
+Chat real: o bot perguntou "quer saber sobre condições de financiamento?" sem ter essa informação. Regra 21 do prompt de humanização: o bot não tem dados de financiamento, entrada, parcelas, taxas, FGTS, consórcio ou pagamento; **nunca oferece** o assunto; se o lead **perguntar**, diz em uma frase que o corretor explica, sem números, e segue o fluxo (pede o contato se ainda faltar). Medição (LLM real, 16 execuções): oferta espontânea 0/16 antes e depois (não reproduzi a oferta do chat); ao ser perguntado, remeter ao corretor passou de 14/16 para 16/16, sem inventar número. Teste permanente: `test_financing_is_never_offered_and_questions_go_to_the_broker` (5/5).
+
+## ADR-030: Valor do Imóvel Escolhido em Coluna Própria (o Orçamento Fica Vazio se o Lead Não Informa)
+
+**Context**
+Um lead fechado apareceu no dashboard sem orçamento. Auditoria dos dados: o lead nunca informou valor (o `lead_info` só tinha intenção e região) e o bot não pergunta orçamento por conta própria; não era falha de gravação. Foi proposto preencher o orçamento com o preço do imóvel escolhido.
+
+**Decision**
+Não misturar os dois dados. Orçamento é o que o lead pode gastar (alimenta o score); o valor do imóvel é o que ele escolheu. O orçamento fica vazio quando o lead não informa, e o valor do imóvel escolhido ganha campo próprio, `property_price`: "R$ 850.000" ou "R$ 4.500/mês", formatado a partir do preço numérico do catálogo (o `price_text` é arredondado, ex.: "R$ 0.8 milhão") e achado entre os imóveis exibidos pelo título do favorito. Aparece na coluna "Valor do imóvel" do dashboard, na mensagem ao CRM e no resumo do contato no HubSpot ("Valor do imóvel"). Para leads antigos o valor é calculado na leitura, a partir da conversa.
+
+**Não feito (decisão do responsável)**
+Perguntar o orçamento ao lead de forma natural antes do handoff ficou de fora, por não ter sido pedido.
+
+**Consequences**
+- Corretor e dashboard veem os dois valores sem ambiguidade; o score não é distorcido.
+- Sem preço numérico no catálogo, cai no `price_text`; sem favorito ou preço, fica vazio.
