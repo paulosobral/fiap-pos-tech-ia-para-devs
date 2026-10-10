@@ -20,7 +20,7 @@ REQUIRED_FIELDS = ("message_id", "lead_id", "lead_data", "session_id", "timestam
 # com fallback seguro) e `urgency` (low/medium/high) vêm sempre; `email`/`phone`
 # podem vir ausentes/null (registro de PII sem contato) e `score` pode ser null.
 REQUIRED_LEAD_FIELDS = ("name", "urgency")
-OPTIONAL_LEAD_FIELDS = ("email", "phone", "intent", "budget", "deadline", "area")
+OPTIONAL_LEAD_FIELDS = ("email", "phone", "intent", "budget", "deadline", "area", "region", "property")
 
 DEFAULT_MAX_RECEIVES = 3
 
@@ -110,6 +110,8 @@ class CrmAdapter:
                     "budget": lead_data.get("budget"),
                     "deadline": lead_data.get("deadline"),
                     "area": lead_data.get("area"),
+                    "region": lead_data.get("region"),
+                    "property": lead_data.get("property"),
                 }
             )
         except CrmError as exc:

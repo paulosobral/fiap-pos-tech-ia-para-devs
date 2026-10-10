@@ -32,3 +32,29 @@
 
 - Este estágio é **validação de design/pré-condições** — o provisionamento real (`terraform apply`) é executado pelo **`deployment-execution`** (decisão registrada no gate do ci-pipeline). Nenhum `terraform apply` é rodado aqui.
 <!-- Re-saved após Consolidated Summary Confirmation (2026-09-21) -->
+
+## Atualização (2026-10-09) — X-Ray (ADR-021)
+
+Recursos acrescentados ao IaC depois da validação inicial; o apply real continua sendo do `deployment-execution`.
+
+| Recurso | Quantidade/Spec | Onde | Owner |
+|---|---|---|---|
+| Tracing ativo nas Lambdas | `tracing_mode = "Active"` + `attach_tracing_policy = true` nos 7 módulos | `infra/lambda-*.tf` | deployment-execution |
+| Contêiner auxiliar `xray-daemon` | 1 por task do `conversation-router`; imagem pública `public.ecr.aws/xray/aws-xray-daemon:3.7.0` (variável `xray_daemon_image`), UDP 2000, `essential = false`, 32 CPU / 64 MB reservados, log no mesmo log group do router | `infra/ecs.tf` | deployment-execution |
+| Variáveis do SDK na task do router | `AWS_XRAY_DAEMON_ADDRESS=127.0.0.1:2000`, `AWS_XRAY_CONTEXT_MISSING=LOG_ERROR` | `infra/ecs.tf` | deployment-execution |
+| Permissões do X-Ray | declaração `XRay` na política `sdr_lambda` (`PutTraceSegments`, `PutTelemetryRecords`, `GetSampling*`), reaproveitada pela role da task do router | `infra/iam.tf` | deployment-execution |
+
+Limites: o API Gateway HTTP (v2) não suporta X-Ray; `voice-adapter` e `dashboard-ui` (ECS) não têm tracing.
+
+## Atualização (2026-10-09) — nome da assistente (ADR-022)
+
+| Recurso | Quantidade/Spec | Onde | Owner |
+|---|---|---|---|
+| Parâmetro SSM `/sdr/bot-name` | 1 `String` (não sensível), valor da variável `bot_name` (padrão `Cecília`), `overwrite = true` | `infra/secrets.tf` | deployment-execution |
+| Variável `BOT_NAME_SSM` na task do router | aponta para o parâmetro acima; a role já lê `/sdr/*` | `infra/ecs.tf` | deployment-execution |
+
+## Atualização (2026-10-10) — índice de alertas (ADR-024)
+
+| Recurso | Quantidade/Spec | Onde | Owner |
+|---|---|---|---|
+| GSI `lead-index` em `sdr-alerts` | `hash_key = lead_id` (S), projeção `ALL`; criado online no `apply`, sem recriar a tabela | `infra/dynamodb.tf` | deployment-execution |

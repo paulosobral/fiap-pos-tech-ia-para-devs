@@ -394,3 +394,72 @@ class TestRenderWithoutData:
     def test_populated_charts_still_render(self):
         at = self._run({**KPIS, "intents": {"compra": 2, "locação": 5}, "route_distribution": {"Ana": 3}})
         assert not at.exception, at.exception
+
+
+class TestPortugueseLabels:
+    """O banco e a API guardam códigos em inglês (handoff, rent, high...); a tela mostra português."""
+
+    def test_every_pipeline_state_has_a_portuguese_label(self):
+        for state in dashboard_app.KANBAN_STATES:
+            assert state in dashboard_app.STATE_LABELS, state
+            assert dashboard_app.STATE_LABELS[state] != state
+
+    def test_handoff_reads_as_forwarded_to_the_broker(self):
+        assert dashboard_app.pt(dashboard_app.STATE_LABELS, "handoff") == "Encaminhado ao corretor"
+
+    def test_unknown_or_empty_values_are_never_hidden_or_broken(self):
+        assert dashboard_app.pt(dashboard_app.STATE_LABELS, "novo_estado") == "novo_estado"
+        assert dashboard_app.pt(dashboard_app.STATE_LABELS, None) is None
+        assert dashboard_app.pt(dashboard_app.STATE_LABELS, "") == ""
+
+    def test_intent_chart_merges_codes_and_translated_names(self):
+        merged = dashboard_app.translate_counts(dashboard_app.INTENT_LABELS, {"purchase": 2, "Compra": 1, "rent": 3})
+        assert merged == {"Compra": 3, "Locação": 3}
+        assert dashboard_app.translate_counts(dashboard_app.INTENT_LABELS, None) == {}
+
+    def test_alert_rows_are_translated_and_readable(self):
+        rows = dashboard_app.alert_rows([
+            {"anomaly_id": "a1", "lead_id": "L1", "type": "atypical_hours", "confidence": 0.7,
+             "detected_at": "2026-10-09T01:00:00+00:00", "status": "open", "action_taken": "alert_issued"},
+            {"anomaly_id": "a2", "lead_id": "L2", "type": "tipo_novo", "confidence": None, "status": "resolved",
+             "action_taken": "schedule_restricted"},
+        ])
+        assert rows[0]["Tipo"] == "Fora do horário comercial"
+        assert rows[0]["Confiança"] == "70%"
+        assert rows[0]["Situação"] == "Aberto" and rows[0]["Ação tomada"] == "Alerta emitido"
+        assert rows[1]["Tipo"] == "tipo_novo" and rows[1]["Situação"] == "Resolvido"
+        assert rows[1]["Ação tomada"] == "Agendamento bloqueado"
+        assert "open" not in str(rows) and "alert_issued" not in str(rows)
+
+    def _run(self, body: str):
+        pytest.importorskip("streamlit")
+        from streamlit.testing.v1 import AppTest
+
+        script = (
+            "import sys, json\n"
+            f"sys.path.insert(0, {str(__import__('pathlib').Path(dashboard_app.__file__).parent)!r})\n"
+            "import app\n" + body
+        )
+        return AppTest.from_string(script).run(timeout=30)
+
+    def test_rendered_leads_table_shows_portuguese_states(self):
+        leads = [{"lead_id": "L1", "name": "Ana", "phone": "11999990000", "email": None, "score": 80,
+                  "urgency": "high", "intent": "rent", "budget": None, "area": None, "region": None,
+                  "state": "handoff", "updated_at": "2026-10-09"}]
+        at = self._run(f"app.render_leads(json.loads({json.dumps(leads)!r}), None, 'http://api', 't')\n")
+        assert not at.exception, at.exception
+        frame = at.dataframe[0].value
+        assert list(frame["Estado"]) == ["Encaminhado ao corretor"]
+        assert list(frame["Intenção"]) == ["Locação"] and list(frame["Urgência"]) == ["Alta"]
+
+    def test_rendered_dashboard_shows_portuguese_states_and_alerts(self):
+        kpis = {**KPIS, "funnel": {"handoff": 4, "greeting": 1}, "intents": {"purchase": 2},
+                "alerts": [{"anomaly_id": "a1", "lead_id": "L1", "type": "high_volume", "confidence": 0.8,
+                            "status": "open", "action_taken": "alert_issued", "detected_at": "2026-10-09"}]}
+        at = self._run(f"app.render(json.loads({json.dumps(kpis)!r}), None, 'http://api')\n")
+        assert not at.exception, at.exception
+        labels = [m.label for m in at.metric]
+        assert "Encaminhado ao corretor" in labels and "Saudação" in labels
+        assert "handoff" not in labels and "greeting" not in labels
+        alerts = at.dataframe[0].value
+        assert list(alerts["Tipo"]) == ["Volume alto de mensagens"] and list(alerts["Situação"]) == ["Aberto"]

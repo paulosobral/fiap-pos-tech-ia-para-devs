@@ -58,6 +58,15 @@ resource "aws_iam_policy" "sdr_lambda" {
         ]
       },
       {
+        Sid    = "XRay"
+        Effect = "Allow"
+        Action = [
+          "xray:PutTraceSegments", "xray:PutTelemetryRecords",
+          "xray:GetSamplingRules", "xray:GetSamplingTargets", "xray:GetSamplingStatisticSummaries",
+        ]
+        Resource = "*"
+      },
+      {
         Sid    = "CloudWatchLogs"
         Effect = "Allow"
         Action = [

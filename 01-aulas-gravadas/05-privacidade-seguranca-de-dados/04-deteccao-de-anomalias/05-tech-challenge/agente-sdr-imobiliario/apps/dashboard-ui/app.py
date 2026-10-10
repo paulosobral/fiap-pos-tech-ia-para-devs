@@ -19,6 +19,71 @@ KANBAN_STATES = (
     "followup",
 )
 
+# Rótulos em português. A API e o banco guardam os códigos em inglês (estáveis); só a tela traduz.
+# Código desconhecido aparece como veio, para nunca esconder um valor novo.
+STATE_LABELS = {
+    "greeting": "Saudação",
+    "elicitation": "Consentimento",
+    "intent": "Intenção",
+    "discovery": "Descoberta",
+    "qualification": "Qualificação",
+    "recommendation": "Recomendação",
+    "conversation": "Em conversa",
+    "scheduling": "Agendamento",
+    "handoff": "Encaminhado ao corretor",
+    "followup": "Acompanhamento",
+    "outros": "Outros",
+}
+INTENT_LABELS = {"purchase": "Compra", "rent": "Locação", "investment": "Investimento"}
+URGENCY_LABELS = {"high": "Alta", "medium": "Média", "low": "Baixa"}
+ALERT_TYPE_LABELS = {
+    "high_volume": "Volume alto de mensagens",
+    "long_messages": "Mensagens muito longas",
+    "negative_sentiment": "Sentimento negativo",
+    "atypical_hours": "Fora do horário comercial",
+    "composite": "Vários sinais combinados",
+    "ml_ensemble": "Modelo estatístico (Isolation Forest + PCA)",
+}
+ALERT_STATUS_LABELS = {"open": "Aberto", "resolved": "Resolvido"}
+ALERT_ACTION_LABELS = {
+    "alert_issued": "Alerta emitido",
+    "schedule_restricted": "Agendamento bloqueado",
+}
+
+
+def pt(mapping: dict[str, str], value: Any) -> Any:
+    """Traduz um código para o rótulo em português; vazio fica vazio e desconhecido fica como veio."""
+    if value in (None, ""):
+        return value
+    return mapping.get(str(value), value)
+
+
+def translate_counts(mapping: dict[str, str], counts: dict[str, Any] | None) -> dict[str, Any]:
+    """Traduz as chaves de um gráfico somando as que caem no mesmo rótulo (ex.: 'purchase' e 'Compra')."""
+    out: dict[str, Any] = {}
+    for key, value in (counts or {}).items():
+        label = str(pt(mapping, key))
+        out[label] = out.get(label, 0) + value
+    return out
+
+
+def alert_rows(alerts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows = []
+    for alert in alerts:
+        confidence = alert.get("confidence")
+        rows.append(
+            {
+                "Tipo": pt(ALERT_TYPE_LABELS, alert.get("type")),
+                "Confiança": f"{float(confidence) * 100:.0f}%" if isinstance(confidence, (int, float)) else confidence,
+                "Situação": pt(ALERT_STATUS_LABELS, alert.get("status")),
+                "Ação tomada": pt(ALERT_ACTION_LABELS, alert.get("action_taken")),
+                "Detectado em": alert.get("detected_at"),
+                "Lead": alert.get("lead_id"),
+                "ID do alerta": alert.get("anomaly_id"),
+            }
+        )
+    return rows
+
 
 def cognito_config() -> dict[str, str] | None:
     """Lê a configuração do User Pool/App Client injetada pelo Terraform
@@ -257,9 +322,14 @@ _LEAD_COLUMNS = (
     ("budget", "Orçamento"),
     ("area", "Área"),
     ("region", "Região"),
+    ("deadline", "Prazo"),
+    ("property", "Imóvel escolhido"),
     ("state", "Estado"),
     ("updated_at", "Atualizado"),
 )
+
+
+_LEAD_TRANSLATIONS = {"state": STATE_LABELS, "intent": INTENT_LABELS, "urgency": URGENCY_LABELS}
 
 
 def render_leads(leads: list[dict[str, Any]] | None, error: dict[str, Any] | None, api_url: str, token: str | None) -> None:
@@ -273,7 +343,7 @@ def render_leads(leads: list[dict[str, Any]] | None, error: dict[str, Any] | Non
         st.info("Nenhum lead ainda.")
         return
     st.dataframe(
-        [{label: lead.get(key) for key, label in _LEAD_COLUMNS} for lead in leads],
+        [{label: pt(_LEAD_TRANSLATIONS.get(key, {}), lead.get(key)) for key, label in _LEAD_COLUMNS} for lead in leads],
         use_container_width=True,
         hide_index=True,
     )
@@ -323,16 +393,16 @@ def render(kpis: dict[str, Any] | None, error: dict[str, Any] | None, api_url: s
         funnel = kpis.get("funnel", {})
         kanban = st.columns(len(KANBAN_STATES))
         for column, state in zip(kanban, KANBAN_STATES):
-            column.metric(state, funnel.get(state, 0))
+            column.metric(pt(STATE_LABELS, state), funnel.get(state, 0))
 
     chart_left, chart_right = st.columns(2)
-    _bar_chart(chart_left, kpis.get("intents"), "intenção")
+    _bar_chart(chart_left, translate_counts(INTENT_LABELS, kpis.get("intents")), "intenção")
     _bar_chart(chart_right, kpis.get("route_distribution"), "roleta")
 
     st.subheader(f"Anomalias (24h) — {len(kpis.get('alerts', []))} alerta(s)")
     alerts = kpis.get("alerts", [])
     if alerts:
-        st.dataframe(alerts, use_container_width=True)
+        st.dataframe(alert_rows(alerts), use_container_width=True)
     else:
         st.info("Nenhum alerta nas últimas 24h.")
 

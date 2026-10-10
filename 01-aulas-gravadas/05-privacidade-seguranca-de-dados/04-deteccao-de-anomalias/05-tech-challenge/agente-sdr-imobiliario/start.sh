@@ -74,6 +74,8 @@ done
 COVERAGE_FILE="/tmp/.cov-u7" "$PY" -m pytest apps/dashboard-api/tests \
   --cov=apps/dashboard-api --cov-report=term --cov-fail-under=80 -q || { echo "FALHA: dashboard-api"; exit 1; }
 "$PY" -m pytest apps/dashboard-ui/tests -q || { echo "FALHA: dashboard-ui"; exit 1; }
+# Índices DynamoDB consultados pelo código x índices declarados no Terraform (fakes dos testes aceitam qualquer índice)
+"$PY" -m pytest tests/infra -q || { echo "FALHA: índices DynamoDB x Terraform"; exit 1; }
 echo "Gates OK"
 
 # Teste de qualidade com LLM real (plano "naturalidade do bot SDR", seção 5) — opcional,

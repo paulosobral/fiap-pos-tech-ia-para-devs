@@ -109,3 +109,11 @@ resource "aws_secretsmanager_secret_version" "hubspot_mcp" {
     ignore_changes = [secret_string]
   }
 }
+
+resource "aws_ssm_parameter" "bot_name" {
+  name        = "/sdr/bot-name"
+  description = "Nome da assistente: se apresenta assim na primeira mensagem (lido pelo conversation-router com cache de 5 min)"
+  type        = "String"
+  value       = var.bot_name
+  overwrite   = true
+}

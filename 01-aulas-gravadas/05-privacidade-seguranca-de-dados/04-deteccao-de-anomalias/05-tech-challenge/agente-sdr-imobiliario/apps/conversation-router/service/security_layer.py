@@ -237,12 +237,26 @@ class KmsPiiRegistry:
         return json.loads(self._kms.decrypt(CiphertextBlob=blob)["Plaintext"].decode())
 
 
-CONSENT_MESSAGE = (
-    "Olá! Sou o assistente SDR da W Levitt, especializado em espaços corporativos. "
-    "Para continuar, preciso do seu consentimento LGPD: coletarei nome, e-mail, telefone e CNPJ "
-    "para atendimento SDR, com retenção de 90 dias e compartilhamento apenas com corretor/CRM. "
-    "Você pode recusar ou revogar respondendo 'não'. Podemos continuar?"
+CONSENT_BODY = (
+    "Para te atender, uso o seu nome do Telegram e vou te pedir só o seu WhatsApp ou e-mail, para um "
+    "corretor falar com você (LGPD). Podemos continuar?"
 )
+
+
+def consent_message(bot_name: str) -> str:
+    """Primeira mensagem do bot: apresenta pelo nome (SSM `/sdr/bot-name`) e pede o consentimento."""
+    return (
+        f"Olá! Meu nome é {bot_name} e sou assistente virtual da W Levitt, com foco em espaços "
+        f"corporativos. {CONSENT_BODY}"
+    )
+
+
+def is_consent_message(text: str) -> bool:
+    """Texto fixo do consentimento (qualquer nome): a humanização por LLM nunca o reescreve."""
+    return text.endswith(CONSENT_BODY)
+
+
+CONSENT_MESSAGE = consent_message("Cecília")  # nome padrão; o fluxo usa o nome do SSM
 
 REFUSAL_MESSAGE = "Entendido. Se mudar de ideia, envie /start novamente"
 

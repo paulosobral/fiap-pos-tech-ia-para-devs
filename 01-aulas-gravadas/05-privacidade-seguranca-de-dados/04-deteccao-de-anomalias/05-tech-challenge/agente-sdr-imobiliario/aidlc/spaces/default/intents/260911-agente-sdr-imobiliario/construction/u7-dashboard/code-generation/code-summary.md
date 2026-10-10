@@ -68,3 +68,21 @@ O item "UI/Cognito wiring" acima (linha 57) descrevia o estado desta unidade no 
 - `apps/dashboard-ui/app.py`: login deixou de ser placeholder por env. Passou a chamar `cognito-idp:InitiateAuth` (`USER_PASSWORD_AUTH`) direto do App Client via formulário usuário/senha no Streamlit, tratando o desafio `NEW_PASSWORD_REQUIRED`; `DASHBOARD_API_TOKEN`/`COGNITO_LOGIN_URL` (placeholder/Hosted UI) foram removidos. **Não** é o fluxo `st.login()`/Hosted UI do PRD §10.3 original — o dashboard roda em ECS Fargate sem domínio/ALB (IP público efêmero), inviabilizando uma `callback_url` estável para OAuth.
 - Testes atualizados em `apps/dashboard-ui/tests/unit/test_app_smoke.py` (login/challenge/token explícito substituem os antigos testes de env var e `cognito_login_url`).
 - Handler (`apps/dashboard-api/handler.py`) **não foi alterado** nesta rodada — a checagem de presença de bearer nele permanece como defesa em profundidade; a validação de verdade agora é redundante entre authorizer (borda) e handler (aplicação), por design.
+
+## Mudanças posteriores — X-Ray (ADR-021, 2026-10-09)
+
+Tracing distribuído acrescentado depois do gate de code-generation. Nenhuma regra de negócio mudou.
+
+- Novo `apps/dashboard-api/tracing.py` (liga o X-Ray no import), chamado no começo de `apps/dashboard-api/handler.py`.
+- `aws-xray-sdk>=2.14` em `apps/dashboard-api/requirements.txt`.
+- Testes: `apps/dashboard-api/tests/unit/test_tracing.py` (idempotência, ausência do SDK, falha ao instrumentar, `LOG_ERROR` por padrão e regressão contra `patch_all`).
+- Terraform: `tracing_mode = "Active"` e `attach_tracing_policy = true` em `infra/lambda-*.tf` da unidade.
+- O `dashboard-ui` (ECS/Streamlit) não recebeu X-Ray.
+
+- Só o `botocore` é instrumentado (nunca `patch_all()`, que gravaria a URL do Telegram com o token do bot); sem o SDK, tudo vira no-op.
+- Verificado com o SDK real e um daemon UDP simulado; **não validado numa subida na AWS** (owner: `deployment-execution`).
+
+## Mudanças posteriores — rótulos em português (ADR-023, 2026-10-09)
+
+- `apps/dashboard-ui/app.py`: dicionários `STATE_LABELS`, `INTENT_LABELS`, `URGENCY_LABELS`, `ALERT_*_LABELS`, `pt()`, `translate_counts()` e `alert_rows()`; a esteira, o gráfico de intenções, a tabela de leads e a tabela de anomalias aparecem em português. A API e o banco continuam com os códigos em inglês; valor desconhecido aparece como veio.
+- Testes: `TestPortugueseLabels` (inclui a tela renderizada com `AppTest`: "Encaminhado ao corretor" no lugar de `handoff`).

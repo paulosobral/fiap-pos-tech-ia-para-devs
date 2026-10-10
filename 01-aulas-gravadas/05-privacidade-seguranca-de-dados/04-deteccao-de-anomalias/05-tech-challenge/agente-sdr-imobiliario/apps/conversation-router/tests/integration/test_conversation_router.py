@@ -483,3 +483,12 @@ class TestConsentAndContactConfirmation:
         assert "(11) 97991-8262" in self._texts(telegram)[-1]
         router.handle(update("quero alugar uma sala", update_id=4))
         assert "Anotei seu telefone" not in self._texts(telegram)[-1]
+
+
+class TestBotIntroduction:
+    def test_first_message_introduces_the_bot_by_name(self):
+        router, _, telegram = make_router()
+        router.handle(update("oi", update_id=1))
+        first = telegram.send_message.call_args_list[0].args[1]
+        assert first.startswith("Olá! Meu nome é Cecília")
+        assert "LGPD" in first and "WhatsApp ou e-mail" in first

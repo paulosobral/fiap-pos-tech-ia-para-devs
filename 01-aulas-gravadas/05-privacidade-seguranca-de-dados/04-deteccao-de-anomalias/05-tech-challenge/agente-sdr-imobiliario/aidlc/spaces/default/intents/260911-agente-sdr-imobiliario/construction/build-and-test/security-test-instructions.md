@@ -26,11 +26,12 @@ Todos os testes abaixo **já existem** e rodam dentro das suítes por unit; coma
 | Cenário | Onde é provado |
 |---|---|
 | PII (e-mail, telefone — digitado e falado —, CNPJ) mascarada antes do envio ao LLM (NFR3.1). **Nome não é mascarado** por decisão de produto (vem do perfil do Telegram) | `security_layer.py` + `test_pii_masker.py`; saída barrada por `check_output_leak` |
-| Consentimento **explícito** (só "sim" claro grava; qualquer outra resposta reapresenta o pedido; "não" encerra) e registrado (NFR2.3, NFR3.2; ADR-017) | `test_conversation_polish.py`, `test_sales_flow.py`, `test_conversation_router.py` |
+| Consentimento: texto fixo; a **LLM decide** aceite, recusa ou nenhum dos dois lendo a conversa (ADR-027); na dúvida não grava e repergunta; "não" encerra; sem LLM vale o plano B por palavras | `test_consent_llm.py` (unitário), `test_llm_reads_the_consent_answer_naturally` (LLM real, 9 frases), `test_conversation_polish.py` (plano B) |
 | Contato anotado só em código, depois do check de vazamento | `test_conversation_polish.py::TestContactConfirmation`, integração |
 | Dados de lead no dashboard só com JWT Cognito (401 sem token); PII decifrada por KMS na leitura | `apps/dashboard-api/tests/unit/test_leads.py` |
 | Sessão do dashboard: cookie com id opaco, refresh token só no servidor, TTL 12 h | `test_app_smoke.py::TestSessionVault` |
 | Segredos HubSpot só em `secrets.local.env` (gitignored) → Secrets Manager; refresh token rotacionado na secret | `test_hubspot_mcp.py`, `.gitignore` |
+| Segredos e PII fora dos traços do X-Ray (ADR-021): só o `botocore` é instrumentado; `patch_all()` é proibido porque gravaria a URL do Telegram com o token do bot | `test_tracing.py` de cada app (falha se `patch_all` for chamado) + verificação manual com o SDK real e daemon UDP simulado (token ausente) |
 | Retenção TTL (NFR3.3) | `test_session_store.py` (u1/u4), `test_conversation_store.py` (u5) |
 | Guardrails / denied topics / prompt injection / evasão PII (NFR7.1–7.3) | `test_guardrails.py` |
 | PII-safe nos logs (NFR2.5) | `log_event` JSON sem PII — provado por `caplog` nas suítes |

@@ -4,12 +4,15 @@ import logging
 import os
 from typing import Any
 
+import tracing
 from infra.alert_store import AlertStore
 from infra.conversation_store import ConversationStore
 from infra.logging_utils import log_event
 from service.anomaly_detector import AnomalyDetector, utc_now
 from service.feature_extractor import ConversationFeatureExtractor
 from service.scorer import HeuristicScorer, SklearnScorer
+
+tracing.enable()
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)

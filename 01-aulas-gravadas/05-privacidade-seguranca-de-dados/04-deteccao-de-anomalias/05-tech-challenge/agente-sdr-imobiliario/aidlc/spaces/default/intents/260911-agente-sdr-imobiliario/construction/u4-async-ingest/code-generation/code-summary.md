@@ -51,3 +51,15 @@
 - **Chave de dedupe nunca vazia** (R-04): `messageId` ausente/vazio derivava a chave por sha256 de (remetente, assunto, corpo normalizado) — e-mails distintos sem `messageId` têm chaves distintas (não colapsam); conteúdo idêntico continua dedupado. `sha256:<hex>` no lugar da key vazia.
 - **Exceções sanitizadas nos logs de erro** (R-05): todos os paths de erro (`contact_ingest`, `dedupe_store`, `session_store`, `email_parser`, `router_gateway`) registram apenas o nome da classe da exceção (`exc_type`) — nada de `str(exc)`/repr verbatim (PII de payloads em exceções inesperadas não vaza ao CloudWatch). Teste caplog de path de falha prova ausência de PII.
 - **`INTERNAL_SECRET_TOKEN` obrigatória via `_env`** (R-07): mesma assimetria de config de `ROUTER_BASE_URL` eliminada — env ausente em produção = falha alta e cedo no wiring do handler (testada).
+
+## Mudanças posteriores — X-Ray (ADR-021, 2026-10-09)
+
+Tracing distribuído acrescentado depois do gate de code-generation. Nenhuma regra de negócio mudou.
+
+- Novo `apps/contact-ingest/tracing.py` (liga o X-Ray no import), chamado no começo de `apps/contact-ingest/handler.py`.
+- `aws-xray-sdk>=2.14` em `apps/contact-ingest/requirements.txt`.
+- Testes: `apps/contact-ingest/tests/unit/test_tracing.py` (idempotência, ausência do SDK, falha ao instrumentar, `LOG_ERROR` por padrão e regressão contra `patch_all`).
+- Terraform: `tracing_mode = "Active"` e `attach_tracing_policy = true` em `infra/lambda-*.tf` da unidade.
+
+- Só o `botocore` é instrumentado (nunca `patch_all()`, que gravaria a URL do Telegram com o token do bot); sem o SDK, tudo vira no-op.
+- Verificado com o SDK real e um daemon UDP simulado; **não validado numa subida na AWS** (owner: `deployment-execution`).

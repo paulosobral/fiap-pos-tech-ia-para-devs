@@ -24,6 +24,8 @@ import os
 import time as _time
 from typing import Any
 
+from service import tracing
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL_PRIMARY = "deepseek/deepseek-chat"
@@ -161,7 +163,9 @@ _REPLY_SYSTEM_PROMPT = (
     "reconheça brevemente a correção antes de seguir, em vez de só usar o dado novo em silêncio."
     "\n13. CONTATO: só diga que o corretor vai falar por um canal que o lead já informou (veja "
     "CANAIS DE CONTATO); sem telefone, nunca prometa WhatsApp ou ligação. Se houver PEDIDO DE "
-    "CONTATO OBRIGATÓRIO, sua resposta TEM que pedir o telefone (WhatsApp) ou o e-mail do lead."
+    "CONTATO OBRIGATÓRIO, sua resposta TEM que pedir o telefone (WhatsApp) ou o e-mail do lead. "
+    "NUNCA ofereça nem passe ao lead telefone, WhatsApp ou e-mail do corretor ou da imobiliária: quem "
+    "pega o contato é você (o do lead) e quem liga é o corretor."
     "\n14. Quando o lead já demonstrou interesse num imóvel específico (favorito, pedido de "
     "contato ou visita), foque nesse imóvel e no próximo passo — não ofereça novas listas nem "
     "pergunte se ele quer ver mais opções."
@@ -210,22 +214,23 @@ def _completion(
     temperature: float,
     response_format: dict[str, str] | None = None,
 ) -> str:
-    if _HAS_LITELLM:
-        kwargs: dict[str, Any] = {
-            "model": f"openrouter/{model}",
-            "messages": messages,
-            "api_key": api_key,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-            "timeout": float(os.environ.get("LLM_TIMEOUT", "8")),
-        }
-        if response_format:
-            kwargs["response_format"] = response_format
-        resp = litellm.completion(**kwargs)
-        return resp["choices"][0]["message"]["content"]
-    return _urllib_completion(
-        messages, api_key, model, max_tokens, temperature, response_format
-    )
+    with tracing.subsegment(f"llm:{model}", model=model, max_tokens=max_tokens):
+        if _HAS_LITELLM:
+            kwargs: dict[str, Any] = {
+                "model": f"openrouter/{model}",
+                "messages": messages,
+                "api_key": api_key,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "timeout": float(os.environ.get("LLM_TIMEOUT", "8")),
+            }
+            if response_format:
+                kwargs["response_format"] = response_format
+            resp = litellm.completion(**kwargs)
+            return resp["choices"][0]["message"]["content"]
+        return _urllib_completion(
+            messages, api_key, model, max_tokens, temperature, response_format
+        )
 
 
 def _completion_with_fallback(
@@ -242,6 +247,7 @@ def _completion_with_fallback(
             messages, api_key, primary_model, max_tokens, temperature, response_format
         )
     except Exception:
+        tracing.annotate("llm_fallback", True)
         logger.warning(
             "Modelo primário %s falhou; tentando fallback %s",
             primary_model,
@@ -338,6 +344,15 @@ def _ficha_extra(prop: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _persona_line(bot_name: str | None) -> str:
+    if not bot_name:
+        return ""
+    return (
+        f"\nSEU NOME: {bot_name}. Você já se apresentou por esse nome na primeira mensagem: não se "
+        "reapresente a cada resposta e só cite o nome se o lead perguntar quem você é."
+    )
+
+
 def generate_reply(
     message: str,
     canned_response: str,
@@ -358,6 +373,7 @@ def generate_reply(
     photos_sending: int = 0,
     contact_channels: dict[str, bool] | None = None,
     contact_request: bool = False,
+    bot_name: str | None = None,
 ) -> str:
     primary = (
         resolve_model(TIER_PRIMARY, explicit_model=model)
@@ -450,6 +466,7 @@ def generate_reply(
         )
     long_list = len(properties) > 3
     max_tokens = 800 if long_list else 280
+    system_prompt = _REPLY_SYSTEM_PROMPT + _persona_line(bot_name)
     history_messages = _normalize_history(conversation_history)
     user_block = (
         "RESPOSTA OFICIAL DO SISTEMA (fatos, resultado e ação autorizada):\n"
@@ -463,7 +480,7 @@ def generate_reply(
     if use_fallback:
         raw = _completion_with_fallback(
             messages=[
-                {"role": "system", "content": _REPLY_SYSTEM_PROMPT},
+                {"role": "system", "content": system_prompt},
                 *history_messages,
                 {"role": "user", "content": user_block},
             ],
@@ -476,7 +493,7 @@ def generate_reply(
     else:
         raw = _completion(
             messages=[
-                {"role": "system", "content": _REPLY_SYSTEM_PROMPT},
+                {"role": "system", "content": system_prompt},
                 *history_messages,
                 {"role": "user", "content": user_block},
             ],
@@ -576,6 +593,8 @@ _ROUTER_SYSTEM_PROMPT = (
     "ou marcar uma conversa, com as palavras que ele usar) + visit_quote (string — o trecho "
     "COPIADO LITERALMENTE da mensagem dele que mostra essa intenção; sem trecho literal, "
     "visit_interest=false).\n"
+    "   DADOS DE BUSCA (região, metragem, orçamento, prazo...) vão SEMPRE em lead_info, também quando a "
+    "tool é request_options ou refine_search — não os deixe só em arguments.\n"
     "3. ESCOLHA UMA tool: " + ", ".join(VALID_TOOLS) + ".\n"
     "   - request_options: quer VER/RECEBER uma lista NOVA de imóveis ou catálogo completo, "
     "SEM apontar um item específico já exibido "
@@ -606,6 +625,10 @@ _ROUTER_SYSTEM_PROMPT = (
     "   - request_schedule: quer agendar APENAS com verbo explícito "
     "('agendar','marcar visita','reserve','quero marcar').\n"
     "   - request_human: quer corretor/humano AGORA ('quero um corretor','fala com alguém').\n"
+    "   DECISÃO DE FECHAR: quando o lead diz que quer fechar/comprar/alugar/ficar com/reservar um imóvel "
+    "JÁ EXIBIDO (de qualquer jeito: 'quero fechar o terceiro', 'vou ficar com esse', 'quero esse aí'), use "
+    "request_human (quem fecha é o corretor), coloque o imóvel em property_ref e grave em "
+    "memory_updates.favorite_property o título EXATO dele. Não use property_detail nesse caso.\n"
     "   - decline: parar/recusar/desistir.\n"
     "   - provide_info: fallback genérico quando não há tool melhor (pergunta de fato que o "
     "catálogo não cobre).\n"
@@ -646,6 +669,56 @@ _ROUTER_SYSTEM_PROMPT = (
     '"arguments":{},"lead_info":{},"memory_updates":'
     '{"favorite_property":null,"visit_interest":false,"visit_quote":null}}.'
 )
+
+
+CONSENT_DECISIONS = ("accepted", "refused", "unclear")
+
+_CONSENT_SYSTEM_PROMPT = (
+    "Você analisa conversas de um atendimento imobiliário no Telegram. A assistente pediu ao lead o "
+    "consentimento LGPD para tratar os dados dele (a mensagem está no histórico). Leia a conversa inteira "
+    "e decida o que a ÚLTIMA MENSAGEM DO LEAD significa em relação a esse pedido:\n"
+    "- \"accepted\": ele concorda em continuar, de qualquer forma natural: 'sim', 'pode', 'tô de acordo', "
+    "'manda ver', 'fechou', 'bora', 'pode seguir', um emoji de aprovação, ou concordância junto de outro "
+    "assunto ('sim, quero alugar uma sala').\n"
+    "- \"refused\": ele não aceita ou quer revogar: 'não', 'não quero', 'prefiro não passar meus dados', "
+    "'nem pensar', 'apaga meus dados'.\n"
+    "- \"unclear\": não dá para afirmar que ele aceitou nem que recusou: pergunta sobre o tratamento dos "
+    "dados, saudação, mensagem sobre outro assunto sem concordar (ex.: só responder 'compra' ou pedir um "
+    "imóvel), ou dúvida.\n"
+    "Consentimento precisa ser uma concordância clara: na dúvida, responda unclear, nunca accepted.\n"
+    "Responda SOMENTE JSON: {\"decision\": \"accepted\"|\"refused\"|\"unclear\", \"reason\": \"<curto>\"}."
+)
+
+
+def classify_consent(
+    message: str,
+    api_key: str,
+    conversation_history: list[dict[str, str]] | None = None,
+    model: str | None = None,
+) -> str:
+    """A LLM decide se a resposta ao pedido de consentimento é aceite, recusa ou nenhum dos dois,
+    lendo a conversa inteira. Levanta exceção se não houver resposta válida (o fluxo cai no plano B)."""
+    primary = resolve_model(TIER_PRIMARY, explicit_model=model)
+    fallback = resolve_model(TIER_FALLBACK)
+    raw = _completion_with_fallback(
+        messages=[
+            {"role": "system", "content": _CONSENT_SYSTEM_PROMPT},
+            *_normalize_history(conversation_history),
+            {"role": "user", "content": f"ÚLTIMA MENSAGEM DO LEAD: {message[:500]}"},
+        ],
+        api_key=api_key,
+        primary_model=primary,
+        fallback_model=fallback,
+        max_tokens=80,
+        temperature=0,
+        response_format={"type": "json_object"},
+    )
+    data = _loads_json(raw or "")
+    decision = str((data or {}).get("decision") or "").strip().lower() if isinstance(data, dict) else ""
+    if decision not in CONSENT_DECISIONS:
+        raise ValueError(f"Decisão de consentimento inválida: {raw!r}")
+    logger.info("LLM consent: decision=%s reason=%r", decision, str(data.get("reason") or "")[:120])
+    return decision
 
 
 def extract_and_route(

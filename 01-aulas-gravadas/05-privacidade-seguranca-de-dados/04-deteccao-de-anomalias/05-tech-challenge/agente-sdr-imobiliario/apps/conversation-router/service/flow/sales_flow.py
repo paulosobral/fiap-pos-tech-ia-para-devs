@@ -19,6 +19,8 @@ import re
 from difflib import SequenceMatcher
 from typing import Any, Callable, TypedDict
 
+from service.bot_identity import get_bot_name
+
 logger = logging.getLogger(__name__)
 
 CONFIDENCE_THRESHOLD = 0.6
@@ -28,9 +30,12 @@ INTENT_CONFIRM_QUESTION = "Só pra eu entender melhor: você está pensando em c
 
 # Recusa de consentimento LGPD: determinística (sem LLM), mas tolerante a variações
 # próximas das 4 formas originais ("não", "nao", "não quero", "nao quero").
+# Fases em que o bot ainda não recomendou nada: consentimento e pergunta de intenção (compra/locação/
+# investimento). Nelas a humanização NÃO recebe imóveis guardados de turnos anteriores.
+_PRE_RECOMMENDATION_STATES = ("greeting", "elicitation", "intent")
 _CONSENT_REFUSAL_RE = re.compile(r"^\s*n[ãa]o(\s+quero)?\s*[.!]?\s*$", re.IGNORECASE)
-# Aceite explícito (também determinístico, LGPD): a resposta tem que COMEÇAR com uma forma clara
-# de "sim". Qualquer outra coisa ("compra", "quero um escritório") não é consentimento: reperguntamos.
+# Plano B do consentimento (sem LLM ou se ela falhar): aceite só com uma forma clara de "sim" no começo.
+# Com a LLM ligada, quem decide é ela, lendo a conversa inteira (ADR-027).
 _CONSENT_ACCEPT_RE = re.compile(
     r"^\W*(sim|s|ss|sss|claro|ok|okay|okey|pode|podemos|podem|aceito|concordo|autorizo|"
     r"beleza|blz|combinado|certo|isso|positivo|yes|uhum|aham|bora|vamos|vamo|"
@@ -282,7 +287,11 @@ class SalesFlow:
         specialist_fallback: str = "diretor",
         restriction_check: Callable[[str], bool] | None = None,
         llm_router: Callable[[str, dict[str, Any], str], dict[str, Any]] | None = None,
+        bot_name_provider: Callable[[], str] | None = None,
+        consent_classifier: Callable[..., str] | None = None,
     ) -> None:
+        self.consent_classifier = consent_classifier
+        self._bot_name = bot_name_provider or get_bot_name
         self.qualifier = lead_qualifier
         self.properties_rag = properties_rag
         self.scheduler = scheduler
@@ -540,6 +549,17 @@ class SalesFlow:
                     from service.validation import validate_router_output
 
                     validated = validate_router_output(result, state, message=message)
+                    # Decisão do roteador no log (sem texto livre do lead além do que já vai em "turno IN"):
+                    # sem isto, "por que ele listou tudo em vez de detalhar o imóvel 1?" não tem resposta.
+                    logger.info(
+                        "roteador: tool=%s (LLM pediu=%s) args=%s lead_info_delta=%s imoveis_exibidos=%d pensamento=%r",
+                        validated["tool"],
+                        result.get("tool"),
+                        {k: (str(v)[:60]) for k, v in (validated.get("arguments") or {}).items()},
+                        sorted((validated.get("lead_info") or {}).keys()),
+                        len(state.get("properties") or []),
+                        str(validated.get("thought") or result.get("thought") or "")[:200],
+                    )
                     state["_router_tool"] = validated["tool"]
                     state["_last_tool"] = validated["tool"]
                     llm_deltas = validated.get("lead_info") or {}
@@ -822,6 +842,13 @@ class SalesFlow:
             )
             return state
         if tool == "express_visit_interest":
+            from service.tools import contact_unreachable
+
+            if contact_unreachable(state):
+                # Lead quer o imóvel e ainda não passou contato: o próximo passo do SDR é pegar o
+                # WhatsApp/e-mail DELE. Quando chegar, a ação pendente (falar com o corretor) é retomada
+                # sozinha e o lead segue para o corretor e o CRM.
+                return self._ask_contact(state, "request_human")
             state["response"] = (
                 "Ótimo! Fico à vontade pra ajudar a agendar uma visita "
                 "quando você quiser."
@@ -878,7 +905,7 @@ class SalesFlow:
         return state
 
     def _node_greeting(self, state: FlowState) -> FlowState:
-        from service.security_layer import CONSENT_MESSAGE, REFUSAL_MESSAGE
+        from service.security_layer import REFUSAL_MESSAGE, consent_message
 
         message = state.get("message", "")
         if _CONSENT_REFUSAL_RE.match(message):
@@ -886,7 +913,7 @@ class SalesFlow:
             state["current_state"] = "followup"
             state["consent_recorded"] = False
             return state
-        state["response"] = CONSENT_MESSAGE
+        state["response"] = consent_message(self._bot_name())
         state["current_state"] = "elicitation"
         return state
 
@@ -894,13 +921,14 @@ class SalesFlow:
         from service.security_layer import CONSENT_REASK_MESSAGE, REFUSAL_MESSAGE
 
         message = state.get("message", "")
-        if _CONSENT_REFUSAL_RE.match(message):
+        decision = self._consent_decision(message, state.get("conversation_history"))
+        if decision == "refused":
             state["response"] = REFUSAL_MESSAGE
             state["current_state"] = "followup"
             state["consent_recorded"] = False
             return state
-        if not _CONSENT_ACCEPT_RE.match(message):
-            # Sem "sim" explícito não há consentimento: reperguntar, não coletar nada.
+        if decision != "accepted":
+            # Sem concordância clara não há consentimento: reperguntar, não coletar nada.
             state["response"] = CONSENT_REASK_MESSAGE
             state["consent_recorded"] = False
             return state
@@ -910,6 +938,21 @@ class SalesFlow:
             "Para indicar as melhores opções, você busca compra, locação ou investimento?"
         )
         return state
+
+    def _consent_decision(self, message: str, history: list[dict[str, str]] | None) -> str:
+        """Aceite, recusa ou nenhum dos dois. A LLM decide lendo a conversa inteira; sem LLM, ou se ela
+        falhar, vale o plano B por palavras (o mesmo de antes)."""
+        if self.consent_classifier is not None:
+            try:
+                decision = self.consent_classifier(message, conversation_history=history or [])
+                if decision in ("accepted", "refused", "unclear"):
+                    return decision
+                logger.warning("Consentimento: decisão inválida da LLM (%r); usando plano B", decision)
+            except Exception:
+                logger.warning("Consentimento: LLM falhou; usando plano B", exc_info=True)
+        if _CONSENT_REFUSAL_RE.match(message):
+            return "refused"
+        return "accepted" if _CONSENT_ACCEPT_RE.match(message) else "unclear"
 
     def _node_intent(self, state: FlowState) -> FlowState:
         message = state.get("message", "")
@@ -1244,10 +1287,10 @@ class SalesFlow:
         self._decide_photos(state)
         if self.reply_generator is None:
             return state
-        from service.security_layer import CONSENT_MESSAGE, CONSENT_REASK_MESSAGE, REFUSAL_MESSAGE
+        from service.security_layer import CONSENT_REASK_MESSAGE, REFUSAL_MESSAGE, is_consent_message
 
         canned = state.get("response")
-        if not canned or canned in (CONSENT_MESSAGE, CONSENT_REASK_MESSAGE, REFUSAL_MESSAGE):
+        if not canned or is_consent_message(canned) or canned in (CONSENT_REASK_MESSAGE, REFUSAL_MESSAGE):
             return state
         missing = state.get("missing_contact_fields")
         contact_channels = (
@@ -1260,7 +1303,7 @@ class SalesFlow:
                 state.get("message", ""),
                 canned,
                 state.get("lead_info") or {},
-                state.get("response_properties") or state.get("properties") or [],
+                self._properties_for_reply(state),
                 favorite_property=state.get("favorite_property"),
                 conversation_stage=state.get("current_state"),
                 shown_properties_count=state.get("shown_properties_count", 0),
@@ -1271,6 +1314,7 @@ class SalesFlow:
                 photos_sending=len(state.get("response_images") or []),
                 contact_channels=contact_channels,
                 contact_request=bool(state.get("_contact_request")),
+                bot_name=self._bot_name(),
             )
             state["official_response"] = canned
             generated = _plain_text(_strip_meta_notes(generated or ""))
@@ -1294,6 +1338,21 @@ class SalesFlow:
                 "LLM reply falhou; mantendo resposta oficial (fallback)", exc_info=True
             )
         return state
+
+    @staticmethod
+    def _properties_for_reply(state: FlowState) -> list[dict[str, Any]]:
+        """Imóveis que a humanização pode citar neste turno.
+
+        Os imóveis do turno (`response_properties`) sempre valem. Já os guardados de turnos anteriores
+        (`properties`) só valem depois da fase de consentimento/intenção: lá a resposta oficial é uma
+        pergunta ("compra, locação ou investimento?"), e com 9 imóveis no payload a LLM saía do roteiro,
+        inventava a intenção do lead ou listava opções (bug real de 09/10; medido com a LLM real:
+        1/8 respostas certas com imóveis no payload, 8/8 sem eles)."""
+        if state.get("response_properties"):
+            return state["response_properties"]
+        if state.get("current_state") in _PRE_RECOMMENDATION_STATES:
+            return []
+        return state.get("properties") or []
 
     # --- Invocação ---
 

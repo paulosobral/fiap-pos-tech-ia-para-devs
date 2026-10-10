@@ -20,6 +20,7 @@ Estratégia de teste: **Standard** (test_strategy dos contratos de code-generati
 | u7 dashboard-ui | `apps/dashboard-ui/tests/unit/test_app_smoke.py` | Login/refresh Cognito, cofre de sessão, header, tabela de leads e botão HubSpot (streamlit `AppTest`) |
 | u3 crm-adapter ↔ HubSpot | `apps/crm-adapter/tests/unit/test_hubspot_mcp.py` | `HubSpotCrmGateway`/`HubSpotMcpClient` com sessão MCP fake: busca por e-mail→telefone, create/update, rotação do refresh token |
 | u1 → u5 → u7 (LLM real) | `apps/conversation-router/tests/quality/test_anomaly_e2e_quality.py` | Chat real grava a conversa → handler real do detector gera alerta + restringe agendamento → `/api/kpis` mostra o alerta sem `features` |
+| infra ↔ código | `tests/infra/test_dynamodb_indexes.py` (roda no `start.sh`) | Todo índice DynamoDB consultado pelo código existe no Terraform da tabela certa (ADR-024; os DynamoDB falsos aceitam qualquer índice) |
 | u1 (LLM real) | `apps/conversation-router/tests/quality/test_llm_quality_gate.py` | Naturalidade e fechamento de lead ponta a ponta com roteador e humanização reais |
 
 ## Como executar
@@ -33,8 +34,8 @@ COVERAGE_FILE=/tmp/.cov-u1 .venv/bin/python -m pytest apps/conversation-router/t
 ```
 
 ## Metas
-- Cobertura ≥ 80% por unit (piso do contrato; atual: u1 88,54%, dashboard-ui 80,32%, demais ≥ 97,70%).
-- Gate com LLM real: 48/48 (executado pelo `start.sh` antes do deploy).
+- Cobertura ≥ 80% por unit (piso do contrato; atual: u1 89,60%, dashboard-ui 83,28%, demais ≥ 97,75%).
+- Gate com LLM real: 58/58 (executado pelo `start.sh` antes do deploy).
 - 0 falhas nos boundaries listados acima; qualquer falha em integration é bloqueante do estágio.
 
 ## Gestão de dados de teste

@@ -2,7 +2,7 @@
 
 Fontes: `inception/requirements-analysis/requirements.md` (12 FRs / 9 NFRs, folhas `FRx.y`/`NFRx.y`), `inception/user-stories/stories.md` (103 ACs), `construction/*/code-generation/traceability.json` (7 units), verificação real desta execução.
 
-**Verdict: PARTIAL (reavaliado em 2026-10-08) — gaps de feature restantes: FR1.4, FR2.3, FR5.3 (parcial), FR6.2 (parcial), NFR5.2, mais 1 deviation (FR9.2) e itens Partial (NFR4.1, NFR5.3, NFR6.2, NFR8.1). Resolvidos desde 2026-09-21: FR4.1, FR11.1, NFR9.1–9.4. ACs herdam por grupo.**
+**Verdict: PARTIAL (reavaliado em 2026-10-08) — gaps de feature restantes: FR1.4, FR2.3, FR5.3 (parcial), FR6.2 (parcial), mais 1 deviation (FR9.2) e itens Partial (NFR4.1, NFR5.2, NFR5.3, NFR6.2, NFR8.1). Resolvidos desde 2026-09-21: FR4.1, FR11.1, NFR9.1–9.4. ACs herdam por grupo.**
 
 ## Cobertura por folha FR (status da execução local)
 | ID | Unit | Status | Target / evidência |
@@ -39,7 +39,7 @@ Fontes: `inception/requirements-analysis/requirements.md` (12 FRs / 9 NFRs, folh
 | NFR4.1 | u2/u3/u4/u5/u6/u7 | **Partial** | DLQs SQS existem; EventBridge sem `dead_letter_config` → owner `deployment-pipeline` |
 | NFR4.2 | u1 | OK | traceability u1 (handler) |
 | NFR5.1 | u2–u7 | OK | logs JSON por serviço |
-| NFR5.2 | — | **GAP** | traces distribuídos (OpenTelemetry) não implementados |
+| NFR5.2 | u1 + Lambdas | **Partial** | X-Ray (ADR-021): Lambdas Active + `aws-xray-sdk`; router com segmento por requisição, subsegmento por chamada à LLM e daemon sidecar. Não validado na AWS; o API Gateway HTTP não entra no trace → owner `deployment-execution` |
 | NFR5.3 | u7 | **Partial** | KPIs de negócio OK; `ResponseTimeP90`/custo lidos do CloudWatch mas nunca emitidos (sempre 0); widget de custo removido |
 | NFR6.1 | — | **Unverified** | custo real exige tráfego → owner `observability-setup` |
 | NFR6.2 | u1 | **Partial** | `max_tokens` por chamada; sem monitor/alarme → owner `observability-setup` |
@@ -69,7 +69,7 @@ Cada story pertence a um grupo que mapeia FRs; os ACs herdam o status dos FRs do
 3. **FR5.3** — enviar o `.ics` já gerado ao lead/corretor (fix estimado: ~1 h)
 4. **NFR5.3** — emitir `put_metric_data` de latência/custo (fix estimado: ~2–3 h) ou remover a leitura
 5. **FR6.2** — arquivo de resumo ao corretor (fix estimado: ~1–2 h)
-6. **NFR5.2** — traces distribuídos (fix estimado: ~4–6 h)
+6. **NFR5.2** — X-Ray implementado (ADR-021); falta validar numa subida real e, se quiser o trace desde a borda, trocar o API Gateway HTTP por REST (não recomendado na POC)
 7. **FR9.2** — Autoencoder real (deviation aceita no gate anterior; fix estimado: ~6–10 h)
 8. **NFR2.4** — trilha append-only dedicada (mínimo POC existente; fix estimado: ~2–4 h)
 9. Deferreds com owner válido no plano: NFR1.1, NFR1.2, NFR8.1 (performance-validation), NFR4.1 (deployment-pipeline), NFR6.1, NFR6.2 (observability-setup), contrato CI (ci-pipeline)

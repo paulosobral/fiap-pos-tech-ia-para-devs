@@ -68,6 +68,18 @@ resource "aws_dynamodb_table" "alerts" {
     name = "alert_id"
     type = "S"
   }
+  attribute {
+    name = "lead_id"
+    type = "S"
+  }
+
+  # Consultado pelo anomaly-detector (resolver/achar restrição aberta do lead) e pelo router
+  # (DynamoRestrictionCheck, FR9.4). Sem este índice as duas consultas falham (ValidationException).
+  global_secondary_index {
+    name            = "lead-index"
+    hash_key        = "lead_id"
+    projection_type = "ALL"
+  }
   ttl {
     attribute_name = "ttl"
     enabled        = true

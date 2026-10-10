@@ -133,3 +133,15 @@ variable "hubspot_mcp_refresh_token" {
   default     = ""
   sensitive   = true
 }
+
+variable "xray_daemon_image" {
+  description = "Imagem do X-Ray daemon (sidecar do conversation-router no ECS). Pública, sem build."
+  type        = string
+  default     = "public.ecr.aws/xray/aws-xray-daemon:3.7.0"
+}
+
+variable "bot_name" {
+  description = "Nome da assistente na primeira mensagem do Telegram. Gravado no SSM /sdr/bot-name e lido pelo conversation-router (cache de 5 min)."
+  type        = string
+  default     = "Cecília"
+}

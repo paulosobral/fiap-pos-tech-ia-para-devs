@@ -514,3 +514,80 @@ def test_reply_does_not_promise_a_search_that_already_ran_or_an_alert():
         ],
     )
     assert not _promises_future_work(reply), reply
+
+
+def _real_flow():
+    from service.flow.lead_qualifier import LeadQualifier
+    from service.flow.sales_flow import SalesFlow
+    from service.properties_catalog import known_places, search_properties
+
+    def route(message, lead_info, current_state, **kw):
+        return llm.extract_and_route(
+            message, lead_info, current_state, api_key=API_KEY, shown_properties=kw.get("shown_properties"),
+            favorite_property=kw.get("favorite_property"), conversation_history=kw.get("conversation_history"),
+            photos_sent=kw.get("photos_sent"), places=known_places(),
+        )
+
+    def reply(message, canned, lead_info, properties, **kw):
+        return llm.generate_reply(message, canned, lead_info, properties, api_key=API_KEY, **kw)
+
+    return SalesFlow(lead_qualifier=LeadQualifier(), llm_router=route, reply_generator=reply,
+                     properties_rag=lambda info: search_properties(info, top_k=9), bot_name_provider=lambda: "Cecília")
+
+
+def _talk(flow, texts, missing_contact=None):
+    state, history, outs = {"current_state": "greeting", "context": {}}, [], []
+    for text in texts:
+        out = flow.invoke({"message": text, "current_state": state["current_state"], "context": state.get("context", {}),
+                           "lead_info": state.get("context", {}).get("lead_info", {}),
+                           "conversation_history": history[-8:], "consent_recorded": True,
+                           **({"missing_contact_fields": list(missing_contact)} if missing_contact else {})})
+        history += [{"role": "user", "content": text}, {"role": "assistant", "content": out["response"]}]
+        outs.append(out)
+        state = out
+    return outs
+
+
+def test_one_after_a_list_details_an_item_instead_of_listing_everything_again():
+    """Chat real de 09/10: depois de "quero ver as opções de são paulo" o lead digitou "1" e o bot listou
+    tudo de novo (a região vinha só em `arguments` e se perdia; ver ADR-025)."""
+    outs = _talk(_real_flow(), ["oi", "sim", "compra", "quero ver as opções de são paulo", "1"])
+    assert (outs[3].get("context", {}).get("lead_info") or {}).get("region"), "a região pedida não foi guardada"
+    assert outs[4].get("_router_tool") == "property_detail", (outs[4].get("_router_tool"), outs[4]["response"])
+
+
+
+
+def _consent_history():
+    from service.security_layer import consent_message
+
+    return [{"role": "user", "content": "oi"}, {"role": "assistant", "content": consent_message("Cecília")}]
+
+
+@pytest.mark.parametrize(
+    "message,expected",
+    [
+        ("sim", "accepted"), ("tô de acordo", "accepted"), ("manda ver", "accepted"), ("👍", "accepted"),
+        ("pode sim, quero alugar uma sala em santo andré", "accepted"),
+        ("não", "refused"), ("prefiro não passar meus dados", "refused"),
+        ("compra", "unclear"), ("pra que vocês usam meus dados?", "unclear"),
+    ],
+)
+def test_llm_reads_the_consent_answer_naturally(message: str, expected: str):
+    """O consentimento não é URA: a LLM entende o aceite em qualquer forma natural, a recusa, e o que não
+    é nem um nem outro (ADR-027). Na dúvida ela não pode dar como aceito."""
+    assert llm.classify_consent(message, api_key=API_KEY, conversation_history=_consent_history()) == expected
+
+
+def test_wanting_to_close_asks_the_leads_contact_and_never_offers_the_brokers():
+    """Chat real de 10/10: "quero fechar o terceiro" e o bot ofereceu passar o WhatsApp do corretor. O SDR pega
+    o contato do lead; o do corretor nunca é oferecido."""
+    import re
+
+    outs = _talk(_real_flow(), ["oi", "sim", "compra", "quero ver as opções de são caetano", "quero fechar o terceiro"],
+                 missing_contact=["name", "phone", "email"])  # lead ainda sem telefone/e-mail, como no chat real
+    reply = outs[-1]["response"].lower()
+    assert re.search(r"(seu|teu) (telefone|whats|e-?mail|contato)|me passa", reply), outs[-1]["response"]
+    assert not re.search(r"(te passo|te passar|passar o|passo o|aqui está o|segue o) (whats|telefone|contato|e-?mail|n[uú]mero)[^.?!]*(corretor|imobili)", reply), outs[-1]["response"]
+    third = (outs[3].get("response_properties") or outs[3].get("properties") or [])[2]
+    assert outs[-1].get("context", {}).get("favorite_property") == third["title"], "o imóvel escolhido não foi gravado"

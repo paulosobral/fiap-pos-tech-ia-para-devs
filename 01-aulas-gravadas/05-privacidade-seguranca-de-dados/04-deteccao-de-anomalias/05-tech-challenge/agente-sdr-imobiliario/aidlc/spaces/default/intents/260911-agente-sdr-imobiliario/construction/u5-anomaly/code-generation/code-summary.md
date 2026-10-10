@@ -53,3 +53,22 @@
 - **Janela de horário atípico em America/Sao_Paulo (correção R-01)**: os leads são brasileiros (+55); a janela útil 08:00–18:59 é avaliada no fuso local do lead e o campo lido é o `at` real da U1 (UTC) convertido via `zoneinfo`. Timestamps naive são interpretados como UTC. `ts` permanece no leitor por compatibilidade com fixtures antigos.
 - **boto3 ausente no `.venv`**: o wiring do `handler()` é testado com módulo fake injetado em `sys.modules` (padrão já usado pelo u4).
 - IaC (Terraform — regra do EventBridge, tabela de alertas, GSI `lead-index`) não gerado neste estágio — handled pelos estágios de infrastructure/deployment.
+
+## Mudanças posteriores — X-Ray (ADR-021, 2026-10-09)
+
+Tracing distribuído acrescentado depois do gate de code-generation. Nenhuma regra de negócio mudou.
+
+- Novo `apps/anomaly-detector/tracing.py` (liga o X-Ray no import), chamado no começo de `apps/anomaly-detector/handler.py`.
+- `aws-xray-sdk>=2.14` em `apps/anomaly-detector/requirements.txt`.
+- Testes: `apps/anomaly-detector/tests/unit/test_tracing.py` (idempotência, ausência do SDK, falha ao instrumentar, `LOG_ERROR` por padrão e regressão contra `patch_all`).
+- Terraform: `tracing_mode = "Active"` e `attach_tracing_policy = true` em `infra/lambda-*.tf` da unidade.
+- O `anomaly-detector` roda a cada minuto e gera ~43 mil traces por mês, quase metade do plano gratuito do X-Ray (100 mil); ajustar a amostragem se necessário.
+
+- Só o `botocore` é instrumentado (nunca `patch_all()`, que gravaria a URL do Telegram com o token do bot); sem o SDK, tudo vira no-op.
+- Verificado com o SDK real e um daemon UDP simulado; **não validado numa subida na AWS** (owner: `deployment-execution`).
+
+## Mudanças posteriores — índice `lead-index` em `sdr-alerts` (ADR-024, 2026-10-10)
+
+- Defeito de infraestrutura encontrado pelo X-Ray em produção: `alert_store.py` consulta o GSI `lead-index` na tabela de alertas, mas o Terraform só o declarava em `sdr-sessions`; o job abortava no primeiro lead normal e a restrição de agendamento (FR9.4, consumida pelo router em modo *fail-open*) nunca era aplicada. Nenhum código da unidade mudou.
+- Correção em `infra/dynamodb.tf`: atributo `lead_id` e GSI `lead-index` na `sdr-alerts`. Guarda de regressão: `tests/infra/test_dynamodb_indexes.py` (roda no `start.sh`).
+- Lição: o DynamoDB falso dos testes aceita qualquer índice, então este tipo de defeito só aparece no deploy; o guarda compara código e Terraform.

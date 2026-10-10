@@ -5,6 +5,7 @@ import logging
 import os
 from typing import Any
 
+import tracing
 from infra.alert_store import AlertStoreReader
 from infra.conversation_store import ConversationStore
 from infra.metrics import CloudWatchMeter
@@ -12,6 +13,8 @@ from logs import log_event
 from infra.pii_reader import PiiReader
 from service.kpis import KpiService, utc_now
 from service.leads import LeadNotFoundError, LeadService
+
+tracing.enable()
 
 logging.getLogger().setLevel(logging.INFO)
 

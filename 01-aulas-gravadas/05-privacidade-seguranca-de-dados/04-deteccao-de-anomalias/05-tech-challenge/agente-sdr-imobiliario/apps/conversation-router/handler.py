@@ -17,6 +17,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 try:
+    from service.llm import classify_consent as _llm_classify_consent
     from service.llm import classify_intent as _llm_classify_intent
     from service.llm import extract_and_route as _llm_extract_and_route
     from service.llm import generate_reply as _llm_generate_reply
@@ -647,6 +648,9 @@ class ConversationRouter:
                         "budget": budget_text,
                         "deadline": _crm_text(info.get("deadline")),
                         "area": _crm_text(info.get("area")),
+                        "region": _crm_text(info.get("region")),
+                        # Imóvel que o lead escolheu (a LLM grava em favorite_property quando ele decide).
+                        "property": _crm_text(context.get("favorite_property")),
                     },
                     "session_id": conversation.session_id,
                     "timestamp": utc_now_iso(),
@@ -699,6 +703,7 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
 
     llm_reply = None
     llm_router = None
+    consent_classifier = None
     if llm_key and _HAS_LLM:
 
         def llm_reply(
@@ -725,6 +730,7 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
                     photos_sending=int(kwargs.get("photos_sending") or 0),
                     contact_channels=kwargs.get("contact_channels"),
                     contact_request=bool(kwargs.get("contact_request")),
+                    bot_name=kwargs.get("bot_name"),
                 )
             except Exception:
                 logger.warning(
@@ -753,11 +759,19 @@ def handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
 
         llm_router = llm_route
 
+        def llm_consent(message: str, **kwargs: Any) -> str:
+            return _llm_classify_consent(
+                message, api_key=llm_key, conversation_history=kwargs.get("conversation_history")
+            )
+
+        consent_classifier = llm_consent
+
     flow = SalesFlow(
         lead_qualifier=LeadQualifier(),
         llm_classify_intent=llm_classifier,
         reply_generator=llm_reply,
         llm_router=llm_router,
+        consent_classifier=consent_classifier,
         properties_rag=(lambda info: _search_properties(info, top_k=9))
         if _HAS_LLM
         else None,

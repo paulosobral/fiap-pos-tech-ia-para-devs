@@ -148,6 +148,10 @@ def validate_router_output(
 
     args = raw.get("arguments") if isinstance(raw.get("arguments"), dict) else {}
     lead = raw.get("lead_info") if isinstance(raw.get("lead_info"), dict) else {}
+    # A LLM às vezes põe o dado de busca só em `arguments` (ex.: request_options com region="São Paulo")
+    # e deixa `lead_info` vazio; sem isso a busca perdia o filtro e o estado nunca guardava a região
+    # (bug real de 09/10). Aproveitamos o que ela mesma estruturou; `lead_info` explícito prevalece.
+    lead = {**{k: v for k, v in args.items() if k in _KNOWN_LEAD_FIELDS and v not in (None, "")}, **lead}
     clean_lead = {
         k: v for k, v in lead.items() if k in _KNOWN_LEAD_FIELDS and v not in (None, "")
     }

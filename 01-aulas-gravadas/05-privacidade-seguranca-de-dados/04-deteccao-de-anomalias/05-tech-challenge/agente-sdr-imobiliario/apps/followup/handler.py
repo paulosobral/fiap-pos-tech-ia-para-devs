@@ -4,6 +4,7 @@ import logging
 import os
 from typing import Any
 
+import tracing
 from infra.conversation_store import ConversationStore
 from infra.followup_state import FollowupStateStore
 from infra.silence_window import SilenceWindow
@@ -12,6 +13,8 @@ from service.duplicate_guard import DuplicateGuard
 from service.followup import FollowupService
 from service.message_builder import FollowupMessageBuilder
 from service.telegram_gateway import TelegramGateway
+
+tracing.enable()
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)

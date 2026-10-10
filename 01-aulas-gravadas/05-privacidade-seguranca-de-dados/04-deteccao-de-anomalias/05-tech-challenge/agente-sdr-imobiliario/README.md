@@ -177,6 +177,14 @@ Para alterar:
 aws ssm put-parameter --name "/sdr/llm-model-primary" --value "anthropic/claude-haiku-4.5" --type String --overwrite
 ```
 
+**Nome da assistente:** o parâmetro `/sdr/bot-name` guarda o nome com que o bot se apresenta na primeira mensagem (padrão `Cecília`, variável Terraform `bot_name`). O router lê o valor com cache de 5 minutos, então trocar não exige deploy:
+
+```bash
+aws ssm put-parameter --name "/sdr/bot-name" --value "Marina" --type String --overwrite
+```
+
+Um novo `terraform apply` (ou `./start.sh`) volta ao valor da variável `bot_name`; para tornar a troca permanente, defina `-var bot_name=...`.
+
 ### 8. Configurações no HubSpot via MCP
 
 O projeto usa o **servidor MCP oficial do HubSpot** (`https://mcp.hubspot.com`) para integração com o CRM. Este servidor usa OAuth 2.1 + PKCE e não aceita token de app privado.
@@ -370,9 +378,10 @@ O Terraform cria automaticamente:
 - **Step Functions:** Workflow de follow-up
 - **Cognito User Pool:** Login do dashboard
 - **CloudWatch Logs:** Logs estruturados
+- **X-Ray:** tracing ativo nas Lambdas e no `conversation-router` (daemon como contêiner auxiliar da task). Só o `botocore` é instrumentado: o `patch_all()` gravaria a URL do Telegram, com o token do bot, no trace. O API Gateway HTTP não entra no trace (ADR-021). Falta validar numa subida real: Console X-Ray → Traces deve mostrar o segmento `conversation-router` com subsegmentos `llm:<modelo>`
 - **KMS:** Chave para criptografia de PII
 - **Secrets Manager:** Secrets sensíveis
-- **SSM Parameters:** Configuração de modelos LLM
+- **SSM Parameters:** Configuração de modelos LLM e do nome da assistente (`/sdr/bot-name`)
 - **IAM:** Roles e políticas para cada serviço
 
 ## Estimativa de Custo (POC Mensal)
@@ -428,13 +437,14 @@ flowchart TD
     subgraph DATA["AWS — Dados"]
         MEM[("Amazon DynamoDB<br/>sessões, PII cifrada (KMS), alertas — TTL 90d")]
         RAGS[("Amazon DynamoDB sdr-properties<br/>catálogo de imóveis — FAISS montado em memória no router")]
-        SM["AWS Secrets Manager<br/>token do bot · chaves de API"]
+        SM["AWS Secrets Manager + SSM Parameter Store<br/>token do bot · chaves de API<br/>modelos LLM e nome da assistente (SSM)"]
     end
 
     subgraph OBS["AWS — API, identidade e observabilidade"]
         COG["Amazon Cognito<br/>login do time — protege dashboard e API"]
         KPI["AWS Lambda — dash-api<br/>agrega KPIs e lista leads (DynamoDB + KMS)"]
         CW["Amazon CloudWatch<br/>logs · métricas · alertas"]
+        XR["AWS X-Ray<br/>traços: Lambdas + conversation-router<br/>(daemon como sidecar no ECS)"]
     end
 
     TG --> GW
@@ -465,6 +475,8 @@ flowchart TD
     COG -.->|"authorizer"| GW
     DASHB -.->|"Bearer JWT"| GW
     CORE -.-> CW
+    CORE -.->|"segmentos (daemon)"| XR
+    ASYNC -.->|"Active tracing"| XR
 ```
 
 ### Componentes Principais

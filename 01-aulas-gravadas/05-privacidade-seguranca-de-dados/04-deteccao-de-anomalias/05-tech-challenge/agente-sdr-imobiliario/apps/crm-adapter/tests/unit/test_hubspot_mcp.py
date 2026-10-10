@@ -178,3 +178,21 @@ def test_secret_store_roundtrip():
     assert store.load() == {"refresh_token": "a"}
     store.save({"refresh_token": "b"})
     assert store.load()["refresh_token"] == "b"
+
+
+def test_hubspot_summary_is_in_portuguese():
+    summary = HubSpotCrmGateway._summary({**LEAD, "urgency": "high", "intent": "purchase"})
+    assert "Urgência: alta" in summary and "Intenção: compra" in summary
+    assert "high" not in summary and "purchase" not in summary
+    rent = HubSpotCrmGateway._summary({**LEAD, "urgency": "low", "intent": "rent"})
+    assert "Urgência: baixa" in rent and "Intenção: locação" in rent
+
+
+def test_hubspot_summary_keeps_unknown_values():
+    summary = HubSpotCrmGateway._summary({**LEAD, "urgency": "crítica", "intent": "permuta"})
+    assert "Urgência: crítica" in summary and "Intenção: permuta" in summary
+
+
+def test_hubspot_summary_includes_region_and_the_chosen_property():
+    summary = HubSpotCrmGateway._summary({**LEAD, "region": "São Caetano do Sul", "property": "Apartamento à venda, Boa Vista"})
+    assert "Região: São Caetano do Sul" in summary and "Imóvel escolhido: Apartamento à venda, Boa Vista" in summary

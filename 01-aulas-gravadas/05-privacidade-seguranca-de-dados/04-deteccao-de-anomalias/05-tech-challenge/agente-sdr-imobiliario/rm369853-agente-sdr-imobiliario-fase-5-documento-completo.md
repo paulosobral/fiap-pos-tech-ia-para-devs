@@ -264,7 +264,7 @@ Entregar uma **POC funcional** que demonstre todas as habilidades exigidas: aten
 | FR-04 | Qualificação de leads | A LLM extrai os dados da conversa (sem formulário fixo); o qualificador calcula score e urgência |
 | FR-05 | Agendamento de reuniões | Validação de data/hora, compromisso em calendário simulado e convite `.ics` gerado (**envio ao corretor não implementado**); exige telefone ou e-mail do lead |
 | FR-06 | Resumo inteligente | Handoff em Markdown (score, intenção, urgência, próximos passos) e lead enviado ao HubSpot (contato + status) |
-| FR-07 | Dashboard mínimo | Streamlit (1 página) em **ECS Fargate**, login Cognito e sessão persistente; consome `GET /api/kpis` e `GET /api/leads` — KPIs, anomalias, lista de leads com contato e botão "Enviar ao HubSpot" |
+| FR-07 | Dashboard mínimo | Streamlit (1 página, **rótulos em português**: ex. "Encaminhado ao corretor" em vez de `handoff`) em **ECS Fargate**, login Cognito e sessão persistente; consome `GET /api/kpis` e `GET /api/leads` — KPIs, anomalias, lista de leads com contato e botão "Enviar ao HubSpot" |
 | FR-08 | Identificar intenção (compra/aluguel/investimento) | A LLM interpreta a intenção a cada mensagem (roteador tool-agent, §9.2); regex só no modo degradado sem chave |
 | FR-09 | Coletar informações relevantes | Esquema de coleta extraído pela LLM (intenção, metragem, região, orçamento teto/piso, prazo, nº de pessoas, decisor) |
 | FR-10 | Follow-up automático | EventBridge + Step Functions (esperas de 2 h e 24 h) com seleção por janela de silêncio |
@@ -278,10 +278,10 @@ Entregar uma **POC funcional** que demonstre todas as habilidades exigidas: aten
 | ID | Requisito | Critério |
 |---|---|---|
 | NF-01 | Segurança (LGPD) | E-mail/telefone/CNPJ mascarados antes do modelo; minimização; consentimento explícito; KMS; logs estruturados sem PII |
-| NF-02 | Privacidade de dados | PII de contato mascarada antes do provedor LLM; consentimento registrado só com "sim" explícito; retenção limitada (TTL 90 dias) |
+| NF-02 | Privacidade de dados | PII de contato mascarada antes do provedor LLM; consentimento registrado só com concordância clara, interpretada pela LLM (ADR-027); retenção limitada (TTL 90 dias) |
 | NF-03 | Performance | Meta: primeira resposta < 10 s e atendimento simultâneo sem fila. **Não verificada formalmente**; nos logs, 8–15 s por turno com LLM real (fallback em 429 aumenta a latência) |
 | NF-04 | Confiabilidade | DLQ nas filas SQS (áudio, CRM, ingestão); fallback automático de modelo de LLM |
-| NF-05 | Observabilidade | Logs JSON estruturados (CloudWatch) e métricas de negócio no dashboard. Traços distribuídos e métricas de latência/custo no CloudWatch **não implementados** |
+| NF-05 | Observabilidade | Logs JSON estruturados (CloudWatch) e métricas de negócio no dashboard. Traços distribuídos com **AWS X-Ray** nas Lambdas e no router (ADR-021; só o `botocore` é instrumentado e o API Gateway HTTP não entra no trace; a validar numa subida real). Métricas de latência/custo no CloudWatch **não implementadas** |
 | NF-06 | Custo | LLM ~R$ 15–25/mês (OpenRouter · DeepSeek, fallback Haiku 4.5); custo de ECS Fargate à parte (§11) |
 | NF-07 | Segurança de modelo | Guardrails/denied topics; detecção de prompt injection; evasão de PII |
 | NF-08 | Escalabilidade | Lambdas escalam nativamente; ECS Fargate com escala agendada (liga 09:00, desliga 18:00 BRT) |
@@ -324,13 +324,14 @@ flowchart TD
     subgraph DATA["AWS — Dados"]
         MEM[("Amazon DynamoDB<br/>sessões, PII cifrada (KMS), alertas — TTL 90d")]
         RAGS[("Amazon DynamoDB sdr-properties<br/>catálogo de imóveis — FAISS montado em memória no router")]
-        SM["AWS Secrets Manager<br/>token do bot · chaves de API"]
+        SM["AWS Secrets Manager + SSM Parameter Store<br/>token do bot · chaves de API<br/>modelos LLM e nome da assistente (SSM)"]
     end
 
     subgraph OBS["AWS — API, identidade e observabilidade"]
         COG["Amazon Cognito<br/>login do time — protege dashboard e API"]
         KPI["AWS Lambda — dash-api<br/>agrega KPIs e lista leads (DynamoDB + KMS)"]
         CW["Amazon CloudWatch<br/>logs · métricas · alertas"]
+        XR["AWS X-Ray<br/>traços: Lambdas + conversation-router<br/>(daemon como sidecar no ECS)"]
     end
 
     TG --> GW
@@ -361,6 +362,8 @@ flowchart TD
     COG -.->|"authorizer"| GW
     DASHB -.->|"Bearer JWT"| GW
     CORE -.-> CW
+    CORE -.->|"segmentos (daemon)"| XR
+    ASYNC -.->|"Active tracing"| XR
 ```
 
 ## 8.2 Componentes e responsabilidade
@@ -381,6 +384,8 @@ flowchart TD
 14. **Ingestão de contato**: captura dados que chegam por e-mail/portais e abre sessão no chatbot
 15. **Áudio/STT**: worker ECS Fargate consome fila SQS, baixa/transcreve com **faster-whisper (PT-BR)**
 16. **CRM via MCP — `crm-adapter`**: grava o lead como contato no **HubSpot** pelo MCP remoto (OAuth 2.1 + PKCE; refresh token de uso único mantido no Secrets Manager); sem credenciais, usa o CRM simulado (CSV)
+17. **Observabilidade — AWS X-Ray (ADR-021)**: `tracing_mode = Active` nas Lambdas e `aws-xray-sdk` no código; no `conversation-router` (ECS) um segmento por requisição e um subsegmento `llm:<modelo>` por chamada à LLM (falha e fallback marcados), com o daemon como contêiner auxiliar da task. Só o `botocore` é instrumentado, nunca `patch_all()`: ele grava a URL das chamadas HTTP de saída e a do Telegram carrega o token do bot (vazamento reproduzido com o SDK real); as anotações ficam em rota, status e modelo. O API Gateway HTTP não suporta X-Ray: o trace começa no router ou na Lambda `dashboard-api`.
+18. **Persona — nome da assistente (ADR-022)**: o nome vem do parâmetro SSM `/sdr/bot-name` (padrão `Cecília`, variável Terraform `bot_name`), lido por `service/bot_identity.py` com cache de 5 min e fallback para a variável `BOT_NAME` e depois para o padrão. A primeira mensagem (texto fixo do consentimento, nunca reescrito pela LLM) começa com "Olá! Meu nome é <nome> e sou assistente virtual da W Levitt…"; o prompt de humanização recebe `SEU NOME` para não se reapresentar.
 
 ## 8.3 Estrutura do Projeto
 
@@ -404,7 +409,7 @@ agente-sdr-imobiliario/
 │   ├── providers.tf            # Provedores AWS
 │   ├── variables.tf            # Variáveis de entrada
 │   ├── s3.tf                   # Bucket S3 de catálogos (provisionado; a app lê o catálogo do DynamoDB — ADR-012)
-│   ├── dynamodb.tf             # Tabelas DynamoDB (sessions, pii, alerts, dedupe, followup, properties)
+│   ├── dynamodb.tf             # Tabelas DynamoDB (sessions, pii, alerts, dedupe, followup, properties); GSI lead-index em sessions e alerts
 │   ├── sqs.tf                  # Filas SQS (áudio, CRM, ingestão) e DLQs
 │   ├── ses.tf                  # SES para ingestão de e-mail
 │   ├── secrets.tf              # Chave KMS de PII e Secrets Manager (bot, LLM, HubSpot)
@@ -441,7 +446,7 @@ O catálogo real de imóveis vem de uma pasta **irmã**, `../crawling-imobiliari
 - **A LLM interpreta, o código valida (ADR-015/020)**: metragem, bairro/cidade, orçamento (teto e piso), referências a imóveis ("o primeiro", "esse aí"), interesse em visita e pedido de humano vêm da LLM; regex só entra no modo degradado, sem chave
 - **Áudio**: a transcrição entra no fluxo como se o lead tivesse digitado
 - **Orquestração**: **LangGraph** (reaproveita o padrão de multiagentes)
-- **Prompt system**: persona de SDR corporativo BR, tom consultivo, permissões, sempre oferecer ações
+- **Prompt system**: persona de SDR corporativo BR, tom consultivo, permissões, sempre oferecer ações. A assistente se chama **Cecília**: o nome fica no SSM Parameter Store (`/sdr/bot-name`, lido pelo router com cache de 5 min, então trocar o nome não exige deploy) e ela se apresenta por ele na primeira mensagem, junto do pedido de consentimento; nas respostas seguintes não se reapresenta
 - **Interface natural-first**: entrada livre sempre aceita; botões inline **não foram implementados** na POC
 - **Guardrails**: masking de PII no pré-envio, checagem de vazamento na saída, denied topics e detecção de prompt injection; a reescrita da LLM é descartada (vale o texto oficial) quando promete fotos que não vão, promete "um momento"/alertas que o bot não cumpre ou omite o pedido de contato
 
@@ -452,8 +457,9 @@ O `sales-flow` evoluiu para um **agente single-step com tool-calling**: uma úni
 - **Contrato single-step**: `{thought, tool, arguments, lead_info, memory_updates}`
 - **10 VALID_TOOLS**: `request_options, property_detail, compare_properties, refine_search, express_visit_interest, request_schedule, request_human, decline, provide_info, unclear`
 - **Validação em código**: fuzzy de favorito apenas sobre imóveis já exibidos; gate de evidência de visita
+- **Dados de busca e observabilidade do roteador (ADR-025/026)**: dados de busca que a LLM manda só em `arguments` (ex.: região) são promovidos ao `lead_info`; cada decisão do roteador (ferramenta, argumentos, raciocínio) vai para o log `roteador:`; nas fases de consentimento e de pergunta de intenção a humanização não recebe imóveis guardados de turnos anteriores (a LLM saía do roteiro e listava opções antes de perguntar compra, locação ou investimento)
 - **6 estados no grafo**: `greeting | elicitation | conversation | scheduling | handoff | followup`
-- **Gates 100% em código**: consentimento LGPD explícito (só um "sim" claro vale; ADR-017); telefone ou e-mail antes de agendar/falar com corretor; score ≥70 para qualificar; restrição de agendamento por anomalia; no máximo 1 pergunta de critério por conversa
+- **Gates 100% em código**: consentimento LGPD (o texto do pedido é fixo e o aceite só é gravado com concordância clara; quem interpreta a resposta é a LLM, lendo a conversa, ADR-027); telefone ou e-mail antes de agendar/falar com corretor; score ≥70 para qualificar; restrição de agendamento por anomalia; no máximo 1 pergunta de critério por conversa
 - **Fallback**: tool inválida / exceção do LLM → regex + FSM determinístico
 
 ## 9.3 RAG — duas bases (imóveis + clientes)
@@ -498,16 +504,17 @@ Em tempo de execução há **um agente com tool-calling** (§9.2) e uma camada d
 - **Features por conversa (4)**: volume de mensagens, tamanho médio das mensagens, proporção de mensagens com palavras negativas (PT-BR) e proporção de mensagens fora do horário comercial (08:00–18:59, America/Sao_Paulo). As respostas do bot entram na conta e diluem os valores
 - **Scorer padrão (`ANOMALY_SCORER=heuristic`)**: combinação ponderada das features (volume 0,3 · tamanho 0,2 · negatividade 0,3 · horário 0,2); anomalia quando a nota chega a `ANOMALY_THRESHOLD` (0,7). Com esse limite, só dispara à noite e com muitas mensagens longas e negativas
 - **Scorer opcional (`ANOMALY_SCORER=sklearn`)**: **Isolation Forest + PCA** (erro de reconstrução como sinal residual); lotes com menos de 5 conversas caem no heurístico. O **Autoencoder** do desenho original **não foi implementado** (desvio aceito no AI-DLC, FR9.2)
-- **Saída**: alerta na tabela `sdr-alerts`, exibido no dashboard sem o payload bruto, e **restrição de agendamento** do lead (a restrição é liberada quando uma varredura posterior o pontua como normal)
+- **Saída**: alerta na tabela `sdr-alerts` (com o índice `lead-index` por lead, ADR-024), exibido no dashboard sem o payload bruto, e **restrição de agendamento** do lead (a restrição é liberada quando uma varredura posterior o pontua como normal)
 - **Verificação**: gate de qualidade com LLM real que conversa pelo roteador, passa a conversa ao detector e confere o alerta no `/api/kpis` (ADR-019). O teste usa limite 0,4; o limite de produção continua 0,7
 
 ## 9.7 Segurança de dados (LGPD)
 
 - **PII masking** determinístico de contato (e-mail, telefone — digitado, com hífen ou falado por extenso — e CNPJ) antes do envio à LLM. O **nome não é mascarado**: vem do perfil do Telegram, fica cifrado no registro de PII e qualquer resposta que o cite é barrada
 - **Criptografia**: KMS at rest (DynamoDB, S3), TLS em trânsito
-- **Consentimento**: a primeira mensagem explica o tratamento de dados; só um "sim" explícito registra o aceite (outra resposta reapresenta o pedido; "não" encerra)
+- **Consentimento**: a primeira mensagem apresenta a assistente pelo nome (Cecília) e explica o tratamento de dados: o nome vem do perfil do Telegram, só se pede WhatsApp ou e-mail, e não se pede CNPJ nem documentos; só um "sim" explícito registra o aceite (outra resposta reapresenta o pedido; "não" encerra) A LLM lê a conversa e decide se a resposta é aceite (em qualquer forma natural: "sim", "tô de acordo", "manda ver", 👍), recusa ou nenhum dos dois; na dúvida não conta como aceite e o pedido é refeito; ADR-027.
 - **Retenção**: TTL de 90 dias para conversas de leads frios
 - **Gestão de segredos**: Secrets Manager para token do bot, chave da LLM e credenciais do HubSpot (o refresh token de uso único é regravado a cada renovação)
+- **Traços sem segredos**: o X-Ray instrumenta só o `botocore` (nunca `patch_all()`, que gravaria a URL do Telegram com o token do bot); as anotações são rota, status e modelo, sem texto de conversa nem PII
 - **Acesso ao contato dos leads**: o dashboard exige login Cognito (JWT validado no API Gateway); o contato é decifrado com KMS só na leitura autenticada (ADR-016)
 
 ## 9.8 Privacidade e provedores de LLM
@@ -600,6 +607,8 @@ O script executa, nesta ordem: setup → compileall → testes unitários (cober
 - O **endereço do dashboard** (`http://<IP da task>`, porta 80, sem HTTPS) aparece no fim do log, na linha `Dashboard:`. O IP muda sempre que a task reinicia.
 - Os serviços ECS (router, voice-adapter e dashboard) ligam às 09:00 e desligam às 18:00 (Brasília); fora da janela o bot não responde. O `start.sh` liga os serviços na hora, mas o desligamento agendado continua valendo.
 - Rodar o `start.sh` de novo **sem** `stop.sh` atualiza a infra e **mantém os dados** (leads, sessões) do DynamoDB.
+- **Nome da assistente:** fica no SSM `/sdr/bot-name` (padrão `Cecília`, variável Terraform `bot_name`) e é o nome com que ela se apresenta na primeira mensagem. Para trocar sem deploy: `aws ssm put-parameter --name /sdr/bot-name --value "Nome" --type String --overwrite` (vale em até 5 minutos); um novo `start.sh` volta ao valor da variável `bot_name`.
+- **Verificação do X-Ray (ainda não validada numa subida real):** depois de uma conversa, em Console AWS → X-Ray → Traces deve aparecer o segmento `conversation-router` com subsegmentos `llm:<modelo>`; se não aparecer, veja o log do contêiner `xray-daemon` (mesmo log group do router).
 
 ## 5. Criar Usuário no AWS Cognito
 
@@ -686,9 +695,10 @@ Isso executa `terraform destroy` e remove todos os recursos AWS (inclusive os da
 | S3 + índices FAISS | < R$ 1 |
 | SQS + SES | < R$ 1 |
 | Amazon Cognito | R$ 0 (free tier) |
+| AWS X-Ray | R$ 0 (plano gratuito de 100 mil traces/mês; o `anomaly-detector`, a cada minuto, consome ~43 mil) |
 | **Total POC (sem ECS)** | **~R$ 15-25/mês** |
 
-> O custo dominante da POC é o ECS Fargate, não a LLM. O gate de qualidade (48 testes com LLM real) gasta créditos do OpenRouter a cada deploy. A métrica de custo da LLM **não** é exibida no dashboard (nenhum componente a emitia); o acompanhamento é feito no painel do OpenRouter.
+> O custo dominante da POC é o ECS Fargate, não a LLM. O gate de qualidade (58 testes com LLM real) gasta créditos do OpenRouter a cada deploy. A métrica de custo da LLM **não** é exibida no dashboard (nenhum componente a emitia); o acompanhamento é feito no painel do OpenRouter.
 
 ---
 
@@ -704,11 +714,11 @@ Isso executa `terraform destroy` e remove todos os recursos AWS (inclusive os da
 
 ## Dependências da Aplicação
 
-- **conversation-router:** litellm, langgraph, faiss-cpu, boto3 (o servidor HTTP é o da biblioteca padrão do Python)
+- **conversation-router:** litellm, langgraph, faiss-cpu, boto3, aws-xray-sdk (o servidor HTTP é o da biblioteca padrão do Python)
 - **voice-adapter:** faster-whisper, boto3, requests (o `ffmpeg` é instalado como binário na imagem)
 - **crm-adapter:** mcp, boto3, requests
 - **dashboard-ui:** streamlit (≥ 1.37, por causa dos cookies de sessão), boto3, requests
-- **dashboard-api, anomaly-detector, followup, contact-ingest:** boto3 (e requests, quando precisam de HTTP)
+- **dashboard-api, anomaly-detector, followup, contact-ingest:** boto3 e aws-xray-sdk (e requests, quando precisam de HTTP); o **crm-adapter** também usa aws-xray-sdk
 
 ## Chaves de API Necessárias
 
@@ -739,21 +749,22 @@ python -m pytest apps/conversation-router/tests/quality -q
 
 | Aplicação | Testes | Cobertura |
 |---|---|---|
-| conversation-router | 460 | 88,5% |
+| conversation-router | 523 | 89,6% |
 | voice-adapter | 75 | 99,4% |
-| crm-adapter | 129 | 99,1% |
-| contact-ingest | 71 | 100% |
-| anomaly-detector | 87 | 99,0% |
-| followup | 87 | 98,5% |
-| dashboard-api | 72 | 97,7% |
-| dashboard-ui | 42 | 81,3% |
-| **Total** | **1023** | todos ≥ 80% |
+| crm-adapter | 137 | 99,1% |
+| contact-ingest | 77 | 99,9% |
+| anomaly-detector | 93 | 99,0% |
+| followup | 93 | 98,5% |
+| dashboard-api | 78 | 97,7% |
+| dashboard-ui | 49 | 83,3% |
+| **Total** | **1125** | todos ≥ 80% |
+| Guarda de infra (`tests/infra`, índices DynamoDB × Terraform) | 4 | — |
 
-**Gate de qualidade com LLM real: 48 testes**, executados pelo `start.sh` antes do deploy: referências a imóveis ("o primeiro", "esse aí"), fotos, contato e telefone falado, piso e teto de orçamento, trava de promessas, fechamento de lead ponta a ponta e anomalias ponta a ponta (chat → detector → dashboard).
+**Gate de qualidade com LLM real: 58 testes**, executados pelo `start.sh` antes do deploy: referências a imóveis ("o primeiro", "esse aí"), fotos, contato e telefone falado, piso e teto de orçamento, trava de promessas, fechamento de lead ponta a ponta e anomalias ponta a ponta (chat → detector → dashboard).
 
 **Validado à mão contra serviços reais:** HubSpot via MCP (contato criado, localizado sem duplicar e atualizado; lead real do Telegram chegando ao CRM) e a infra AWS recriada várias vezes pelo `start.sh`/`stop.sh`.
 
-**Limitações conhecidas (AI-DLC, estágio build-and-test):** botões inline (FR1.4), questionário B2B vs investidor PF (FR2.3), envio do convite `.ics` ao corretor (FR5.3), arquivo de resumo ao corretor (FR6.2), traços distribuídos (NFR5.2), Autoencoder (FR9.2, desvio aceito), métricas de latência e custo no CloudWatch (nunca emitidas) e a verificação formal de desempenho (NFR1.1/1.2).
+**Limitações conhecidas (AI-DLC, estágio build-and-test):** botões inline (FR1.4), questionário B2B vs investidor PF (FR2.3), envio do convite `.ics` ao corretor (FR5.3), arquivo de resumo ao corretor (FR6.2), traços distribuídos de ponta a ponta (o X-Ray cobre Lambdas e router, mas ainda não foi validado numa subida real; NFR5.2), Autoencoder (FR9.2, desvio aceito), métricas de latência e custo no CloudWatch (nunca emitidas) e a verificação formal de desempenho (NFR1.1/1.2).
 
 ---
 

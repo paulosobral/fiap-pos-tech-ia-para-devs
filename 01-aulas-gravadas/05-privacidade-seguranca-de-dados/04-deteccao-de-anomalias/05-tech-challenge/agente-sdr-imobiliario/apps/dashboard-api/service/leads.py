@@ -77,6 +77,8 @@ class LeadService:
                 "budget": row["budget"],
                 "deadline": row["deadline"],
                 "area": row["area"],
+                "region": row["region"],
+                "property": row["property"],
             },
         }
         self._sqs.send_message(QueueUrl=self._queue, MessageBody=json.dumps(message))
@@ -86,6 +88,15 @@ class LeadService:
     def _row(self, lead_id: str, profile: dict[str, Any], conversation: dict[str, Any] | None) -> dict[str, Any]:
         session_id = (conversation or {}).get("session_id")
         contact = self._pii.load(str(session_id)) if session_id else {}
+        context = (conversation or {}).get("context")
+        context = context if isinstance(context, dict) else {}
+        info = context.get("lead_info") if isinstance(context.get("lead_info"), dict) else {}
+
+        def field(key: str) -> str | None:
+            # O perfil só é completado no envio ao CRM; antes disso o dado vive na conversa.
+            return _text(profile.get(key)) or _text(info.get(key))
+
+        budget = field("budget") or (f"a partir de {_text(info.get('budget_min'))}" if info.get("budget_min") else None)
         return {
             "lead_id": lead_id,
             "name": _first(contact, "NOME") or _UNNAMED,
@@ -93,11 +104,12 @@ class LeadService:
             "phone": _first(contact, "TELEFONE"),
             "score": profile.get("score"),
             "urgency": _text(profile.get("urgency")),
-            "intent": _text(profile.get("intent")),
-            "budget": _text(profile.get("budget")),
-            "area": _text(profile.get("area")),
-            "region": _text(profile.get("region")),
-            "deadline": _text(profile.get("deadline")),
+            "intent": field("intent"),
+            "budget": budget,
+            "area": field("area"),
+            "region": field("region"),
+            "deadline": field("deadline"),
+            "property": _text(context.get("favorite_property")),
             "state": _text((conversation or {}).get("current_state")),
             "created_at": _text(profile.get("created_at")),
             "updated_at": _text(profile.get("updated_at")) or _text(profile.get("created_at")),

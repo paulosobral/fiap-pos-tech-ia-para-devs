@@ -431,3 +431,133 @@ Conversa real: "São Bernardo a partir de 1000 reais" virou "orçamento até mil
 - Guardar só um valor e perguntar "é mínimo ou máximo?": a LLM entende a frase; perguntar de novo piora a experiência.
 - Alterar o contrato do crm-adapter para aceitar números: o contrato (Contrato 4) é anterior e tem outros produtores/testes; converter na origem é mais simples.
 
+## ADR-021: Tracing Distribuído com AWS X-Ray (Lambdas e conversation-router)
+
+**Context**
+O NFR5.2 (traços distribuídos) estava "Not Met" no `build-and-test`, e o NFR1.1 (primeira resposta < 10 s) não tinha como ser decomposto: os logs mostram 8–15 s por turno, mas não onde o tempo vai (LLM, DynamoDB, fallback de modelo).
+
+**Decision**
+1. **Lambdas**: `tracing_mode = "Active"` e `attach_tracing_policy = true` nos 7 módulos de Lambda. Nas 5 ativas (`crm-adapter`, `contact-ingest`, `anomaly-detector`, `followup`, `dashboard-api`) o `tracing.py` chama `patch(("botocore",))` do `aws-xray-sdk` no import: DynamoDB, SQS, KMS e Secrets Manager viram subsegmentos, e o SQS propaga o identificador do trace à Lambda consumidora. Contexto ausente só registra o erro (`AWS_XRAY_CONTEXT_MISSING=LOG_ERROR`).
+2. **conversation-router (ECS)**: o ECS não abre segmento sozinho, então `server.py` cria um segmento por requisição (anotações `route` e `status`) e cada chamada à LLM é um subsegmento `llm:<modelo>` (anotações `model`, `max_tokens`; falhas ficam como `fault` com a exceção; `llm_fallback=true` marca o uso do Tier 2). O daemon roda como contêiner auxiliar da mesma task (`public.ecr.aws/xray/aws-xray-daemon:3.7.0`, UDP 2000 em 127.0.0.1), e a política `sdr_lambda` ganhou as ações `xray:*` necessárias.
+3. **Sem SDK instalado** (testes locais) tudo vira no-op; observabilidade nunca derruba o atendimento.
+4. **Segurança dos traces — só `botocore`, nunca `patch_all()`**: o `patch_all()` também instrumenta `requests` e `urllib` e grava a URL das chamadas de saída no trace. Como o `followup` e o router chamam `https://api.telegram.org/bot<TOKEN>/...`, o **token do bot iria para o X-Ray**; isso foi reproduzido com o SDK real e um daemon UDP simulado (token presente com `patch_all`, ausente com só `botocore`). O botocore registra operação, tabela e fila, não o conteúdo das mensagens, e as anotações do router são `route`, `status`, `model`, `max_tokens` e `llm_fallback` (sem texto de conversa nem PII). Cada `test_tracing.py` falha se alguém voltar a chamar `patch_all()`.
+5. **Insumo do estágio `observability-setup`** (Operation, ainda não executado): os subsegmentos `llm:*` e a anotação `llm_fallback` são a evidência esperada para decompor o NFR1.1; a amostragem do X-Ray pode ser ajustada para o `anomaly-detector`.
+
+**Limites conhecidos**
+- O API Gateway **HTTP (v2)** não suporta X-Ray: o trace do webhook do Telegram começa no router, e o do dashboard começa na Lambda `dashboard-api`.
+- O HTTP de saída (Telegram, OpenRouter, HubSpot) **não** aparece como subsegmento, de propósito (item 4); a latência da LLM é coberta pelos subsegmentos `llm:*`.
+- `voice-adapter` e `dashboard-ui` (ECS) ficaram de fora: o valor está no router, onde está a latência da LLM.
+- O `anomaly-detector` (a cada minuto) gera ~43 mil traces por mês, quase metade do plano gratuito (100 mil); a amostragem padrão do X-Ray já limita isso, e a regra pode ser ajustada.
+- **Não validado na AWS**: o SDK foi testado com daemon UDP simulado e os testes automatizados; o daemon como sidecar do Fargate e o tracing nas Lambdas só se confirmam num deploy.
+
+**Alternatives Rejected**
+- OpenTelemetry/ADOT: mais flexível, mas exige coletor e configuração maiores para o mesmo ganho na POC.
+- Tracing manual por logs de latência: não dá a visão encadeada entre serviços.
+- `patch_all()` (instrumentação automática de HTTP): vazaria o token do bot (item 4).
+
+## ADR-022: Nome da Assistente (Cecília) em SSM Parameter Store e Apresentação na Primeira Mensagem
+
+**Context**
+O bot se apresentava como "o assistente SDR da W Levitt", sem nome. Pediu-se uma persona com nome próprio, configurável sem novo deploy.
+
+**Decision**
+1. O nome fica no **SSM Parameter Store** (`/sdr/bot-name`, tipo `String`, valor padrão `Cecília` pela variável Terraform `bot_name`), no mesmo padrão dos parâmetros de modelo de LLM (ADR-010). O router recebe o nome do parâmetro em `BOT_NAME_SSM`; a role da task já lê `/sdr/*`, sem mudança de IAM.
+2. `service/bot_identity.py::get_bot_name()` resolve o nome: **SSM → variável `BOT_NAME` → "Cecília"**, com cache de 5 minutos (trocar no SSM vale em poucos minutos, sem deploy), higieniza espaços e quebras de linha e limita a 40 caracteres (o nome entra no prompt da LLM).
+3. A primeira mensagem passa a ser `consent_message(nome)`: "Olá! Meu nome é <nome> e sou assistente virtual da W Levitt, com foco em espaços corporativos. Para continuar, preciso do seu consentimento LGPD…". Redação neutra quanto a gênero, para o nome poder mudar. O texto continua **fixo e determinístico** (LGPD): `is_consent_message()` o reconhece com qualquer nome e a humanização por LLM nunca o reescreve.
+4. O prompt de humanização recebe `SEU NOME: <nome>` (só quando há nome): ela não se reapresenta a cada resposta e só cita o nome se o lead perguntar quem ela é.
+
+**Consequences**
+- Um novo `terraform apply` volta ao valor da variável `bot_name` (`overwrite = true`, como nos modelos); para uma troca permanente, mudar a variável.
+- O nome de exibição do bot no Telegram (`@RM369853_bot`) é do BotFather e **não** muda por aqui.
+- Verificado só por testes automatizados; o parâmetro em si e a leitura pela task só se confirmam numa subida na AWS.
+
+**Alternatives Rejected**
+- Nome fixo no código: troca exigiria deploy.
+- Variável de ambiente na task: também exige novo apply/restart, e o pedido era SSM.
+
+## ADR-023: Rótulos em Português no Dashboard e no Resumo do HubSpot
+
+**Context**
+O dashboard mostrava códigos internos em inglês (`handoff`, `conversation`, `rent`, `high`, `alert_issued`, `atypical_hours`), o que confundia quem opera: "handoff" não diz que o lead foi passado a um corretor.
+
+**Decision**
+1. A tradução é só de **apresentação**: a API, o DynamoDB e as métricas continuam com os códigos estáveis em inglês. O `dashboard-ui` traduz estados da conversa (ex.: `handoff` → "Encaminhado ao corretor", `conversation` → "Em conversa", `greeting` → "Saudação", `elicitation` → "Consentimento"), intenção (compra, locação, investimento), urgência (alta, média, baixa) e os alertas (tipo, situação e ação tomada).
+2. Valor desconhecido aparece **como veio** (nunca some nem quebra a tela); no gráfico de intenções, códigos e nomes já traduzidos são somados no mesmo rótulo.
+3. O resumo gravado pelo `crm-adapter` no campo `message` do contato do HubSpot também traduz urgência e intenção, porque quem o lê é o corretor. O status do contato no HubSpot (`hs_lead_status`) é traduzido pelo próprio HubSpot.
+
+**Alternatives Rejected**
+- Traduzir na API ou no banco: quebraria consumidores e métricas que dependem dos códigos.
+- Biblioteca de i18n: excesso para uma tela e 6 dicionários pequenos.
+
+## ADR-024: Índice `lead-index` na Tabela de Alertas e Guarda de Índices DynamoDB
+
+**Context**
+O X-Ray mostrou, no `anomaly-detector`, `ValidationException: The table does not have the specified index: lead-index`. O código (U5 `alert_store.py` e o checador de restrição do router `restriction.py`) consulta o GSI `lead-index` na tabela `sdr-alerts`, como o desenho previa (ADR-004, FR9.4), mas o Terraform só declarava esse índice em `sdr-sessions`. Efeitos em produção: (1) o job de anomalias abortava ao chegar no primeiro lead normal, então os leads seguintes não eram avaliados nem alertados; (2) o checador do router é *fail-open* por decisão (indisponibilidade não bloqueia o lead), então a restrição de agendamento (FR9.4) **nunca era aplicada**, sem aviso. Os testes não pegaram porque os DynamoDB falsos aceitam qualquer `IndexName` (o gate ponta a ponta da ADR-019 também usa o falso).
+
+**Decision**
+1. `sdr-alerts` ganha o atributo `lead_id` (S) e o GSI `lead-index` (`hash_key = lead_id`, projeção `ALL`), igual ao de `sdr-sessions`. Um `terraform apply` sobre a tabela existente cria o índice online (tabela on-demand), sem recriar nem apagar alertas.
+2. Novo guarda `tests/infra/test_dynamodb_indexes.py`, executado pelo `start.sh` antes do build: todo `IndexName` usado no código precisa existir no `infra/dynamodb.tf` para a tabela certa, as chaves dos índices precisam estar declaradas como atributos, e um índice novo no código obriga a registrá-lo no teste. Sem a correção ele reprova apontando as duas consultas quebradas.
+
+**Alternatives Rejected**
+- Trocar a consulta por `Scan` com filtro: lê a tabela inteira a cada lead e a cada mensagem (o checador roda no fluxo do lead).
+- Tornar o checador *fail-closed*: um erro de infraestrutura passaria a bloquear leads legítimos.
+
+## ADR-025: Dados de Busca Vindos de `arguments` e Log da Decisão do Roteador (a "lista fiel" foi desfeita)
+
+**Context**
+Num chat real (09/10) o lead pediu "opções de São Paulo", recebeu 3 itens numerados, digitou "1" e o bot listou 9 imóveis. A investigação (LLM real, 8 repetições do turno "1": `property_detail` em 0 de 8) achou:
+1. **Região perdida**: a LLM às vezes manda `region` só em `arguments` (ex.: `request_options` com `region="São Paulo"`) e deixa `lead_info` vazio; o código buscava só com o `lead_info` do estado, então a busca perdia o filtro e o estado nunca guardava a região. No "1" seguinte a LLM via o pedido de São Paulo ainda sem resposta e listava de novo.
+2. **Lista vista ≠ lista guardada**: o estado guardava 9 imóveis e a humanização reescrevia 3, em outra ordem.
+3. **Sem observabilidade**: o log guardava só a ferramenta escolhida.
+
+**Decision (em vigor)**
+1. `validate_router_output` promove ao `lead_info` os dados de busca (`region`, `area`, `budget`, `budget_min`, `deadline`, `people_count`, `decision_maker`, `intent`) que a LLM mandou só em `arguments`; um `lead_info` explícito prevalece. O prompt do roteador também exige esses dados SEMPRE em `lead_info`. Medido com a LLM real: o "1" virou `property_detail` em 16 de 16 (duas conversas × 8), contra 0 de 8 antes.
+2. **Log `roteador:`** a cada turno: ferramenta (e a que a LLM pediu, se a validação a mudou), `arguments`, chaves do `lead_info` extraído, nº de imóveis exibidos e raciocínio (200 caracteres). O texto do lead já aparece, mascarado, no log `turno IN`.
+
+**Revertido em 2026-10-10 — "manter a lista oficial" na humanização**
+A decisão original incluía também: regra 21 no prompt de humanização (todos os itens, mesma ordem e numeração), limite do JSON de imóveis de 1500 para 4200 caracteres e uma trava em código que descartava a reescrita se a numeração da lista mudasse. **Foi desfeita a pedido do responsável**, que viu o fluxo piorar numa conversa real. A reversão é completa no código; o problema que ela tentava resolver (a lista que o lead vê ter menos itens, ou outra ordem, que a guardada no estado) **continua em aberto**. Observação honesta: a reversão sozinha não resolveu o sintoma relatado ("ele nem oferece locação, compra ou investimento"): a causa dele era outra (ADR-026).
+
+**Alternatives Rejected**
+- Regex que reconheça "o 1"/"o primeiro" no código: contraria o ADR-015.
+- Guardar no estado só os itens que a humanização citou: a LLM decidiria qual é a verdade do sistema.
+
+## ADR-026: Humanização Sem Imóveis Antigos nas Fases de Consentimento e de Pergunta de Intenção
+
+**Context**
+Conversa real (09/10, 22:53): depois de "oi" e "sim" o bot respondeu "Perfeito! Encontrei algumas opções interessantes para locação…" e listou imóveis, em vez de perguntar se o lead busca compra, locação ou investimento. A resposta OFICIAL do sistema era a pergunta de intenção, mas a camada de humanização recebia, no payload, os 9 imóveis que já estavam guardados no estado (o roteador roda também no turno do consentimento e deixa imóveis no contexto).
+
+**Decision**
+`SalesFlow._properties_for_reply(state)` define o que a humanização pode citar: os imóveis do turno (`response_properties`) sempre; os guardados de turnos anteriores (`properties`) só **depois** das fases `greeting`, `elicitation` e `intent`. Nessas fases a resposta oficial é uma pergunta ou o texto do consentimento, e nada foi recomendado ainda.
+
+**Evidência (LLM real, cenário "oi" → "sim")**
+Teste A/B, 8 execuções por variante: código com imóveis no payload, 1/8 respostas corretas e 7/8 inventando a intenção ou listando imóveis; **sem a linha de nome no prompt**, 1/8 (o nome da assistente não era a causa); **sem imóveis no payload**, 8/8. Com a correção aplicada: **12/12**.
+
+**Consequences**
+- Depois da fase de intenção nada muda: respostas sobre imóveis já mostrados ("e o terceiro?") continuam recebendo `properties`.
+- Cobertura: `tests/unit/test_reply_properties.py` (8 testes). O gate de qualidade com LLM real continua passando.
+
+**Alternatives Rejected**
+- Reforçar o prompt ("não liste imóveis quando a resposta for uma pergunta"): depende de a LLM obedecer; remover o dado que a induz ao erro é determinístico.
+- Não rodar o roteador no turno do consentimento: mexe no comportamento de extração do primeiro turno e não era necessário.
+
+## ADR-027: Aceite do Consentimento Interpretado pela LLM (substitui a lista de palavras da ADR-017)
+
+**Context**
+A ADR-017 passou a exigir que a resposta ao pedido de consentimento começasse com uma palavra de uma lista ("sim", "ok", "pode", "claro"...). Isso evitou que "compra" valesse como aceite, mas deixou o bot com cara de URA: "tô de acordo", "manda ver", "fechou" ou um 👍 eram tratados como resposta não entendida e o pedido era repetido. O responsável pediu que a LLM entenda a resposta naturalmente, sempre lendo a conversa inteira.
+
+**Decision**
+1. `llm.classify_consent(message, conversation_history)`: uma chamada à LLM (Tier 1 com fallback, `temperature=0`, JSON) que lê o histórico (inclui o pedido de consentimento) e devolve `accepted`, `refused` ou `unclear`. O prompt manda responder `unclear` na dúvida: consentimento exige concordância clara; responder outro assunto ("compra") não é aceite.
+2. `SalesFlow._consent_decision` usa essa decisão no nó `elicitation`: `accepted` grava o consentimento e segue; `refused` encerra; `unclear` refaz o pedido (texto fixo). O texto do pedido continua fixo e nunca é reescrito pela LLM.
+3. Sem LLM configurada, ou se ela falhar ou devolver algo inválido, vale o **plano B** por palavras (o comportamento da ADR-017), no mesmo padrão do resto do fluxo (ADR-015).
+
+**Evidência**
+LLM real, 23 frases (13 aceites em formas variadas, 5 recusas, 5 "nem um nem outro"), duas rodadas: 23/23 nas duas. Gate de qualidade com LLM real: 58/58 (os 49 anteriores + 9 de consentimento). Testes: `tests/unit/test_consent_llm.py` (15) e `test_llm_reads_the_consent_answer_naturally` no gate.
+
+**Consequences**
+- Uma chamada a mais à LLM só no turno da resposta ao consentimento (~1–3 s).
+- O registro do aceite depende da interpretação da LLM; a mitigação é a regra "na dúvida, unclear" e o teste permanente no gate.
+
+**Alternatives Rejected**
+- Ampliar a lista de palavras: nunca cobre a fala real e é o comportamento de URA que se quer evitar.
+- Voltar a "qualquer coisa que não seja 'não' é aceite": aceite tácito não vale como consentimento LGPD.
+

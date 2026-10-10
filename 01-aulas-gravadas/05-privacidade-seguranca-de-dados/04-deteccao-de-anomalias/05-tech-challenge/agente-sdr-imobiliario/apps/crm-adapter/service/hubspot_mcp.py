@@ -130,6 +130,11 @@ class HubSpotMcpClient:
             raise CrmError(f"hubspot tool {name} returned non-json") from exc
 
 
+# O resumo no campo `message` do contato é lido pelo corretor: códigos em inglês viram português.
+_INTENT_PT = {"purchase": "compra", "rent": "locação", "investment": "investimento"}
+_URGENCY_PT = {"high": "alta", "medium": "média", "low": "baixa"}
+
+
 def _split_name(full: str) -> tuple[str, str]:
     parts = (full or "").split(None, 1)
     if not parts:
@@ -250,11 +255,13 @@ class HubSpotCrmGateway:
     def _summary(lead: dict[str, Any]) -> str:
         parts = [
             ("Score", lead.get("score")),
-            ("Urgência", lead.get("urgency")),
-            ("Intenção", lead.get("intent")),
+            ("Urgência", _URGENCY_PT.get(str(lead.get("urgency")), lead.get("urgency"))),
+            ("Intenção", _INTENT_PT.get(str(lead.get("intent")), lead.get("intent"))),
             ("Orçamento", lead.get("budget")),
             ("Prazo", lead.get("deadline")),
             ("Área", lead.get("area")),
+            ("Região", lead.get("region")),
+            ("Imóvel escolhido", lead.get("property")),
         ]
         body = " | ".join(f"{k}: {v}" for k, v in parts if v not in (None, ""))
         return f"SDR W Levitt (lead {lead.get('lead_id')}) — {body}" if body else ""

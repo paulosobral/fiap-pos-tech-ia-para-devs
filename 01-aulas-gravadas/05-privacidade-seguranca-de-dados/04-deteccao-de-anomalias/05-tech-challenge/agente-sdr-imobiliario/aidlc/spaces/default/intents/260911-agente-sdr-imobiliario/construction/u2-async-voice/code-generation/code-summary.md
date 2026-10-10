@@ -51,3 +51,12 @@
 - **R-04 (Minor) — PiiMasker espelha a SecurityLayer oficial:** mesmos regexes de NOME/EMAIL/CNPJ, mesma lista controlada `COMMON_FIRST_NAMES` e mesma passada de nome único (nome único capitalizado conhecido — "Pedro" — é mascarado; palavras comuns — "Podemos" — não; nomes de lugar 2-capitais — "São Paulo" — seguem o comportamento conservador da camada oficial, [NOME]); com prefixos ("João da Silva") o primeiro nome entra na lista controlada → "[NOME] da Silva" (comportamento da U1, sobrenome isolado é baixo risco de identificação). TELEFONE é um superconjunto deliberado do padrão oficial: além de +55, cobre formatos locais "11 91234-5678", "(11) 91234-5678" e "91234-5678" (defeito apontado no finding; a U1 só recebe texto já mascarado, então o superconjunto não gera divergência a jusante). Sem import cross-app (fronteira entre Lambdas mantida); cópia documentada para evoluir junto.
 - **R-05 (Minor) — traceability honesto:** NFR2.5 (retenção TTL 90 dias) saiu de OK para **N/A** — retenção é responsabilidade de ESCRITA da U1 (`Conversation.ttl` em `entities.py`); o `SessionLookup` é somente leitura. FR1.2/FR1.3/Contract 3/Contract 5 re-verificados contra o código real pós-fix: agora OK de fato (endpoint real, acesso real), com justificativa da reverificação em cada row.
 - **R-06 (Minor) — falhas de ambiente explícitas:** `OSError` (ffmpeg ausente) saiu de `AudioConversionError` (drop + ack silencioso) para `TranscriptionError` com causa raiz → `retry` → redrive → DLQ (NFR4.1); `subprocess.TimeoutExpired` (ffmpeg travado) idem; `subprocess.run` ganhou `timeout` configurável (default 20s) tratando o estouro como erro classificado. Erro de ÁUDIO real (`CalledProcessError`) permanece `AudioConversionError` → drop + fallback (correto). Testes de classificação (TranscriptionError que NÃO é AudioConversionError) + timeout aplicado/configurável.
+
+## Mudanças posteriores — X-Ray (ADR-021, 2026-10-09)
+
+Tracing distribuído acrescentado depois do gate de code-generation. Nenhuma regra de negócio mudou.
+
+- O worker ECS do `voice-adapter` **não** recebeu X-Ray. Só a Lambda `sdr-voice-adapter` (declarada, sem event source mapping) ganhou `tracing_mode = "Active"` no Terraform, por consistência com as demais; nenhum código mudou.
+
+- Só o `botocore` é instrumentado (nunca `patch_all()`, que gravaria a URL do Telegram com o token do bot); sem o SDK, tudo vira no-op.
+- Verificado com o SDK real e um daemon UDP simulado; **não validado numa subida na AWS** (owner: `deployment-execution`).

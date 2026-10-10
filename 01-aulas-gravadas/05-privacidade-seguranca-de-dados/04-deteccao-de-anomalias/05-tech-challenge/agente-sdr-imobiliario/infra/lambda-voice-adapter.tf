@@ -15,6 +15,10 @@ module "lambda_voice_adapter" {
   local_existing_package = "../dist/voice-adapter.zip"
   timeout                = 300
   memory_size            = 2048
+
+  # X-Ray: o Lambda abre o segmento; o SDK (aws-xray-sdk) instrumenta boto3/requests.
+  tracing_mode           = "Active"
+  attach_tracing_policy  = true
   ephemeral_storage_size = 1024
 
   use_existing_cloudwatch_log_group  = true

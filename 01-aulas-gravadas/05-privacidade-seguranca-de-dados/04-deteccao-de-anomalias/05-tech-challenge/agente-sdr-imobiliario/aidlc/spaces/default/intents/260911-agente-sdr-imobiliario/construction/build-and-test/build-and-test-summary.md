@@ -9,31 +9,31 @@
 |---|---|---|
 | Unit (por unit, do Code Generation) | `construction/*/code-generation/unit-test-instructions.md` | executado |
 | Integration | `integration-test-instructions.md` | executado |
-| Quality gate (LLM real, TaaC) | `apps/conversation-router/tests/quality/` | executado: 48/48 (inclui anomalias ponta a ponta e piso/teto de orçamento) |
+| Quality gate (LLM real, TaaC) | `apps/conversation-router/tests/quality/` | executado: 58/58 (inclui anomalias ponta a ponta e piso/teto de orçamento) |
 | Performance | `performance-test-instructions.md` | alvos e2e deferidos (`performance-validation`) |
 | Security | `security-test-instructions.md` | suíte local executada; DAST deferido |
 
 ## Expectativa de cobertura por unit
-Piso contratado 80%; obtido (2026-10-08): u1 88.54 · u2 99.38 · u3 99.13 · u4 100.00 · u5 99.01 · u6 98.52 · u7-api 97.70 · u7-ui 80.32 (no limite). u1 caiu de 96.51 porque o código cresceu (roteador tool-agent, fotos, contato) com parte do caminho exercitada só pelo gate com LLM real.
+Piso contratado 80%; obtido (2026-10-10): u1 89.60 · u2 99.38 · u3 99.11 · u4 99.91 · u5 98.98 · u6 98.52 · u7-api 97.75 · u7-ui 83.28 (ui perto do piso). u1 caiu de 96.51 porque o código cresceu (roteador tool-agent, fotos, contato) com parte do caminho exercitada só pelo gate com LLM real.
 
 ## Target Verification Matrix
 Verdicts finais (sem `Pending`): `Met` = verificado nesta execução; `Unverified` = não executável localmente, com Owning Stage agendado no plano; `Not Met` = gap de feature (finding do gate).
 
 | Target ID | Source | Expected | Actual | Evidence | Owning Stage | Verdict |
 |---|---|---|---|---|---|---|
-| T-COV-u1 | Testing Contract (80%) | ≥80% | 88.54% | pytest --cov (ver `test-results.md`) | — | Met |
+| T-COV-u1 | Testing Contract (80%) | ≥80% | 89.60% | pytest --cov (ver `test-results.md`) | — | Met |
 | T-COV-u2 | idem | ≥80% | 99.38% | pytest --cov u2 | — | Met |
-| T-COV-u3 | idem | ≥80% | 99.13% | pytest --cov u3 | — | Met |
-| T-COV-u4 | idem | ≥80% | 100.00% | pytest --cov u4 | — | Met |
-| T-COV-u5 | idem | ≥80% | 99.01% | pytest --cov u5 | — | Met |
+| T-COV-u3 | idem | ≥80% | 99.11% | pytest --cov u3 | — | Met |
+| T-COV-u4 | idem | ≥80% | 99.91% | pytest --cov u4 | — | Met |
+| T-COV-u5 | idem | ≥80% | 98.98% | pytest --cov u5 | — | Met |
 | T-COV-u6 | idem | ≥80% | 98.52% | pytest --cov u6 | — | Met |
-| T-COV-u7 | idem (api e ui) | ≥80% | 97.70% api / 80.32% ui | pytest --cov u7 | — | Met (ui no limite) |
-| T-QUALITY-GATE | Plano de naturalidade §5 / ADR-019/020 | gate LLM real verde antes do deploy | 48/48 em 6 min 39 s | `test-results.md` | — | Met |
-| T-TESTS-PER-COMP | Testing Contract | 5–8+ por componente | 38–460 por unit (1019 no total) | suítes | — | Met |
+| T-COV-u7 | idem (api e ui) | ≥80% | 97.75% api / 83.28% ui | pytest --cov u7 | — | Met (ui no limite) |
+| T-QUALITY-GATE | Plano de naturalidade §5 / ADR-019/020 | gate LLM real verde antes do deploy | 58/58 em 5 min 17 s | `test-results.md` | — | Met |
+| T-TESTS-PER-COMP | Testing Contract | 5–8+ por componente | 49–523 por unit (1129 no total) | suítes | — | Met |
 | T-CI-MERGE | Testing Contract | execução em CI antes do merge | Pending no pipeline local | este estágio | **ci-pipeline** | Unverified |
 | NFR2.1 | requirements | logs JSON | log_event em todas as units (caplog) | suítes | — | Met |
 | NFR2.2 | requirements (traceability u2) | conforme design | OK por traceability + suítes | suítes | — | Met |
-| NFR2.3 | requirements | consent na 1ª msg | consentimento explícito (só "sim" claro), reperguntado caso contrário (ADR-017) | test_conversation_polish/test_sales_flow | — | Met |
+| NFR2.3 | requirements | consent na 1ª msg | consentimento com concordância clara, interpretada pela LLM lendo a conversa (ADR-027; plano B por palavras sem LLM); reperguntado na dúvida | test_consent_llm + gate LLM real (9 frases) | — | Met |
 | NFR2.4 | requirements | trilha auditoria de leads | mínimo POC: logs JSON + session store auditável | suítes u1/u4 | — | Met (mínimo; gap append-only listado no gate) |
 | NFR2.5 | requirements | PII-safe | caplog sem PII | suítes | — | Met |
 | NFR3.1 | requirements | PII mascarada antes do LLM | e-mail/telefone/CNPJ mascarados; nome NÃO (decisão de produto: vem do perfil do Telegram); saída checada por `check_output_leak` | test_pii_masker | — | Met (escopo reduzido por decisão) |
@@ -42,7 +42,7 @@ Verdicts finais (sem `Pending`): `Met` = verificado nesta execução; `Unverifie
 | NFR4.1 | requirements | DLQ EventBridge | DLQs SQS existem (voice/crm/ingest, `infra/sqs.tf`); EventBridge sem `dead_letter_config` | `infra/sqs.tf` | **deployment-pipeline** | Partial |
 | NFR4.2 | requirements (traceability u1) | conforme design | OK | handler u1 | — | Met |
 | NFR5.1 | requirements | logs JSON por serviço | log_event u2–u7 | suítes | — | Met |
-| NFR5.2 | requirements | traces distribuídos | sem X-Ray/OpenTelemetry (sem `tracing_config` nos `.tf`) | grep | (novo work) | Not Met |
+| NFR5.2 | requirements | traces distribuídos | X-Ray ativo nas 7 Lambdas (`tracing_mode = Active`) + `aws-xray-sdk` (só `botocore`, sem `patch_all`: a URL do Telegram leva o token do bot) nas 5 ativas e no router (segmento por requisição, subsegmento por chamada à LLM, daemon como sidecar no ECS); testado com SDK real e daemon UDP simulado; **não validado numa subida na AWS**; o API Gateway HTTP não suporta X-Ray (ADR-021) | `tracing.py`, `test_tracing.py`, `infra/*.tf` | **deployment-execution** | Partial |
 | NFR5.3 | requirements | métricas de negócio | contagens/funil/anomalias vêm das tabelas (OK); `ResponseTimeP90` e custo são LIDOS do CloudWatch mas **nenhum componente emite** (`put_metric_data` ausente) → sempre 0; o widget de custo foi removido do dashboard (ADR-016) | u7 suítes + grep | (novo work) | Partial |
 | NFR6.1 | requirements | custo ~R$15/mês | exige tráfego real | — | **observability-setup** | Unverified |
 | NFR6.2 | requirements | limite de tokens/monitor | `max_tokens` por chamada (40/300 no router); sem monitor/alarme de gasto | `service/llm.py` | **observability-setup** | Partial |
@@ -69,18 +69,18 @@ Verdicts finais (sem `Pending`): `Met` = verificado nesta execução; `Unverifie
 | FR9.1 | requirements | features de comportamento | feature_extractor real | u5 suítes | — | Met |
 | FR9.2 | requirements | IF+PCA+Autoencoder | IF + PCA (erro reconstrução) | scorer.py; deviation em u5/code-summary | (deviation aceita no gate anterior) | Not Met (deviation) |
 | FR9.3 | requirements | alertas | alert_store | u5 suítes | — | Met |
-| FR9.4 | requirements | restrição agendamento | scheduler_gate + contrato U1 | u5 integration | — | Met |
+| FR9.4 | requirements | restrição agendamento | scheduler_gate + contrato U1; **o GSI `lead-index` não existia em `sdr-alerts` na infra (a restrição nunca era aplicada em produção; corrigido na ADR-024)**; guarda `tests/infra` | u5 integration + `tests/infra` | **deployment-execution** (confirmar o índice ACTIVE e o log sem erro) | Met (código) / a validar na AWS |
 | FR11.1 | requirements | demo MCP HubSpot ao vivo | `HubSpotCrmGateway` via MCP remoto (OAuth 2.1+PKCE); contato criado/achado/atualizado e lead real do Telegram no HubSpot (2026-10-08) | `test_hubspot_mcp.py` + validação manual | — | Met |
 | FR7.x (leads) | PRD §10 / ADR-016 | tabela de leads com contato + botão HubSpot | `GET /api/leads`, `POST /api/leads/{id}/crm`, tabela no dashboard | `test_leads.py`, `test_app_smoke.py` | — | Met (sem teste de navegador) |
 | NFR-SESSION | ADR-016 | sessão sobrevive ao F5 | cookie opaco + cofre no servidor + refresh | `TestSessionVault` | — | Met (sem teste de navegador) |
 
 ## Readiness assessment
 - **build-ready**: ✓ (compileall + suítes verdes)
-- **test-ready**: ✓ (1019 unit/integration passed / 0 failed; gate LLM real 48/48; segurança executável local Met)
+- **test-ready**: ✓ (1129 unit/integration passed / 0 failed; gate LLM real 58/58; segurança executável local Met)
 - **deployment-ready**: ✓ na prática (infra aplicada e recriada várias vezes); formalmente pendentes `deployment-pipeline` (NFR4.1 EventBridge DLQ) e `ci-pipeline` (T-CI-MERGE)
 
 ## Known limitations / outstanding items (surfaced no gate)
-1. Gaps de feature **Not Met**: FR1.4, FR2.3, FR5.3 (convite gerado mas não enviado), FR6.2 (parcial), NFR5.2, FR9.2 (deviation aceita); **Partial**: NFR5.3 (métricas de latência/custo nunca emitidas), NFR6.2, NFR4.1, NFR8.1 — detalhes em `cross-unit-traceability.md`.
+1. Gaps de feature **Not Met**: FR1.4, FR2.3, FR5.3 (convite gerado mas não enviado), FR6.2 (parcial), FR9.2 (deviation aceita); **Partial**: NFR5.2 (X-Ray implementado, a validar na AWS), NFR5.3 (métricas de latência/custo nunca emitidas), NFR6.2, NFR4.1, NFR8.1 — detalhes em `cross-unit-traceability.md`.
 2. Deferreds com owning stage válido: NFR1.1/1.2, NFR6.1/6.2, NFR8.1, T-CI-MERGE.
 4. Mudanças desde a última execução (2026-09-21): ADRs 014–019 (Cognito, NL pela LLM, dashboard com leads/sessão, consentimento explícito, identidade visual, gate de anomalias), HubSpot via MCP, voz tratada como texto digitado, fotos via crawler. Registradas em `inception/domain-design/decisions.md`.
 3. NFR2.4 implementado como mínimo POC (logs + session store); trilha append-only dedicada é evolução possível (~2–4 h).

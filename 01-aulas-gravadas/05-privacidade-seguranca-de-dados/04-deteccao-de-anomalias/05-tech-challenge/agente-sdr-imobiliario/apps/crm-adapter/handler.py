@@ -4,12 +4,15 @@ import logging
 import os
 from typing import Any
 
+import tracing
 from infra.csv_store import CsvStore
 from infra.session_store import SessionLookup
 from service.crm_adapter import CrmAdapter
 from service.crm_gateway import CsvCrmGateway
 from service.flow_gateway import HttpFlowGateway
 from service.status_sync import StatusSync
+
+tracing.enable()
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)

@@ -58,3 +58,19 @@
 - **`INTERNAL_SECRET_TOKEN` obrigatória (R-07, Minor):** via `_env` (fail-fast), igual a `FLOW_BASE_URL`; teste de wiring sem a env levanta `RuntimeError`.
 - **Logs estruturados nos erros (R-08, Minor):** `log_event` (JSON, com `level`) em todos os caminhos de falha de `crm_adapter` e dos gateways (`crm_unreachable`, `stage_sync_failed`, `flow_notify_failed`, `unexpected_failure`, `crm_store_*`, `mcp_tool_*`, `flow_unreachable`, `flow_rejected`); testes parseiam o JSON via `caplog`.
 - **FR11.1 marcada honestamente (R-09, Minor):** `build_hubspot_client` devolve a CLASSE `ClientSession` com docstring que documenta o que falta para executar (bootstrap async de transporte + handshake `initialize` e adapter async→sync antes do `call_tool`); a demo ao vivo NÃO é executável sem conta HubSpot MCP — FR11.1 mudou de `OK` para `Deferred` em traceability.json (claim honesta; wiring da demo fica para o estágio de integração/demo).
+
+## Mudanças posteriores — X-Ray (ADR-021, 2026-10-09)
+
+Tracing distribuído acrescentado depois do gate de code-generation. Nenhuma regra de negócio mudou.
+
+- Novo `apps/crm-adapter/tracing.py` (liga o X-Ray no import), chamado no começo de `apps/crm-adapter/handler.py`.
+- `aws-xray-sdk>=2.14` em `apps/crm-adapter/requirements.txt`.
+- Testes: `apps/crm-adapter/tests/unit/test_tracing.py` (idempotência, ausência do SDK, falha ao instrumentar, `LOG_ERROR` por padrão e regressão contra `patch_all`).
+- Terraform: `tracing_mode = "Active"` e `attach_tracing_policy = true` em `infra/lambda-*.tf` da unidade.
+
+- Só o `botocore` é instrumentado (nunca `patch_all()`, que gravaria a URL do Telegram com o token do bot); sem o SDK, tudo vira no-op.
+- Verificado com o SDK real e um daemon UDP simulado; **não validado numa subida na AWS** (owner: `deployment-execution`).
+
+## Mudanças posteriores — resumo do HubSpot em português (ADR-023, 2026-10-09)
+
+- `service/hubspot_mcp.py`: o resumo gravado no campo `message` do contato traduz urgência (alta/média/baixa) e intenção (compra/locação/investimento); valor desconhecido é mantido. Teste: `test_hubspot_summary_is_in_portuguese`.

@@ -340,3 +340,34 @@ class TestLogsPiiSafe:
         payload = json.loads(record.message)
         assert payload["event"] == "crm_unreachable"
         assert payload["error"] == "crm down"
+
+
+def test_region_and_chosen_property_are_accepted_and_passed_to_the_crm():
+    from service.crm_adapter import CrmAdapter
+
+    seen = {}
+
+    class Crm:
+        def upsert_lead(self, lead):
+            seen.update(lead)
+            return {"crm_id": "c1"}
+
+    class Status:
+        def sync(self, *a, **k):
+            return {"stage": "qualificado"}
+
+    message = {"message_id": "m1", "lead_id": "L1", "session_id": "S1", "timestamp": "2026-10-10T00:00:00Z",
+               "lead_data": {"name": "Ana", "urgency": "high", "email": None, "phone": "11999990000", "score": 80,
+                             "intent": "purchase", "budget": None, "deadline": None, "area": None,
+                             "region": "São Caetano do Sul", "property": "Apartamento à venda, Boa Vista"}}
+    adapter = CrmAdapter(crm=Crm(), status=Status(), flow=None, sessions=None)
+    assert adapter.process_message(message) == "ok"
+    assert seen["region"] == "São Caetano do Sul" and seen["property"] == "Apartamento à venda, Boa Vista"
+
+
+def test_non_string_property_is_rejected_like_the_other_optional_fields():
+    from service.crm_adapter import CrmAdapter
+
+    message = {"message_id": "m1", "lead_id": "L1", "session_id": "S1", "timestamp": "x",
+               "lead_data": {"name": "Ana", "urgency": "high", "property": 123}}
+    assert CrmAdapter._validate(message) is not None

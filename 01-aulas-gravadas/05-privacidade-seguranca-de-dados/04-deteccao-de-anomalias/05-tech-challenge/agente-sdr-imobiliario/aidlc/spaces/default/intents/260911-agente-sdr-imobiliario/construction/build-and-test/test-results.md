@@ -8,25 +8,27 @@
 ## Resultados por unit (unitários + integração; sem o gate LLM)
 | Unit | Passed | Failed | Skipped | Cobertura | Piso 80% |
 |---|---|---|---|---|---|
-| u1 conversation-router | 460 | 0 | 0 | 88,54% (600 linhas sem cobertura de 5237) | ✓ |
+| u1 conversation-router | 523 | 0 | 0 | 89,60% (607 linhas sem cobertura de 5837) | ✓ |
 | u2 voice-adapter | 75 | 0 | 0 | 99,38% | ✓ |
-| u3 crm-adapter | 129 | 0 | 0 | 99,13% | ✓ |
-| u4 contact-ingest | 71 | 0 | 0 | 100,00% | ✓ |
-| u5 anomaly-detector | 87 | 0 | 0 | 99,01% | ✓ |
-| u6 followup | 87 | 0 | 0 | 98,52% | ✓ |
-| u7 dashboard-api | 72 | 0 | 0 | 97,70% | ✓ |
-| u7 dashboard-ui | 38 | 0 | 0 | 80,32% (no limite) | ✓ |
+| u3 crm-adapter | 137 | 0 | 0 | 99,11% | ✓ |
+| u4 contact-ingest | 77 | 0 | 0 | 99,91% | ✓ |
+| u5 anomaly-detector | 93 | 0 | 0 | 98,98% | ✓ |
+| u6 followup | 93 | 0 | 0 | 98,52% | ✓ |
+| u7 dashboard-api | 78 | 0 | 0 | 97,75% | ✓ |
+| u7 dashboard-ui | 49 | 0 | 0 | 83,28% (perto do piso) | ✓ |
 
-**Total: 1019 passed, 0 failed, 0 skipped** (run anterior, 2026-09-21: 624 passed, 5 skipped).
+**Total: 1125 passed, 0 failed, 0 skipped** nas 8 aplicações, mais 4 do guarda de infra (`tests/infra`) = 1129
 
 ## Gate de qualidade com LLM real (`apps/conversation-router/tests/quality`)
-- **48 passed, 0 failed** em 6 min 39 s (re-executado após a ADR-020) (OpenRouter real, mesmo tiering de produção).
+- **58 passed, 0 failed** em 5 min 17 s (re-executado em 2026-10-10 após ADR-027: 9 testes novos de consentimento interpretado pela LLM)
 - Cobre: resolução de referências/ordinais, navegação, listas, fotos, contato/telefone (inclusive falado), fechamento de lead ponta a ponta, tipo de imóvel diferente do pedido sem narrar bastidor/markdown, promessa de fotos, e piso vs teto de orçamento interpretados pela LLM, promessa de trabalho futuro, e **anomalias ponta a ponta** (chat noturno negativo → alerta + restrição → `/api/kpis`; chat normal → sem alerta).
 
 ## Integração (subset executado junto das suítes)
+- **Guarda de infra (ADR-024):** `tests/infra/test_dynamodb_indexes.py`, 4 testes, passando; sem a correção do `lead-index` em `sdr-alerts` ele reprova apontando as duas consultas quebradas (`anomaly-detector` e `restriction.py`). Contado à parte dos testes por aplicação.
 - `apps/*/tests/integration/` sem falhas, incluindo `test_anomaly_pipeline.py` (contrato U5↔U1), `test_conversation_router.py` (consentimento explícito, eco de contato) e as rotas `/api/leads` do dashboard-api.
 
 ## Segurança (subset)
+- **X-Ray sem segredos:** `test_tracing.py` (6 apps) proíbe `patch_all()`; com o SDK real, o token do bot aparece no trace com `patch_all` e **não** aparece com só `botocore` (verificação manual, daemon UDP simulado).
 - `test_pii_masker.py`, `test_guardrails.py`, `test_pii_mask.py`, TTL, consentimento explícito (`test_conversation_polish.py`), `check_output_leak` — 0 falhas.
 - Grep estático `eval/exec/os.system/subprocess` em código de produção: **1 ocorrência permitida** — `apps/voice-adapter/service/transcriber.py` (`ffmpeg` com lista de argumentos, sem `shell=True`, com timeout).
 
@@ -40,4 +42,4 @@
 - Saídas brutas ficaram no scratchpad da sessão (não versionadas). Reproduzir com os comandos de `build-instructions.md`.
 
 ## Loop-Back Log
-(nenhuma entrada — nenhum command failure no run final. Achados corrigidos durante a rodada: falta de `import re` no handler; `dist-info` removido do pacote do crm-adapter; `budget`/`area`/`deadline` numéricos da LLM rejeitados pelo contrato do CRM (ADR-020).)
+(nenhuma entrada — nenhum command failure no run final; X-Ray (ADR-021) adicionado depois, com a suíte reexecutada. Achados corrigidos durante a rodada: falta de `import re` no handler; `dist-info` removido do pacote do crm-adapter; `budget`/`area`/`deadline` numéricos da LLM rejeitados pelo contrato do CRM (ADR-020).)

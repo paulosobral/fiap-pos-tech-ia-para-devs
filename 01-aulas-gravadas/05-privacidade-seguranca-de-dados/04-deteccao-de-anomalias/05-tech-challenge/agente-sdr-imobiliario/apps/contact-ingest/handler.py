@@ -4,11 +4,14 @@ import logging
 import os
 from typing import Any
 
+import tracing
 from infra.dedupe_store import DedupeStore
 from infra.session_store import SessionWriter
 from service.contact_ingest import ContactIngest, PendingRetryError
 from service.email_parser import HeuristicEmailParser
 from service.router_gateway import HttpRouterGateway
+
+tracing.enable()
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)

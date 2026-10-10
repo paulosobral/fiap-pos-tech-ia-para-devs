@@ -460,6 +460,7 @@ resource "aws_ecs_task_definition" "conversation_router" {
         { name = "LLM_MODEL_PRIMARY_SSM", value = aws_ssm_parameter.llm_model.name },
         { name = "LLM_MODEL_FALLBACK_SSM", value = aws_ssm_parameter.llm_model_fallback.name },
         { name = "LLM_MODEL_COMPLEX_SSM", value = aws_ssm_parameter.llm_model_complex.name },
+        { name = "BOT_NAME_SSM", value = aws_ssm_parameter.bot_name.name },
         { name = "LLM_API_SECRET_ID", value = aws_secretsmanager_secret.llm_api_key.arn },
         { name = "PII_KMS_KEY_ID", value = aws_kms_key.pii.key_id },
         { name = "SESSIONS_TABLE", value = aws_dynamodb_table.sessions.name },
@@ -469,6 +470,8 @@ resource "aws_ecs_task_definition" "conversation_router" {
         { name = "VOICE_QUEUE_URL", value = aws_sqs_queue.voice.id },
         { name = "CRM_QUEUE_URL", value = aws_sqs_queue.crm.id },
         { name = "CATALOG_BUCKET", value = aws_s3_bucket.catalogs.bucket },
+        { name = "AWS_XRAY_DAEMON_ADDRESS", value = "127.0.0.1:2000" },
+        { name = "AWS_XRAY_CONTEXT_MISSING", value = "LOG_ERROR" },
         { name = "SPECIALIST_ROTATION", value = "Adriana, Bruno, Carla" },
         { name = "SPECIALIST_FALLBACK", value = "diretor" },
         { name = "AWS_REGION", value = var.region },
@@ -479,6 +482,24 @@ resource "aws_ecs_task_definition" "conversation_router" {
           "awslogs-group"         = aws_cloudwatch_log_group.conversation_router.name
           "awslogs-region"        = var.region
           "awslogs-stream-prefix" = "conversation-router"
+        }
+      }
+    },
+    {
+      # X-Ray daemon: recebe os segmentos do SDK (UDP 2000, mesma task/rede) e envia ao serviço.
+      name              = "xray-daemon"
+      image             = var.xray_daemon_image
+      essential         = false
+      cpu               = 32
+      memoryReservation = 64
+      command           = ["-o", "-n", var.region]
+      portMappings      = [{ containerPort = 2000, protocol = "udp" }]
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.conversation_router.name
+          "awslogs-region"        = var.region
+          "awslogs-stream-prefix" = "xray-daemon"
         }
       }
     }

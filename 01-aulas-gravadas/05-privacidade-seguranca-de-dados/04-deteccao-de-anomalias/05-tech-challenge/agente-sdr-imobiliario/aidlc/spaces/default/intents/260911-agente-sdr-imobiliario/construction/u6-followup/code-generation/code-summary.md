@@ -58,3 +58,16 @@ Consumação dos findings de `.aidlc-reviews/code-generation/units/u6-followup/4
 - **R-05 (Minor)** — docstring do gateway e Step 5 do plan corrigidos: envio é Telegram Bot API `sendMessage` (mesmo mecanismo da U1); Contrato 1 reservado ao webhook de entrada.
 - **R-06 (Minor)** — janela de silêncio em horas do fuso LOCAL, padrão `America/Sao_Paulo` (8–18 locais), override via env `TIMEZONE`; testes de boundary em BRT (11–21 UTC) e de override/rejeição de fuso inválido.
 - **R-07 (Minor)** — padronização completa em `log_event` JSON (NFR5.1): helper compartilhado `infra/structured_log.py` adotado por `service/followup.py`, `infra/conversation_store.py` e `infra/followup_state.py` — nenhum `logger.warning`/`logger.error` em prosa resta na unidade; testes verificam parse JSON no `caplog`.
+
+## Mudanças posteriores — X-Ray (ADR-021, 2026-10-09)
+
+Tracing distribuído acrescentado depois do gate de code-generation. Nenhuma regra de negócio mudou.
+
+- Novo `apps/followup/tracing.py` (liga o X-Ray no import), chamado no começo de `apps/followup/handler.py`.
+- `aws-xray-sdk>=2.14` em `apps/followup/requirements.txt`.
+- Testes: `apps/followup/tests/unit/test_tracing.py` (idempotência, ausência do SDK, falha ao instrumentar, `LOG_ERROR` por padrão e regressão contra `patch_all`).
+- Terraform: `tracing_mode = "Active"` e `attach_tracing_policy = true` em `infra/lambda-*.tf` da unidade.
+- O envio ao Telegram usa `requests` com o token na URL: foi o caso que motivou instrumentar só o `botocore`.
+
+- Só o `botocore` é instrumentado (nunca `patch_all()`, que gravaria a URL do Telegram com o token do bot); sem o SDK, tudo vira no-op.
+- Verificado com o SDK real e um daemon UDP simulado; **não validado numa subida na AWS** (owner: `deployment-execution`).

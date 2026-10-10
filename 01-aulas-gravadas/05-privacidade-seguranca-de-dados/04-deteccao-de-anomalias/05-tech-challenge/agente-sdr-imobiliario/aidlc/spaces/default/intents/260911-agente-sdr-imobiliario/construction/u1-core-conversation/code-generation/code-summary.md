@@ -67,3 +67,44 @@ Todos os endpoints internos usam o MESMO mecanismo: header `X-Internal-Secret` c
 - **Correção da extração de orçamento em escala milhão** (R-01 it.2): separadores de milhar múltiplos ("R$ 1.500.000" → 1.500.000) e singular "milhão" (o `Ã` de "milhão" não casava com `h[õo]es` nem com `ão` → caía em "mil", erro ×1000). Extração preserva o valor completo; `_budget_value` normaliza. E2E com ≥ R$ 1 mi e prazo de 6 meses → score 80 (qualifica).
 - **Prazo em semanas/dias normalizado** (R-03 it.2): `_deadline_months` — "2 semanas" ≈ 0,47 mês, "15 dias" = 0,5 mês (base 30 dias/mês) para a regra R3.
 - **Métodos aditivos no `SessionStore`** (`get_lead`, `save_lead`, `get_conversation`): sem mudança de esquema — PK/SK compostos LEAD#/CONV# permanecem exatamente como estavam (os consumidores espelharão o acesso real, não o contrário).
+
+## Mudanças posteriores — X-Ray (ADR-021, 2026-10-09)
+
+Tracing distribuído acrescentado depois do gate de code-generation. Nenhuma regra de negócio mudou.
+
+- Novo `apps/conversation-router/service/tracing.py` (`segment`, `subsegment`, `annotate`; no-op sem SDK).
+- `server.py`: `handle_traced()` abre um segmento `conversation-router` por requisição, com as anotações `route` e `status`.
+- `service/llm.py`: cada chamada à LLM é o subsegmento `llm:<modelo>` (anotações `model` e `max_tokens`; falha vira `fault` com a exceção) e o uso do Tier 2 marca `llm_fallback`.
+- `aws-xray-sdk>=2.14` em `requirements.txt`; testes em `tests/unit/test_tracing.py`.
+- Infra (ECS): contêiner auxiliar `xray-daemon` (`public.ecr.aws/xray/aws-xray-daemon:3.7.0`, variável `xray_daemon_image`), variáveis `AWS_XRAY_DAEMON_ADDRESS` e `AWS_XRAY_CONTEXT_MISSING` no router e a declaração `XRay` na política `sdr_lambda` (`infra/iam.tf`).
+
+- Só o `botocore` é instrumentado (nunca `patch_all()`, que gravaria a URL do Telegram com o token do bot); sem o SDK, tudo vira no-op.
+- Verificado com o SDK real e um daemon UDP simulado; **não validado numa subida na AWS** (owner: `deployment-execution`).
+
+## Mudanças posteriores — nome da assistente (ADR-022, 2026-10-09)
+
+Persona acrescentada depois do gate de code-generation; as regras de negócio do fluxo não mudaram.
+
+- Novo `service/bot_identity.py` (`get_bot_name()`: SSM `/sdr/bot-name` → `BOT_NAME` → "Cecília", cache de 5 min, nome higienizado).
+- `service/security_layer.py`: `consent_message(nome)`, `is_consent_message()` e `CONSENT_BODY`; `CONSENT_MESSAGE` permanece com o nome padrão por compatibilidade.
+- `service/flow/sales_flow.py`: `SalesFlow(bot_name_provider=...)`; o nó `greeting` usa `consent_message(nome)`; a humanização reconhece o texto fixo do consentimento com qualquer nome e repassa `bot_name` ao gerador.
+- `handler.py` repassa `bot_name`; `service/llm.py::generate_reply(bot_name=...)` acrescenta `SEU NOME: <nome>` ao prompt.
+- Terraform: variável `bot_name`, `aws_ssm_parameter.bot_name` (`/sdr/bot-name`) e `BOT_NAME_SSM` na task do router.
+- Testes: `tests/unit/test_bot_identity.py` e um caso de integração da primeira mensagem. Não validado numa subida na AWS.
+
+## Mudanças posteriores — região de `arguments`, log do roteador e imóveis na humanização (ADR-025/026, 2026-10-10)
+
+- `service/validation.py`: dados de busca que a LLM manda só em `arguments` são promovidos ao `lead_info` (explícito prevalece); o prompt do roteador exige esses dados SEMPRE em `lead_info`.
+- `service/flow/sales_flow.py`: log `roteador:` por turno; `_properties_for_reply` (nas fases `greeting`/`elicitation`/`intent` a humanização não recebe os imóveis guardados de turnos anteriores, ADR-026).
+- **Revertido a pedido do responsável (2026-10-10):** a "lista oficial fiel" (regra 21 do prompt de humanização, limite de payload 1500→4200 e a trava `_list_was_altered`). O código voltou ao que era antes; esse problema continua em aberto.
+- Texto do consentimento: passou a dizer que o nome vem do perfil do Telegram e que só se pede WhatsApp ou e-mail (sem CNPJ nem documentos). A máscara de CNPJ no `security_layer` continua, como defesa caso o lead digite um.
+- Testes: `tests/unit/test_router_decision.py`, `tests/unit/test_reply_properties.py`, `TestConsentWording` e, com LLM real, `test_one_after_a_list_details_an_item_instead_of_listing_everything_again`.
+
+## Mudanças posteriores — consentimento interpretado pela LLM (ADR-027, 2026-10-10)
+
+- `service/llm.py::classify_consent` (aceite/recusa/nenhum, lendo o histórico; JSON; levanta exceção se inválido).
+- `service/flow/sales_flow.py`: `SalesFlow(consent_classifier=...)` e `_consent_decision`; a lista de palavras da ADR-017 virou plano B (sem LLM ou falha).
+- `handler.py`: liga `consent_classifier` quando há chave de LLM.
+- Revertido no mesmo dia, antes de documentar: um limite de itens da lista pelo tamanho do payload e uma trava de numeração (regras fixas, a pedido do responsável).
+- Testes: `tests/unit/test_consent_llm.py` e, no gate com LLM real, `test_llm_reads_the_consent_answer_naturally`.
+

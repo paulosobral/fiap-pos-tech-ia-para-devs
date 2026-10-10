@@ -13,9 +13,19 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any
 
 import handler
+from service import tracing
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("router-server")
+
+
+def handle_traced(event: dict[str, Any]) -> dict[str, Any]:
+    """Executa o handler dentro de um segmento do X-Ray (no-op sem o SDK)."""
+    with tracing.segment("conversation-router"):
+        tracing.annotate("route", event.get("routeKey"))
+        res = handler.handler(event, None)
+        tracing.annotate("status", res.get("statusCode"))
+    return res
 
 
 class ApiGatewayHttpAdapter(BaseHTTPRequestHandler):
@@ -59,7 +69,7 @@ class ApiGatewayHttpAdapter(BaseHTTPRequestHandler):
         }
 
         try:
-            res = handler.handler(event, None)
+            res = handle_traced(event)
             status_code = res.get("statusCode", 200)
             res_headers = res.get("headers", {})
             res_body = res.get("body", "")
@@ -88,6 +98,7 @@ class ApiGatewayHttpAdapter(BaseHTTPRequestHandler):
 
 def run() -> None:
     port = int(os.environ.get("PORT", "8080"))
+    logger.info("X-Ray: %s", "ativo" if tracing.enable() else "desativado (SDK ausente)")
     server_address = ("0.0.0.0", port)
     httpd = HTTPServer(server_address, ApiGatewayHttpAdapter)
     logger.info("Conversation Router Server escutando em http://0.0.0.0:%d", port)

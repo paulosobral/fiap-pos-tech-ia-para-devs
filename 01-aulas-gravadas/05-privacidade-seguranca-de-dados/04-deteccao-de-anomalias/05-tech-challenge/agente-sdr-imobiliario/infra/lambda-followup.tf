@@ -11,6 +11,10 @@ module "lambda_followup" {
   timeout                = 60
   memory_size            = 256
 
+  # X-Ray: o Lambda abre o segmento; o SDK (aws-xray-sdk) instrumenta boto3/requests.
+  tracing_mode          = "Active"
+  attach_tracing_policy = true
+
   use_existing_cloudwatch_log_group  = true
   attach_create_log_group_permission = false
   depends_on                         = [aws_cloudwatch_log_group.lambda_followup]

@@ -11,6 +11,7 @@ Contexto: NFR1 — **NFR1.1** primeira resposta < 10 s (KPI do PRD); **NFR1.2** 
 ## O que é executável localmente (e limites)
 - **Benchmark determinístico de pipeline** (sem LLM externo): latência de `pipeline.parse → qualification → flow.step → response` com inputs sintéticos. Serve como **guarda de regressão** de lógica, **não** prova o alvo de < 10 s (o dominante é latência de LLM/rede).
 - Não é possível reproduzir p90 e2e localmente sem chamada real ao provedor; o alvo **permanece Unverified neste estágio**, com evidência esperada em `performance-validation` (stage do plano do projeto).
+- **Fonte de evidência (ADR-021):** com o X-Ray, o tempo de cada turno do router se decompõe em subsegmentos `llm:<modelo>` e chamadas AWS, com a anotação `llm_fallback` quando o Tier 2 entrou; é o insumo esperado do `performance-validation` para o NFR1.1 (a validar numa subida real).
 
 ## Comando de guarda local (opcional, informativo)
 ```bash
