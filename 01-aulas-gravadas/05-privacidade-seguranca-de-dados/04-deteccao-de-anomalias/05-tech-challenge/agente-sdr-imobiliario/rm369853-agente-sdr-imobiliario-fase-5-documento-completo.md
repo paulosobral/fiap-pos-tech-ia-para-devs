@@ -15,7 +15,8 @@ Hackathon FIAP — Agente SDR Imobiliário com Inteligência Artificial
 
 ## Geral
 
-* [Repositório do GitHub: https://github.com/paulosobral/fiap-pos-tech-ia-para-devs](https://github.com/paulosobral/fiap-pos-tech-ia-para-devs "Repositório do GitHub")
+* [Repositório do GitHub: https://github.com/paulosobral/fiap-pos-tech-ia-para-devs/tree/main/01-aulas-gravadas/05-privacidade-seguranca-de-dados/01-aulas-gravadas/05-privacidade-seguranca-de-dados/04-deteccao-de-anomalias/05-tech-challenge/agente-sdr-imobiliario](https://github.com/paulosobral/fiap-pos-tech-ia-para-devs/tree/main/01-aulas-gravadas/05-privacidade-seguranca-de-dados/01-aulas-gravadas/05-privacidade-seguranca-de-dados/04-deteccao-de-anomalias/05-tech-challenge/agente-sdr-imobiliario "Repositório do GitHub")
+* [Vídeo YouTube: https://youtu.be/kU_MkuLnJco](https://youtu.be/kU_MkuLnJco "Vídeo YouTube")
 * [Link do Bot no Telegram (funcionamento das 09:00 até ás 18:00): https://telegram.me/RM369853_bot](https://telegram.me/RM369853_bot)
 * [Cliente: W Levitt Negócios Imobiliários](https://www.wlevitt.com.br/)
 * [Benchmark: Lais.ai](https://lais.ai/), [Plaza Maya](https://useplaza.com.br/), [Squad](https://squad.com/)
