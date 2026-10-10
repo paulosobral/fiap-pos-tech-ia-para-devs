@@ -579,3 +579,21 @@ Teste real (10/10): "quero fechar o terceiro" virou `express_visit_interest`, cu
 - A mensagem inicial deixou de citar retenção (90 dias) e o direito de revogar; o comportamento (TTL, "não" encerra) não mudou.
 - O CSV do CRM simulado não ganhou colunas (cabeçalho fixo); os campos novos vão ao HubSpot.
 
+## ADR-029: Fatos de Fotos na Humanização e Valor Nunca Vira IPTU
+
+**Context**
+1. Chat real (10/10): o imóvel tinha **1 foto** no catálogo (em 252 imóveis, 180 têm 9; esse tinha 1). O lead pediu "mais fotos" duas vezes. O bot não tinha o que enviar (comportamento certo), mas a resposta foi ruim: na 1ª vez a trava de promessa de fotos descartou a reescrita e devolveu a ficha seca, sem dizer que não havia mais fotos; na 2ª a LLM disse "envio agora mais fotos", uma promessa falsa que a trava não reconhecia ("envio agora" sem "te").
+2. Subida do `start.sh` (10/10): o teste `test_detail_missing_from_the_sheet_is_not_invented` falhou numa rodada. Com a LLM real a falha ocorre em ~3–10% das vezes (3/30 no código atual, 1/30 no `HEAD` anterior; amostra pequena, o defeito já existia): ao perguntar "quanto é o IPTU?" de um imóvel sem IPTU na ficha, a LLM respondeu "IPTU de R$ 3 mil por mês", tomando o aluguel por IPTU.
+
+**Decision**
+1. **Fatos de fotos**: em detalhe de 1–2 imóveis o fluxo marca quantas fotos de cada imóvel já foram enviadas (`SalesFlow._with_photo_counts`, sem alterar o estado guardado) e o payload da humanização ganha `fotos_total` e `fotos_restantes` (nunca as URLs). A regra 10 do prompt diz: se o lead pede mais fotos e `fotos_restantes=0` e nada vai neste turno, dizer com naturalidade que essas são todas as fotos disponíveis, sem prometer mais. Listas de 3 ou mais imóveis não recebem esses campos (o payload delas já é limitado).
+2. **Trava de promessa de fotos** passa a reconhecer "envio/mando agora/já/mais/as/essas/outras ... fotos" além das formas anteriores.
+3. **Prompt**: na regra "nunca invente fatos", o preço ou aluguel nunca é IPTU, condomínio ou outra taxa; campo ausente de IPTU/condomínio/taxa vai ao corretor, sem citar valor.
+
+**Evidência (LLM real)**
+Fluxo completo reproduzindo o chat (imóvel com 1 foto já enviada, "quero mais fotos"), 12 execuções: 0 falsas promessas e 11/12 dizem que são as fotos disponíveis. Teste permanente: `test_more_photos_when_the_property_has_only_one_says_so_instead_of_promising` (8/8). A correção do IPTU é só prompt e **não foi medida** depois da mudança: o teste existente do gate (`test_detail_missing_from_the_sheet_is_not_invented`) é quem a valida no `start.sh`.
+
+**Consequences**
+- O texto de "essas são as fotos disponíveis" vem da LLM; se ela insistir em prometer, a trava reverte para a ficha seca (comportamento anterior).
+- A taxa residual de oscilação do teste do IPTU deve cair, mas só o `start.sh` seguinte confirma.
+

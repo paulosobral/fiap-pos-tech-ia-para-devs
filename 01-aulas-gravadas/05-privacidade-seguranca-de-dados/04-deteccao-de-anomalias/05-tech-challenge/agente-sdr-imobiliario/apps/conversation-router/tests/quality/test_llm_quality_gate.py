@@ -591,3 +591,20 @@ def test_wanting_to_close_asks_the_leads_contact_and_never_offers_the_brokers():
     assert not re.search(r"(te passo|te passar|passar o|passo o|aqui está o|segue o) (whats|telefone|contato|e-?mail|n[uú]mero)[^.?!]*(corretor|imobili)", reply), outs[-1]["response"]
     third = (outs[3].get("response_properties") or outs[3].get("properties") or [])[2]
     assert outs[-1].get("context", {}).get("favorite_property") == third["title"], "o imóvel escolhido não foi gravado"
+
+
+def test_more_photos_when_the_property_has_only_one_says_so_instead_of_promising():
+    """Chat real de 10/10: o imóvel tinha 1 foto, já enviada; o lead pediu "mais fotos" e o bot disse "envio agora
+    mais fotos". Com o fato de quantas fotos existem/foram enviadas ele diz que essa é a única disponível."""
+    import re
+    from service.flow.sales_flow import _claims_photos
+
+    prop = {**_FICHA, "images": ["https://x/unica.jpg"], "_fotos_enviadas": 1}
+    reply = llm.generate_reply(
+        message="quero mais fotos", canned_response=f"{prop['title']} — {prop['region']}, {prop['area_util']} m².",
+        lead_info={}, properties=[prop], api_key=API_KEY, last_tool="property_detail", photos_sending=0,
+        conversation_history=[{"role": "user", "content": "tem mais fotos desse?"},
+                              {"role": "assistant", "content": "Segue uma foto do imóvel."}],
+    ).lower()
+    assert not _claims_photos(reply), reply
+    assert re.search(r"todas|única|unica|só|apenas|somente|dispon[ií]veis|não (tenho|há|temos) mais", reply), reply

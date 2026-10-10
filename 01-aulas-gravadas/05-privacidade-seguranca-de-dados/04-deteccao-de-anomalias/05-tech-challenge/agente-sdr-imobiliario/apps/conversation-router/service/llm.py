@@ -134,7 +134,9 @@ _REPLY_SYSTEM_PROMPT = (
     "texto do anúncio — pode usar o que está escrito nele — e os demais campos da ficha "
     "(andar, elevadores, entrega, condominio_m2...) valem como fato; campo que não veio é "
     "desconhecido. Se o lead perguntar algo que não está nos dados, diga que vai confirmar "
-    "com o corretor.\n"
+    "com o corretor. O preço ou o aluguel do imóvel NUNCA é IPTU, condomínio ou outra taxa: "
+    "se o lead pergunta IPTU/condomínio/taxa e o campo não veio, responda que vai confirmar com "
+    "o corretor, sem citar nenhum valor.\n"
     "4. Seja breve (até 3 frases, exceto listas de imóveis). Faça no máximo uma pergunta, "
     "somente quando ela ajudar o próximo passo; não repita perguntas já respondidas. "
     "NUNCA force agendamento quando o lead só quer ver propriedades ou conversar sobre elas.\n"
@@ -155,7 +157,10 @@ _REPLY_SYSTEM_PROMPT = (
     "quantas fotos seguem logo após sua mensagem. Se for maior que 0, mencione brevemente que "
     "seguem as fotos. Se for 0, NÃO diga que está enviando; no máximo ofereça, uma vez, se "
     "fotos_disponiveis=true. NUNCA diga que não há fotos quando fotos_disponiveis=true, e nunca "
-    "descreva o conteúdo das fotos. Se fotos_disponiveis=false, não prometa fotos."
+    "descreva o conteúdo das fotos. Se fotos_disponiveis=false, não prometa fotos. Quando o lead "
+    "pede MAIS fotos e fotos_restantes=0 (todas já enviadas) e FOTOS ENVIADAS NESTA RESPOSTA=0, "
+    "diga com naturalidade que essas são todas as fotos disponíveis desse imóvel (fotos_total) e "
+    "ofereça o próximo passo; nunca prometa enviar mais."
     "\n11. Varie a pergunta de acompanhamento entre respostas — se o histórico mostrar que você já "
     "fez uma pergunta de fechamento parecida no turno anterior, não repita a mesma pergunta; mude a "
     "formulação ou avance para outro tópico, mesmo que a ação permitida continue a mesma."
@@ -418,6 +423,16 @@ def generate_reply(
                 # nao viu. As fotos em si vao por canal separado (response_images
                 # / send_photo), nunca neste payload de texto.
                 "fotos_disponiveis": bool(p.get("images")),
+                # Detalhe de 1-2 imóveis: quantas fotos existem e quantas ainda não foram enviadas, para a
+                # resposta dizer "essas são todas as fotos disponíveis" em vez de prometer mais.
+                **(
+                    {
+                        "fotos_total": len(p.get("images") or []),
+                        "fotos_restantes": max(0, len(p.get("images") or []) - int(p["_fotos_enviadas"])),
+                    }
+                    if with_description and p.get("_fotos_enviadas") is not None
+                    else {}
+                ),
                 # Foco em 1-2 imóveis: ficha completa (andar, elevador, entrega, condomínio...)
                 # + texto do anúncio, para a LLM responder QUALQUER detalhe que o lead
                 # pedir sem o código mapear pergunta -> campo. Campo ausente = desconhecido.

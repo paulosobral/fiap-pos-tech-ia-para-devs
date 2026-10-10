@@ -145,7 +145,8 @@ def _plain_text(text: str) -> str:
 # quando nenhuma foto vai junto: promessa falsa (bug real). Validação de saída, não leitura do lead.
 _PHOTO_CLAIM_RE = re.compile(
     r"(aqui\s+(est[ãa]o|vai|v[êe]m)|seguem?|segue|estou\s+(enviando|mandando)|"
-    r"te\s+(envio|mando)|mandei|enviei|enviando)[^.!?\n]{0,60}\b(fotos?|imagens?)\b",
+    r"te\s+(envio|mando)|(?<![\wãõ])(envio|mando)\s+(agora|j[áa]|mais|as|essas|outras)|mandei|enviei|enviando)"
+    r"[^.!?\n]{0,60}\b(fotos?|imagens?)\b",
     re.IGNORECASE,
 )
 
@@ -1303,7 +1304,7 @@ class SalesFlow:
                 state.get("message", ""),
                 canned,
                 state.get("lead_info") or {},
-                self._properties_for_reply(state),
+                self._with_photo_counts(self._properties_for_reply(state), state),
                 favorite_property=state.get("favorite_property"),
                 conversation_stage=state.get("current_state"),
                 shown_properties_count=state.get("shown_properties_count", 0),
@@ -1338,6 +1339,15 @@ class SalesFlow:
                 "LLM reply falhou; mantendo resposta oficial (fallback)", exc_info=True
             )
         return state
+
+    @staticmethod
+    def _with_photo_counts(props: list[dict[str, Any]], state: FlowState) -> list[dict[str, Any]]:
+        """Em detalhe de 1-2 imóveis, marca quantas fotos de cada um já foram enviadas (inclui as deste
+        turno), para a humanização saber se ainda há fotos a enviar. Listas maiores ficam como estão."""
+        if not props or len(props) > 2:
+            return props
+        sent = (state.get("context") or {}).get("photos_sent") or {}
+        return [{**p, "_fotos_enviadas": int(sent.get(_photo_key(p), 0))} for p in props]
 
     @staticmethod
     def _properties_for_reply(state: FlowState) -> list[dict[str, Any]]:

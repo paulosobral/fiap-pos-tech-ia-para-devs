@@ -115,3 +115,9 @@ Persona acrescentada depois do gate de code-generation; as regras de negócio do
 - `handler.py`: o handoff manda `region` e `property` (imóvel escolhido) ao CRM.
 - `security_layer.py`: mensagem inicial curta.
 - Testes: `tests/unit/test_close_intent_contact.py` e, no gate, `test_wanting_to_close_asks_the_leads_contact_and_never_offers_the_brokers`.
+
+## Mudanças posteriores — fatos de fotos e IPTU (ADR-029, 2026-10-10)
+
+- `sales_flow.py`: `_with_photo_counts` (em detalhe de 1–2 imóveis, quantas fotos já foram enviadas) e `_PHOTO_CLAIM_RE` reconhece "envio/mando agora mais fotos".
+- `llm.py`: payload com `fotos_total`/`fotos_restantes` (só detalhe); regra 10 (todas as fotos disponíveis, sem prometer mais) e regra 3 (aluguel/preço nunca é IPTU ou taxa).
+- Testes: `tests/unit/test_photo_facts.py` e, no gate com LLM real, `test_more_photos_when_the_property_has_only_one_says_so_instead_of_promising`.

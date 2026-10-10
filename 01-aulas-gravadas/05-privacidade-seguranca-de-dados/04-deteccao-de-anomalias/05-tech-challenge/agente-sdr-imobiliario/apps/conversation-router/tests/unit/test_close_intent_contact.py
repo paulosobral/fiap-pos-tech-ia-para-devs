@@ -74,3 +74,8 @@ def test_crm_message_carries_the_chosen_property_and_region():
     data = bodies[-1]["lead_data"]
     assert data["property"] == "Apartamento à venda, Boa Vista - São Caetano do Sul/SP"
     assert data["region"] == "São Caetano do Sul"
+
+
+def test_rental_price_is_never_presented_as_iptu_rule_in_the_prompt():
+    prompt = llm._REPLY_SYSTEM_PROMPT
+    assert "NUNCA é IPTU, condomínio ou outra taxa" in prompt and "sem citar nenhum valor" in prompt
