@@ -561,3 +561,21 @@ LLM real, 23 frases (13 aceites em formas variadas, 5 recusas, 5 "nem um nem out
 - Ampliar a lista de palavras: nunca cobre a fala real e é o comportamento de URA que se quer evitar.
 - Voltar a "qualquer coisa que não seja 'não' é aceite": aceite tácito não vale como consentimento LGPD.
 
+## ADR-028: Decisão de Fechar Vai ao Corretor com o Imóvel Escolhido; o SDR Pega o Contato do Lead
+
+**Context**
+Teste real (10/10): "quero fechar o terceiro" virou `express_visit_interest`, cuja resposta oficial não pedia o contato, e a humanização ofereceu "passar o WhatsApp do corretor" ao lead. O SDR deve capturar o contato do lead, nunca entregar o do corretor. O imóvel escolhido também não aparecia no lead (dashboard/HubSpot), e a tabela de leads mostrava vazios campos que a conversa já conhecia (região, metragem, orçamento, prazo). A mensagem inicial estava longa (CNPJ, 90 dias, revogação).
+
+**Decision**
+1. **Roteador (prompt, interpretação da LLM)**: "DECISÃO DE FECHAR" — quando o lead quer fechar/comprar/alugar/ficar com um imóvel já exibido, usar `request_human` com o imóvel em `property_ref` e o título exato em `memory_updates.favorite_property`. E "ÚLTIMA MENSAGEM MANDA": o roteador decide pela mensagem do turno; o histórico é contexto já atendido (corrigiu o "1" respondido como se fosse o pedido anterior: 12/12, antes 9/10 a 12/16).
+2. **Contato do lead**: `request_human` sem contato já caía no pedido de WhatsApp/e-mail (`_ask_contact`); o `express_visit_interest` sem contato passou a fazer o mesmo, com a ação pendente "falar com o corretor" retomada quando o contato chega. Prompt de humanização: NUNCA oferecer telefone, WhatsApp ou e-mail do corretor ou da imobiliária.
+3. **Lead completo**: o handoff manda ao CRM também `region` e `property` (imóvel escolhido); o `crm-adapter` os aceita e o resumo do HubSpot mostra "Região" e "Imóvel escolhido". A tabela de leads (`/api/leads`) preenche intenção, orçamento (inclui "a partir de"), metragem, região e prazo com o que a conversa já sabe quando o perfil ainda não tem, e ganhou as colunas "Prazo" e "Imóvel escolhido". O perfil continua prevalecendo quando tem valor.
+4. **Mensagem inicial curta**: "Para te atender, uso o seu nome do Telegram e vou te pedir só o seu WhatsApp ou e-mail, para um corretor falar com você (LGPD). Podemos continuar?" (sem CNPJ, 90 dias e revogação, a pedido do responsável; recusa e revogação continuam funcionando no fluxo).
+
+**Evidência (LLM real)**
+"quero fechar o terceiro" com lead sem contato: `request_human` + favorito correto 4/4 e teste de qualidade 3/3 (pede o WhatsApp/e-mail do lead, não oferece o do corretor, grava o imóvel). Gate completo: 59/59.
+
+**Consequences**
+- A mensagem inicial deixou de citar retenção (90 dias) e o direito de revogar; o comportamento (TTL, "não" encerra) não mudou.
+- O CSV do CRM simulado não ganhou colunas (cabeçalho fixo); os campos novos vão ao HubSpot.
+

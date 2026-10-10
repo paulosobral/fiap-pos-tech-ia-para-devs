@@ -86,3 +86,8 @@ Tracing distribuído acrescentado depois do gate de code-generation. Nenhuma reg
 
 - `apps/dashboard-ui/app.py`: dicionários `STATE_LABELS`, `INTENT_LABELS`, `URGENCY_LABELS`, `ALERT_*_LABELS`, `pt()`, `translate_counts()` e `alert_rows()`; a esteira, o gráfico de intenções, a tabela de leads e a tabela de anomalias aparecem em português. A API e o banco continuam com os códigos em inglês; valor desconhecido aparece como veio.
 - Testes: `TestPortugueseLabels` (inclui a tela renderizada com `AppTest`: "Encaminhado ao corretor" no lugar de `handoff`).
+
+## Mudanças posteriores — lead completo (ADR-028, 2026-10-10)
+
+- `dashboard-api/service/leads.py`: campos que o perfil ainda não tem vêm da conversa (`context.lead_info`); novo `property` (imóvel escolhido); o reenvio ao CRM também leva região e imóvel.
+- `dashboard-ui/app.py`: colunas "Prazo" e "Imóvel escolhido" na tabela de leads.

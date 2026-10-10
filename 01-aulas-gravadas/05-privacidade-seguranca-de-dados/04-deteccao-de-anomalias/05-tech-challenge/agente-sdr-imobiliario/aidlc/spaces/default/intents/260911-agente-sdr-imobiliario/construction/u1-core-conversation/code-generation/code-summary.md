@@ -108,3 +108,10 @@ Persona acrescentada depois do gate de code-generation; as regras de negócio do
 - Revertido no mesmo dia, antes de documentar: um limite de itens da lista pelo tamanho do payload e uma trava de numeração (regras fixas, a pedido do responsável).
 - Testes: `tests/unit/test_consent_llm.py` e, no gate com LLM real, `test_llm_reads_the_consent_answer_naturally`.
 
+## Mudanças posteriores — decisão de fechar e contato do lead (ADR-028, 2026-10-10)
+
+- Prompt do roteador: "ÚLTIMA MENSAGEM MANDA" e "DECISÃO DE FECHAR" (`request_human` + `favorite_property`). Prompt de humanização: nunca oferecer o contato do corretor.
+- `sales_flow.py`: `express_visit_interest` sem contato pede o WhatsApp/e-mail do lead (ação pendente `request_human`).
+- `handler.py`: o handoff manda `region` e `property` (imóvel escolhido) ao CRM.
+- `security_layer.py`: mensagem inicial curta.
+- Testes: `tests/unit/test_close_intent_contact.py` e, no gate, `test_wanting_to_close_asks_the_leads_contact_and_never_offers_the_brokers`.

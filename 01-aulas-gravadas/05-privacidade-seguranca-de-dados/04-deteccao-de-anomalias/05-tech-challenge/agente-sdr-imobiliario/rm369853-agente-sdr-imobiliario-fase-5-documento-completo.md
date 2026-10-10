@@ -458,6 +458,7 @@ O `sales-flow` evoluiu para um **agente single-step com tool-calling**: uma úni
 - **10 VALID_TOOLS**: `request_options, property_detail, compare_properties, refine_search, express_visit_interest, request_schedule, request_human, decline, provide_info, unclear`
 - **Validação em código**: fuzzy de favorito apenas sobre imóveis já exibidos; gate de evidência de visita
 - **Dados de busca e observabilidade do roteador (ADR-025/026)**: dados de busca que a LLM manda só em `arguments` (ex.: região) são promovidos ao `lead_info`; cada decisão do roteador (ferramenta, argumentos, raciocínio) vai para o log `roteador:`; nas fases de consentimento e de pergunta de intenção a humanização não recebe imóveis guardados de turnos anteriores (a LLM saía do roteiro e listava opções antes de perguntar compra, locação ou investimento)
+- **Decisão de fechar (ADR-028)**: quando o lead quer fechar/comprar/alugar um imóvel exibido, a LLM o encaminha ao corretor e grava o imóvel escolhido; sem contato, o bot pede o WhatsApp ou e-mail DO LEAD e nunca oferece o contato do corretor. O roteador decide pela última mensagem (o histórico é contexto já atendido)
 - **6 estados no grafo**: `greeting | elicitation | conversation | scheduling | handoff | followup`
 - **Gates 100% em código**: consentimento LGPD (o texto do pedido é fixo e o aceite só é gravado com concordância clara; quem interpreta a resposta é a LLM, lendo a conversa, ADR-027); telefone ou e-mail antes de agendar/falar com corretor; score ≥70 para qualificar; restrição de agendamento por anomalia; no máximo 1 pergunta de critério por conversa
 - **Fallback**: tool inválida / exceção do LLM → regex + FSM determinístico
@@ -511,7 +512,7 @@ Em tempo de execução há **um agente com tool-calling** (§9.2) e uma camada d
 
 - **PII masking** determinístico de contato (e-mail, telefone — digitado, com hífen ou falado por extenso — e CNPJ) antes do envio à LLM. O **nome não é mascarado**: vem do perfil do Telegram, fica cifrado no registro de PII e qualquer resposta que o cite é barrada
 - **Criptografia**: KMS at rest (DynamoDB, S3), TLS em trânsito
-- **Consentimento**: a primeira mensagem apresenta a assistente pelo nome (Cecília) e explica o tratamento de dados: o nome vem do perfil do Telegram, só se pede WhatsApp ou e-mail, e não se pede CNPJ nem documentos; só um "sim" explícito registra o aceite (outra resposta reapresenta o pedido; "não" encerra) A LLM lê a conversa e decide se a resposta é aceite (em qualquer forma natural: "sim", "tô de acordo", "manda ver", 👍), recusa ou nenhum dos dois; na dúvida não conta como aceite e o pedido é refeito; ADR-027.
+- **Consentimento**: a primeira mensagem apresenta a assistente pelo nome (Cecília) e é curta: usa o nome do Telegram e pede só WhatsApp ou e-mail para um corretor falar com o lead (ADR-028). A LLM lê a conversa e decide se a resposta é aceite (em qualquer forma natural: "sim", "tô de acordo", "manda ver", 👍), recusa ou nenhum dos dois; na dúvida não conta como aceite e o pedido é refeito (ADR-027). "Não" encerra.
 - **Retenção**: TTL de 90 dias para conversas de leads frios
 - **Gestão de segredos**: Secrets Manager para token do bot, chave da LLM e credenciais do HubSpot (o refresh token de uso único é regravado a cada renovação)
 - **Traços sem segredos**: o X-Ray instrumenta só o `botocore` (nunca `patch_all()`, que gravaria a URL do Telegram com o token do bot); as anotações são rota, status e modelo, sem texto de conversa nem PII
@@ -698,7 +699,7 @@ Isso executa `terraform destroy` e remove todos os recursos AWS (inclusive os da
 | AWS X-Ray | R$ 0 (plano gratuito de 100 mil traces/mês; o `anomaly-detector`, a cada minuto, consome ~43 mil) |
 | **Total POC (sem ECS)** | **~R$ 15-25/mês** |
 
-> O custo dominante da POC é o ECS Fargate, não a LLM. O gate de qualidade (58 testes com LLM real) gasta créditos do OpenRouter a cada deploy. A métrica de custo da LLM **não** é exibida no dashboard (nenhum componente a emitia); o acompanhamento é feito no painel do OpenRouter.
+> O custo dominante da POC é o ECS Fargate, não a LLM. O gate de qualidade (59 testes com LLM real) gasta créditos do OpenRouter a cada deploy. A métrica de custo da LLM **não** é exibida no dashboard (nenhum componente a emitia); o acompanhamento é feito no painel do OpenRouter.
 
 ---
 
@@ -749,18 +750,18 @@ python -m pytest apps/conversation-router/tests/quality -q
 
 | Aplicação | Testes | Cobertura |
 |---|---|---|
-| conversation-router | 523 | 89,6% |
+| conversation-router | 529 | 89,6% |
 | voice-adapter | 75 | 99,4% |
-| crm-adapter | 137 | 99,1% |
+| crm-adapter | 140 | 99,1% |
 | contact-ingest | 77 | 99,9% |
 | anomaly-detector | 93 | 99,0% |
 | followup | 93 | 98,5% |
-| dashboard-api | 78 | 97,7% |
+| dashboard-api | 81 | 97,8% |
 | dashboard-ui | 49 | 83,3% |
-| **Total** | **1125** | todos ≥ 80% |
+| **Total** | **1137** | todos ≥ 80% |
 | Guarda de infra (`tests/infra`, índices DynamoDB × Terraform) | 4 | — |
 
-**Gate de qualidade com LLM real: 58 testes**, executados pelo `start.sh` antes do deploy: referências a imóveis ("o primeiro", "esse aí"), fotos, contato e telefone falado, piso e teto de orçamento, trava de promessas, fechamento de lead ponta a ponta e anomalias ponta a ponta (chat → detector → dashboard).
+**Gate de qualidade com LLM real: 59 testes**, executados pelo `start.sh` antes do deploy: referências a imóveis ("o primeiro", "esse aí"), fotos, contato e telefone falado, piso e teto de orçamento, trava de promessas, fechamento de lead ponta a ponta e anomalias ponta a ponta (chat → detector → dashboard).
 
 **Validado à mão contra serviços reais:** HubSpot via MCP (contato criado, localizado sem duplicar e atualizado; lead real do Telegram chegando ao CRM) e a infra AWS recriada várias vezes pelo `start.sh`/`stop.sh`.
 

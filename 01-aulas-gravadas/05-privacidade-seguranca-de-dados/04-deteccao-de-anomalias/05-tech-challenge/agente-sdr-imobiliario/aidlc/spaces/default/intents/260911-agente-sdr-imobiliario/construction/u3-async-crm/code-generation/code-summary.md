@@ -74,3 +74,7 @@ Tracing distribuído acrescentado depois do gate de code-generation. Nenhuma reg
 ## Mudanças posteriores — resumo do HubSpot em português (ADR-023, 2026-10-09)
 
 - `service/hubspot_mcp.py`: o resumo gravado no campo `message` do contato traduz urgência (alta/média/baixa) e intenção (compra/locação/investimento); valor desconhecido é mantido. Teste: `test_hubspot_summary_is_in_portuguese`.
+
+## Mudanças posteriores — região e imóvel escolhido (ADR-028, 2026-10-10)
+
+- `crm_adapter.py`: aceita `region` e `property` (texto ou null) e os repassa; `hubspot_mcp.py`: o resumo do contato mostra "Região" e "Imóvel escolhido". O CSV simulado não muda.
