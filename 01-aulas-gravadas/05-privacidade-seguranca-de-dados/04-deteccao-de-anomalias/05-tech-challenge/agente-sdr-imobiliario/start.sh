@@ -8,6 +8,16 @@ export AWS_PAGER=""
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
+# Log em arquivo (logs/start-AAAAMMDD-HHMMSS.log + logs/start-latest.log) sem parar de mostrar na
+# tela. Cores ANSI saem só do arquivo. Nenhum segredo é impresso por este script.
+LOG_DIR="$ROOT/logs"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/start-$(date +%Y%m%d-%H%M%S).log"
+ln -sf "$(basename "$LOG_FILE")" "$LOG_DIR/start-latest.log"
+exec > >(tee >(sed -u 's/\x1b\[[0-9;?]*[A-Za-z]//g' >> "$LOG_FILE")) 2>&1
+trap 'sleep 0.5' EXIT  # deixa o tee terminar de gravar antes do prompt voltar
+echo "log: $LOG_FILE"
+
 echo "== [1/6] Setup"
 if [ ! -x .venv/bin/python ]; then
   echo "criando venv..."

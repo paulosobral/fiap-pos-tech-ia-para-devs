@@ -26,7 +26,7 @@ O desafio desta fase entrega uma **Prova de Conceito (POC)** de um **Agente SDR 
 5. Agenda reuniões/visitas com **corretores especialistas**;
 6. Gera **resumo inteligente (handoff)** para o corretor;
 7. Entrega **dashboard mínimo** com KPIs e **detecção de anomalias** (módulo da fase);
-8. Nasce com **privacidade e segurança (LGPD)** como projeto — PII mascarada, guardrails e trilha de auditoria.
+8. Nasce com **privacidade e segurança (LGPD)** como projeto — e-mail/telefone/CNPJ mascarados antes da LLM, consentimento explícito, guardrails e logs estruturados sem PII.
 
 **Diferenciais competitivos vs. Lais/Maya/Squad:**
 
@@ -36,7 +36,7 @@ O desafio desta fase entrega uma **Prova de Conceito (POC)** de um **Agente SDR 
 | Canal | WhatsApp | WhatsApp omnichannel | **Telegram (custo zero)** + WhatsApp no roadmap |
 | Qualificação | Via fluxos | Via fluxos | **Proprietária + RAG + score explicável** |
 | Segurança/Anomalia | Não divulgado | Não divulgado | **LGPD + detecção de anomalias** (fase 5) |
-| Custo de operação | Licença produto | Licença (ou módulos) | **Fully serverless, ~R$ 15/mês (OpenRouter) em POC** |
+| Custo de operação | Licença produto | Licença (ou módulos) | **Lambdas + ECS Fargate em janela diária; LLM ~R$ 15–25/mês (ver §11)** |
 
 **Por que não WhatsApp na POC:** a API do WhatsApp Business (Meta Cloud) cobra por mensagem e demanda aprovação de número. O **Telegram** oferece bot, webhook e texto/áudio **100% gratuitos**, com gestão de grupos para triagem dos corretores — ideal para demonstração em escala com custo zero, mantendo a arquitetura de canal agnóstica para plugar WhatsApp depois.
 
@@ -116,17 +116,17 @@ Entregar uma **POC funcional** que demonstre todas as habilidades exigidas: aten
 | ID | Requisito (enunciado) | Implementação na POC |
 |---|---|---|
 | FR-01 | Atendimento conversacional | Bot Telegram + engine de orquestração |
-| FR-02 | Conversa natural / fluxo humanizado | LLM (OpenRouter · Claude 3.5 Haiku, via LiteLLM) com system prompt consultivo, tom humanizado |
+| FR-02 | Conversa natural / fluxo humanizado | LLM em 3 camadas via OpenRouter + LiteLLM (DeepSeek → Haiku 4.5 → Sonnet 4.5, ADR-010), prompt consultivo e camada de humanização |
 | FR-03 | Continuidade da conversa | Memória conversacional em Amazon DynamoDB (sessão+atributos) |
-| FR-04 | Qualificação de leads | Questionário adaptativo + classificação (compra/aluguel/investimento) + score |
-| FR-05 | Agendamento de reuniões | Integração com calendário simulado, geração de convite ICS |
+| FR-04 | Qualificação de leads | A LLM extrai os dados da conversa (sem formulário fixo); o qualificador calcula score e urgência |
+| FR-05 | Agendamento de reuniões | Validação de data/hora, compromisso em calendário simulado e convite `.ics` gerado (**envio ao corretor não implementado**); exige telefone ou e-mail do lead |
 | FR-06 | Resumo inteligente | Handoff em Markdown (gap, score, intenção, urgência, próximos passos) |
-| FR-07 | Dashboard mínimo | Streamlit (1 página) no Community Cloud consumindo `GET /api/kpis` — KPIs, anomalias e custo |
-| FR-08 | Identificar intenção (compra/aluguel/investimento) | Classificador de intenção (LLM + heurísticas) no início do fluxo |
+| FR-07 | Dashboard mínimo | Streamlit (1 página) em **ECS Fargate**, login Cognito e sessão persistente; consome `GET /api/kpis` e `GET /api/leads` — KPIs, anomalias, lista de leads com contato e botão "Enviar ao HubSpot" |
+| FR-08 | Identificar intenção (compra/aluguel/investimento) | A LLM interpreta a intenção a cada mensagem (roteador tool-agent, ADR-011/015); regex só no modo degradado sem chave |
 | FR-09 | Coletar informações relevantes | Esquema de coleta (tipo de uso, metragem, região, orçamento, prazo, nº de pessoas, decisor) |
-| FR-10 | Follow-up automático | Scheduler (EventBridge) com janela de silêncio e cadências configuráveis |
-| FR-11 | Integrar base simulada de imóveis | Base JSON+S3 de imóveis corporativos sintéticos + RAG |
-| FR-12 | Gerar resumos para corretores | Handoff automático — mensagem + arquivo de resumo no canal do SDR |
+| FR-10 | Follow-up automático | EventBridge + Step Functions (esperas de 2 h e 24 h) com seleção por janela de silêncio |
+| FR-11 | Integrar base simulada de imóveis | Catálogo no DynamoDB (`sdr-properties`, ADR-012), gerado pelo crawler (anúncios reais) ou sintético, + RAG (FAISS em memória) |
+| FR-12 | Gerar resumos para corretores | Resumo do handoff gerado e lead no HubSpot/dashboard (**arquivo de resumo ao corretor não implementado**) |
 
 ---
 
@@ -134,21 +134,21 @@ Entregar uma **POC funcional** que demonstre todas as habilidades exigidas: aten
 
 | ID | Requisito | Critério |
 |---|---|---|
-| NF-01 | Segurança (LGPD) | PII mascarada antes do modelo; minimização; registro de consentimento; KMS; auditoria |
+| NF-01 | Segurança (LGPD) | E-mail/telefone/CNPJ mascarados antes do modelo; minimização; consentimento explícito; KMS; logs estruturados sem PII |
 | NF-02 | Privacidade de dados | PII mascarada antes do envio ao provedor LLM (independente do provedor); consentimento registrado; retenção limitada (TTL) |
-| NF-03 | Performance | Primeira resposta < 4s; atendimento simultâneo sem fila |
-| NF-04 | Confiabilidade | Componentes serverless com DLQ; retries no webhook |
-| NF-05 | Observabilidade | Logs estruturados (CloudWatch), traços, métricas de negócio |
-| NF-06 | Custo | ~R$ 15/mês (OpenRouter · Claude 3.5 Haiku); acessível para demonstração |
+| NF-03 | Performance | Meta: primeira resposta < 10 s e atendimento simultâneo sem fila. **Não verificada formalmente**; nos logs, 8–15 s por turno com LLM real (fallback em 429 aumenta a latência) |
+| NF-04 | Confiabilidade | DLQ nas filas SQS (áudio, CRM, ingestão); fallback automático de modelo de LLM |
+| NF-05 | Observabilidade | Logs JSON estruturados (CloudWatch) e métricas de negócio no dashboard. Traços distribuídos e métricas de latência/custo no CloudWatch **não implementados** |
+| NF-06 | Custo | LLM ~R$ 15–25/mês (OpenRouter · DeepSeek, fallback Haiku 4.5); ECS Fargate à parte (§11) |
 | NF-07 | Segurança de modelo | Guardrails/denied topics; detecção de prompt injection; evasão de PII |
-| NF-08 | Escalabilidade | Escala horizontal automática (Lambda/API GW/EventBridge) |
+| NF-08 | Escalabilidade | Lambdas escalam nativamente; ECS Fargate com escala agendada (liga 09:00, desliga 18:00 BRT) |
 | NF-09 | Infra como código (IaC) | **Toda a infra da §7.1 em Terraform** (`infra/`, um `.tf` por serviço) — deploy e teardown em 1 comando cada (`start.sh` build → zip → `terraform apply`; `stop.sh` → `terraform destroy`); ambiente recriável de ponta a ponta (critério: `stop.sh` + `start.sh` recria tudo) |
 
 ---
 
 ## 7. Arquitetura da Solução
 
-### 7.1 Visão macro — infraestrutura (100% serverless)
+### 7.1 Visão macro — infraestrutura (serverless + ECS Fargate)
 
 Cada caixa nomeia o **serviço AWS** (ou serviço externo), a **aplicação** e o que faz.
 
@@ -156,39 +156,39 @@ Cada caixa nomeia o **serviço AWS** (ou serviço externo), a **aplicação** e 
 flowchart TD
     subgraph EXT["Serviços externos (fora da AWS)"]
         TG["Telegram Bot API<br/>canal do lead — webhook texto/voice"]
-        OR["OpenRouter API<br/>Claude 3.5 Haiku — LLM da POC (via LiteLLM)"]
-        CRM["CRM via MCP<br/>HubSpot · Kenlo · Facilita — esteira do lead"]
-        CORR["Corretores<br/>Telegram comercial + e-mail (handoff)"]
-        DASHB["Streamlit Community Cloud<br/>dashboard SDR — 1 página (grátis)"]
+        OR["OpenRouter API<br/>DeepSeek (principal) → Haiku 4.5 (fallback) → Sonnet 4.5 (complexo), via LiteLLM"]
+        CRM["HubSpot (MCP remoto, OAuth 2.1 + PKCE)<br/>contato + status do lead"]
+        CORR["Corretores / backoffice<br/>contatam o lead pelo HubSpot e pelo dashboard"]
+        DASHB["Streamlit Dashboard<br/>KPIs, anomalias e leads — 1 página (ECS Fargate)"]
     end
 
-    subgraph CORE["AWS — Núcleo síncrono: UMA Lambda (sem Lambda→Lambda)"]
-        GW["Amazon API Gateway<br/>POST /webhook · GET /api/kpis"]
-        ROUTER["AWS Lambda — conversation-router<br/>sessão + security-layer (PII/guardrails)<br/>+ sales-flow LangGraph + properties-rag (FAISS em memória)<br/>+ lead-router + scheduler — módulos internos"]
+    subgraph CORE["AWS — Núcleo síncrono: ECS Fargate (sem Lambda→Lambda)"]
+        GW["Amazon API Gateway<br/>POST /webhook · GET /api/kpis · GET /api/leads · POST /api/leads/{id}/crm"]
+        ROUTER["ECS Fargate — conversation-router<br/>sessão + security-layer (PII/guardrails)<br/>+ sales-flow LangGraph + properties-rag (FAISS em memória)<br/>+ lead-router + scheduler — módulos internos"]
     end
 
     subgraph ASYNC["AWS — Assíncrono: SQS desacopla, SES ingere, EventBridge agenda"]
         SQSV["Amazon SQS — fila de áudio<br/>desacopla a transcrição (lenta)"]
         VOICE["AWS ECS Fargate — voice-adapter worker<br/>SQS + ffmpeg + faster-whisper — STT PT-BR<br/>janela 09:00–18:00 BRT"]
         SQSC["Amazon SQS — fila CRM (com DLQ)<br/>lead qualificado → CRM"]
-        CRMAD["AWS Lambda — crm-adapter<br/>escreve/consulta lead via MCP"]
-        EB["Amazon EventBridge Scheduler<br/>cadências + job diário"]
-        SFN["AWS Step Functions<br/>wait states do follow-up (dia 2/5/9)"]
+        CRMAD["AWS Lambda — crm-adapter<br/>cria/atualiza contato no HubSpot via MCP"]
+        EB["Amazon EventBridge Scheduler<br/>cadências + varredura de anomalias (1/min)"]
+        SFN["AWS Step Functions<br/>esperas do follow-up (2 h e 24 h)"]
         FU["AWS Lambda — followup<br/>reengaja lead parado"]
-        ANOM["AWS Lambda — anomaly-detector<br/>Isolation Forest + PCA + Autoencoder"]
+        ANOM["AWS Lambda — anomaly-detector<br/>scorer heurístico (padrão) · Isolation Forest + PCA (opcional)"]
         SES["Amazon SES<br/>recebe e-mails dos portais"]
         CING["AWS Lambda — contact-ingest<br/>abre sessão mandando 1ª msg como o lead"]
     end
 
     subgraph DATA["AWS — Dados"]
-        MEM[("Amazon DynamoDB<br/>sessões + leads — TTL 90d · KMS")]
-        RAGS[("Amazon S3<br/>catálogos imóveis/clientes + índice FAISS")]
+        MEM[("Amazon DynamoDB<br/>sessões, PII cifrada (KMS), alertas — TTL 90d")]
+        RAGS[("Amazon DynamoDB sdr-properties<br/>catálogo de imóveis — FAISS montado em memória no router")]
         SM["AWS Secrets Manager<br/>token do bot · chaves de API"]
     end
 
     subgraph OBS["AWS — API, identidade e observabilidade"]
         COG["Amazon Cognito<br/>login do time — protege dashboard e API"]
-        KPI["AWS Lambda — dash-api<br/>agrega KPIs (DynamoDB + CloudWatch)"]
+        KPI["AWS Lambda — dash-api<br/>agrega KPIs e lista leads (DynamoDB + KMS)"]
         CW["Amazon CloudWatch<br/>logs · métricas · alertas"]
     end
 
@@ -202,7 +202,7 @@ flowchart TD
     ROUTER -.->|"índice carregado em memória"| RAGS
     ROUTER --> OR
     ROUTER -.->|"busca segredos"| SM
-    ROUTER -->|"handoff + convite ICS"| CORR
+    ROUTER -->|"resumo do lead"| CORR
     ROUTER -->|"lead qualificado"| SQSC
     SQSC --> CRMAD
     CRMAD --> CRM
@@ -212,10 +212,9 @@ flowchart TD
     SFN --> FU
     FU <--> MEM
     FU -->|"retoma conversa"| TG
-    EB -->|"job diário"| ANOM
+    EB -->|"varredura (1/min)"| ANOM
     ANOM <--> MEM
-    ANOM --> DASHB
-    GW -->|"GET /api/kpis"| KPI
+    GW -->|"/api/kpis · /api/leads"| KPI
     KPI --> MEM
     DASHB -->|"login"| COG
     COG -.->|"authorizer"| GW
@@ -223,28 +222,28 @@ flowchart TD
     CORE -.-> CW
 ```
 
-> Nota sobre o antipadrão resolvido: **nenhuma Lambda chama outra Lambda em modo síncrono**. A cadeia de resposta ao lead (security → fluxo → RAG → roleta) roda como **módulos internos de uma única Lambda** — chat exige latência mínima (just-in-time da mentoria) e chaining síncrono dobraria custo/latência e criaria timeout em cascata. O que é lento ou não bloqueia o lead vai **assíncrono**: transcrição de áudio e sincronização com CRM via **SQS** (com DLQ), cadência de follow-up via **Step Functions** (wait states), e-mail dos portais via **SES**. `telegram-adapter` e `sdr-agent` continuam sendo o contrato do webhook e a chamada LLM (LiteLLM → OpenRouter), não serviços próprios.
+> Nota sobre o antipadrão resolvido: **nenhuma Lambda chama outra Lambda em modo síncrono**. A cadeia de resposta ao lead (security → fluxo → RAG → roleta) roda como **módulos internos de um único serviço (ECS Fargate)** — chat exige latência mínima (just-in-time da mentoria) e chaining síncrono dobraria custo/latência e criaria timeout em cascata. O que é lento ou não bloqueia o lead vai **assíncrono**: transcrição de áudio e sincronização com CRM via **SQS** (com DLQ), cadência de follow-up via **Step Functions** (wait states), e-mail dos portais via **SES**. `telegram-adapter` e `sdr-agent` continuam sendo o contrato do webhook e a chamada LLM (LiteLLM → OpenRouter), não serviços próprios.
 
 ### 7.2 Componentes e responsabilidade (decomposição)
 
-> Componentes são **módulos lógicos**, não necessariamente Lambdas separadas. Os síncronos (2–7, 10, 12–13) rodam como módulos/bibliotecas dentro da Lambda `conversation-router` — **sem chamada Lambda→Lambda síncrona** (antipattern: custo dobrado, timeout em cascata, acoplamento). Os assíncronos de voz (15) rodam no worker ECS Fargate, que consome SQS; 8, 9 e 14 são Lambdas acionadas por EventBridge/SES. Nenhum componente assíncrono chama outra Lambda em cadeia direta.
+> Componentes são **módulos lógicos**, não necessariamente Lambdas separadas. Os síncronos (2–7, 10, 12–13) rodam como módulos/bibliotecas dentro do serviço ECS Fargate `conversation-router` — **sem chamada Lambda→Lambda síncrona** (antipattern: custo dobrado, timeout em cascata, acoplamento). Os assíncronos de voz (15) rodam no worker ECS Fargate, que consome SQS; 8, 9 e 14 são Lambdas acionadas por EventBridge/SES. Nenhum componente assíncrono chama outra Lambda em cadeia direta.
 
 1. **Canal (Telegram) — `telegram-adapter`**: webhook autenticado (secret), normaliza texto/áudio/envios de botão -> payload interno.
-2. **Router / sessões — `conversation-router` (API Gateway + Lambda)**: valida, recupera estado da sessão (DynamoDB), chama a engine de fluxo.
-3. **Engine de fluxo — `sales-flow` (LangGraph)**: grafo de estados com nós para saudação, elicitação, intenção, qualificação, recomendação, agendamento, follow-up e handoff.
-4. **Agente de atendimento — `sdr-agent`**: geração de resposta via **OpenRouter (Claude 3.5 Haiku)** usando **LiteLLM** como cliente abstraído (`LLM_PROVIDER=openrouter|bedrock`); tools de RAG lookup e scheduling.
-5. **RAG — `properties-rag`**: vetoriza a base sintética de imóveis (S3) + embeddings; na POC usa **FAISS local** (índice ~200 docs carrega em memória lambda) para custo zero; arquitetura permite troca por **Bedrock Knowledge Bases + OpenSearch Serverless** sem alterar contrato.
+2. **Router / sessões — `conversation-router` (API Gateway + ECS Fargate)**: valida, recupera estado da sessão (DynamoDB), chama a engine de fluxo.
+3. **Engine de fluxo — `sales-flow` (LangGraph)**: grafo com os estados `greeting`, `elicitation` (consentimento), `conversation`, `scheduling`, `handoff` e `followup`, mais pré e pós-processamento; qualificação, recomendação e agendamento acontecem dentro de `conversation` por tool-calling (ADR-011).
+4. **Agente de atendimento — `sdr-agent`**: o roteador LLM (tool-calling) interpreta cada mensagem e uma segunda chamada humaniza a resposta, via **OpenRouter** com **LiteLLM** (DeepSeek → Haiku 4.5 → Sonnet 4.5, ADR-010; modelos trocáveis por `LLM_MODEL_*`/SSM); tools de RAG lookup e scheduling.
+5. **RAG — `properties-rag`**: carrega o catálogo de imóveis do DynamoDB (`sdr-properties`, ADR-012), vetoriza com TF-IDF; na POC usa **FAISS local** (índice montado em memória no router) para custo zero; arquitetura permite troca por **Bedrock Knowledge Bases + OpenSearch Serverless** sem alterar contrato.
 6. **Qualificador — `lead-qualifier`**: extrai estrutura (JSON) e classifica intenção + urgência + budget; grava na ficha do lead.
-7. **Agendamento — `scheduler`**: valida data/hora, grava compromisso, emite convite `.ics` e notify corretor.
+7. **Agendamento — `scheduler`**: valida data/hora, grava compromisso e gera o convite `.ics` (envio ao corretor ainda não implementado); exige telefone ou e-mail do lead.
 8. **Follow-up — `followup`**: regras de cadência via EventBridge + Step Functions (espera silêncio de X dias, retoma com contexto).
-9. **Detecção de anomalias — `anomaly-detector`** (módulo da fase): job diário (EventBridge, chama Batch Lambda) que extrai features por conversa (volume, comprimento, sentimento, promessa de pagamento, horários atípicos, robô/texto fora do padrão, exigência fora das regras) e aplica **Isolation Forest + PCA** (e autoencoder para variação de comportamento). Emissão de alerta no dashboard e bloqueio de propostas suspeitas.
-10. **Handoff — `handoff`**: resumo Markdown (+ mensagem interna) para corretor no canal do time.
-11. **Dashboard — `dash`**: app Streamlit (1 página) no Community Cloud consumindo `GET /api/kpis` (métricas de negócio: novo lead, resposta < 10s, taxa qualificação, agendamentos, anomalias, custo mensal); login via Cognito. Sketch no §10.
-12. **Segurança/Priv — `security-layer`**: máscara de PII antes do LLM (nomes, telefone, e-mail, CNPJ), registro de consentimento, guardrails de tópicos, validação de entrada (prompt-injection check).
+9. **Detecção de anomalias — `anomaly-detector`** (módulo da fase): Lambda agendada pelo EventBridge (`rate(1 minute)` na POC) que extrai 4 features por conversa (volume, tamanho médio, proporção de mensagens negativas e proporção fora do horário comercial) e pontua com scorer heurístico (padrão) ou **Isolation Forest + PCA** (opcional; o autoencoder não foi implementado). Emissão de alerta no dashboard e restrição de agendamento do lead suspeito.
+10. **Handoff — `handoff`**: resumo Markdown no fluxo e lead enviado ao HubSpot; o backoffice vê nome, telefone e e-mail no dashboard.
+11. **Dashboard — `dash`**: app Streamlit (1 página) em ECS Fargate consumindo `GET /api/kpis` e `GET /api/leads` (métricas de negócio: novo lead, resposta < 10s, taxa qualificação, agendamentos, anomalias; lista de leads com contato e botão "Enviar ao HubSpot"); login direto via Cognito (ADR-014/016). Sketch no §10.
+12. **Segurança/Priv — `security-layer`**: máscara de PII antes do LLM (telefone, e-mail, CNPJ; o nome não é mascarado, ADR-017), consentimento explícito, guardrails de tópicos, validação de entrada (prompt-injection check).
 13. **Roleta de distribuição — `lead-router`** (insight da mentoria): distribui o lead qualificado para o corretor certo por **regras configuráveis** (ex.: até 500 m² → rodízio dos consultores; acima → diretor/especialista); registra a rota no DynamoDB.
 14. **Ingestão de contato — `contact-ingest`** (cenário 2 da mentoria): captura dados que chegam por e-mail/portais (nome, e-mail, telefone) e abre sessão no chatbot sem digitação manual.
 15. **Áudio/STT — `voice-adapter`** (Telegram voice): o webhook coloca o `file_id` na SQS e confirma o recebimento ao lead; um worker **ECS Fargate**, ativo na janela configurada de 09:00–18:00 BRT, consome a fila, baixa o arquivo via `getFile`, converte para WAV (ffmpeg) e transcreve com **faster-whisper (PT-BR)**. Fora da janela, a mensagem permanece na fila até o worker voltar; o texto mascarado entra em `/internal/inbound-text` e segue o mesmo `sales-flow` das mensagens digitadas.
-16. **CRM via MCP — `crm-adapter`**: camada MCP genérica para ler/gravar leads no CRM (HubSpot, Kenlo, Facilita) sem acoplar o fluxo ao vendedor; na POC roda contra o CRM simulado (CSV/Excel) — ver §8.9.
+16. **CRM via MCP — `crm-adapter`**: camada MCP que grava o lead como contato no **HubSpot real** (MCP remoto, OAuth 2.1 + PKCE; refresh token de uso único mantido no Secrets Manager); sem credenciais, usa o CRM simulado (CSV) — ver §8.9 e ADR-016.
 
 ### 7.3 Fluxo de dados (visão simplificada)
 
@@ -267,89 +266,58 @@ flowchart TD
 
 ```text
 agente-sdr-imobiliario/                ← raiz do repo
-├── start.sh                           ← 1 comando: build das apps → zips → terraform apply
-├── stop.sh                            ← teardown completo: terraform destroy (controle de custo)
-├── apps/                              ← 1 pasta por Lambda — padrão único de código
-│   ├── conversation-router/           ← núcleo síncrono (sessão + fluxo + RAG + roleta + scheduler)
-│   │   ├── handler.py                 ← entrypoint (adapter) — só roteia, sem regra de negócio
-│   │   ├── service/                   ← casos de uso: sales-flow (LangGraph), security-layer, properties-rag, lead-router, scheduler
-│   │   ├── infra/                     ← adapters: DynamoDB, S3/FAISS, OpenRouter (LiteLLM), SQS
-│   │   ├── tests/
-│   │   └── requirements.txt
-│   ├── voice-adapter/ · crm-adapter/ · contact-ingest/ · anomaly-detector/ · followup/ · dash-api/
-│   └── streamlit-dashboard/           ← app do §10 (deploy no Community Cloud, fora do Terraform)
-├── infra/                             ← Terraform — 1 arquivo por tipo de serviço
-│   ├── providers.tf · variables.tf · kms.tf
-│   ├── s3.tf · dynamodb.tf · sqs.tf · ses.tf
-│   ├── lambda.tf · apigw.tf · apigw-openapi.yaml (contrato §7.5)
-│   ├── eventbridge.tf · stepfunction.tf (ASL) · cognito.tf · cloudwatch.tf
-│   ├── outputs.tf
-│   └── envs/dev.tfvars · envs/prod.tfvars
-└── docs/                              ← PRD, ADRs, enunciado, transcrições (atual)
+├── start.sh · stop.sh                 ← deploy e teardown (cada um grava logs/<nome>-AAAAMMDD-HHMMSS.log)
+├── secrets.local.env                  ← credenciais locais (gitignored)
+├── apps/                              ← 1 pasta por componente
+│   ├── conversation-router/           ← ECS Fargate: sessão + fluxo + RAG + roleta + scheduler (server.py, handler.py, service/, infra/)
+│   ├── voice-adapter/                 ← ECS Fargate: worker SQS + ffmpeg + faster-whisper
+│   ├── dashboard-ui/                  ← ECS Fargate: Streamlit (app.py, assets/logo.png, .streamlit/ com o tema)
+│   └── crm-adapter/ · contact-ingest/ · anomaly-detector/ · followup/ · dashboard-api/   ← Lambdas
+├── infra/                             ← Terraform: providers, variables, apigateway, cognito, dynamodb, ecs, iam,
+│                                        lambda-*.tf (um por Lambda), s3, secrets (KMS + Secrets Manager + SSM),
+│                                        ses, sqs, step_functions, cloudwatch-logs, outputs
+├── scripts/                           ← seed_properties.py, seed_clients.py, load_properties_dynamodb.py, hubspot_authorize.py
+├── documentos/ · docs/ · aidlc/       ← PRD, especificações de design, registro do AI-DLC (estado, ADRs)
+└── logs/                              ← logs do start.sh/stop.sh (gitignored)
 ```
 
-**Fluxo do `start.sh`:**
+O catálogo real de imóveis vem da pasta irmã `../crawling-imobiliarias/` (crawler Scrapy); sem ela, o `start.sh` usa o catálogo sintético.
 
-```shell
-#!/usr/bin/env bash
-set -euo pipefail
+**Fluxo do `start.sh`** (a saída aparece na tela e é gravada em `logs/start-*.log`):
 
-# 1) Build: dependências + zip de cada Lambda
-for app in apps/*/; do
-  name=$(basename "$app")
-  ( cd "apps/$name" \
-    && pip install -r requirements.txt -t package/ \
-    && cd package && zip -r "../../$name.zip" . )
-done
+1. setup do `.venv` e `compileall`;
+2. catálogo de imóveis (crawler limpo ou sintético);
+3. testes unitários com cobertura ≥ 80% e **gate de qualidade com LLM real** (pulado sem chave; ~7 min);
+4. build: zips das Lambdas (`pip install --platform manylinux2014_x86_64`) e imagens `podman` no ECR;
+5. `terraform apply` em 2 passos (o 1º cria o ECR e a base; o 2º aponta as task definitions para as imagens) e liga os serviços ECS;
+6. usuário de smoke no Cognito, webhook do Telegram e smoke checks da API.
 
-# 2) Deploy IaC (lambda.tf referencia os zips de apps/*.zip)
-terraform -chdir=infra init
-terraform -chdir=infra apply -var-file=envs/dev.tfvars
-```
+**Teardown (`stop.sh`):** salva em `secrets.local.env` o refresh token vigente do HubSpot e executa `terraform destroy`, depois limpa log groups órfãos.
 
-**Teardown (`stop.sh`) — custo zero quando a POC está em uso:**
+> O destroy apaga tudo (DynamoDB, S3, filas, funções), inclusive os leads. Para recriar o ambiente inteiro: `./stop.sh && ./start.sh`. Rodar só o `start.sh` atualiza a infra e mantém os dados. O estado do Terraform fica no diretório `infra/` local (não está no repo).
 
-```shell
-#!/usr/bin/env bash
-set -euo pipefail
-terraform -chdir=infra destroy -var-file=envs/dev.tfvars
-```
+**Padrão de código das apps:** `handler.py` (adaptador de entrada, sem regra de negócio) → `service/` (casos de uso, testável sem AWS) → `infra/` (adapters de DynamoDB/LLM/SQS). O Terraform resolve a ordem de criação por referência de atributos.
 
-> Os blocos usam `shell` (e não `bash`) para o preview de diagramas do VS Code não tentar interpretá-los como Mermaid — o resto do markdown fica intacto.
+### 7.5 API Gateway (HTTP API) e rotas
 
-> O destroy apaga tudo (DynamoDB, S3, filas, funções) — seguro na POC porque os dados são sintéticos e regeneráveis pelo script de seed. Para recriar o ambiente inteiro: `./stop.sh && ./start.sh`. O `terraform.tfstate` fica no bucket do Terraform (versionado), nunca no repo.
+O API Gateway é uma **HTTP API (v2)** declarada diretamente no Terraform (`infra/apigateway.tf`); a versão inicial previa uma REST API importada de OpenAPI, que não foi adotada. Rotas:
 
-**Ordem de criação e `depends_on`:** o Terraform resolve a maior parte do grafo sozinho por referência de atributos (ARNs em env vars, IAM roles, etc.). `depends_on` explícito onde não há referência direta: `kms` → `s3`/`dynamo` → `sqs`/`ses` → `lambda` (roles + permissões de fontes) → `apigw` → `eventbridge`/`stepfunction` → `outputs`. Notificações de fila/bucket exigem a permissão da Lambda pronta antes do trigger (`aws_lambda_permission` → `depends_on` do event source).
-
-**Padrão de código das apps (todas iguais):** `handler.py` (adaptador de entrada, sem regra de negócio) → `service/` (casos de uso, testável sem AWS) → `infra/` (adapters de DynamoDB/S3/LLM/SQS). Mesmo padrão nas 7 Lambdas — banca audita um, entende todas.
-
-### 7.5 Contrato de API — OpenAPI 3.0 (API Gateway)
-
-O API Gateway REST **importa OpenAPI 3.0 nativamente** (extensões `x-amazon-apigateway-*`). O contrato completo vive em **[`apigw-openapi.yaml`](./apigw-openapi.yaml)** (mesma pasta deste PRD; no esqueleto do repo move para `infra/`) e o `apigw.tf` faz o deploy direto:
-
-```hcl
-resource "aws_api_gateway_rest_api" "sdr" {
-  body = file("${path.module}/apigw-openapi.yaml")  # placeholder ${...} interpolado pelo Terraform
-  name = "sdr-api"
-}
-```
-
-**Resumo dos endpoints (detalhes e schemas no arquivo):**
-
-| Endpoint | Método | Autenticação | Integração | Resposta |
+| Rota | Método | Autenticação | Integração | Uso |
 |---|---|---|---|---|
-| `/webhook` | POST | Header `X-Telegram-Bot-Api-Secret-Token` (apiKey) | `aws_proxy` → Lambda `conversation-router` | 200 imediato (trabalho lento → SQS) |
-| `/api/kpis` | GET | JWT do Amazon Cognito (`cognito_user_pools` authorizer) | `aws_proxy` → Lambda `dash-api` | JSON de KPIs (exemplo no arquivo) |
+| `/webhook/telegram` | POST | Header `X-Telegram-Bot-Api-Secret-Token`, validado pelo router | `HTTP_PROXY` → ECS `conversation-router` (porta 8080) | 200 imediato (trabalho lento → SQS) |
+| `/internal/{proxy+}` | POST | Header `X-Internal-Secret` (secret `sdr/dashboard-api-token`) | `HTTP_PROXY` → `conversation-router` | texto transcrito, status do CRM, follow-up, ingestão |
+| `/health` | GET | — | `HTTP_PROXY` → `conversation-router` | health check |
+| `/api/{proxy+}` | GET, POST | JWT do Amazon Cognito (authorizer JWT) | `AWS_PROXY` → Lambda `dashboard-api` | `/api/kpis`, `/api/leads`, `/api/leads/{id}/crm` |
 
-> Notas: (1) CORS não é necessário — o Streamlit chama a API server-side (Python), não pelo navegador. (2) Os placeholders `${ROUTER_INVOKE_ARN}`, `${DASHAPI_INVOKE_ARN}` e `${COGNITO_POOL_ARN}` são interpolados pelo Terraform no `apigw.tf`. (3) Respostas assíncronas (áudio/CRM) não passam daqui — o webhook só confirma recebimento. (4) Para visualizar/validar o arquivo no VS Code: extensões **OpenAPI (Swagger) Editor** (42Crunch — syntax + validação) e **Swagger Viewer** (preview Swagger UI).
+> Notas: (1) CORS não é necessário — o Streamlit chama a API server-side (Python). (2) O `router_endpoint` é o IP da task do router; o `start.sh` o atualiza depois de ligar o serviço, e a task ganha novo IP sempre que reinicia. (3) Respostas assíncronas (áudio/CRM) não passam por aqui — o webhook só confirma recebimento.
 
 ---
 
 ## 8. Modelagem de IA
 
 ### 8.1 Modelo conversacional
-- **LLM**: **Claude 3.5 Haiku** (rota Anthropic via **OpenRouter**) — melhor custo/qualidade para chat de POC; alternativa de modelos menores (free tier) para testes.
-- **Cliente**: **LiteLLM** — abstrai o provedor por configuração (`LLM_PROVIDER=openrouter|bedrock`); a demo roda no OpenRouter e a produção pode migrar para Bedrock sem trocar código.
+- **LLM em 3 camadas (ADR-010)**, via **OpenRouter**: Tier 1 `deepseek/deepseek-chat` (rotina, ~90% das chamadas); Tier 2 `anthropic/claude-haiku-4.5` (fallback em 429/timeout); Tier 3 `anthropic/claude-sonnet-4.5` (casos complexos). Os modelos Claude 3 / 3.5 do desenho inicial foram descontinuados no OpenRouter.
+- **Cliente**: **LiteLLM** — os modelos mudam por variável de ambiente (`LLM_MODEL_PRIMARY|FALLBACK|COMPLEX`) ou SSM, sem trocar código; a chave fica no Secrets Manager (`sdr/llm-api-key`). A demo roda no OpenRouter; migrar para Bedrock exigiria trocar o prefixo do provedor no cliente.
 - **Orquestração**: **LangGraph** (reaproveita o padrão de multiagentes da Fase 3 — Assistente Médico).
 - **Prompt system**: persona de SDR corporativo BR, tom consultivo, permissões, sempre oferecer ações (menu inline do Telegram), nunca inventar imóveis que não estão na base (constraint via RAG).
 - **Interface natural-first — nunca URA**: a mentoria deixou explícito ("não é digite 1/digite 2, é uma conversa muito fluida" — Leonardo, 1952s; "conversa humanizada", 1801s). Entrada livre sempre aceita; os **botões inline são só atalhos** (escolher entre 2–3 imóveis, confirmar data de visita, "falar com um corretor") — o fluxo funciona igualmente com texto livre. Consentimento LGPD contextualizado na primeira mensagem, sem checkbox. Primeira abordagem: **coletar dados + propor reunião**, não apresentar imóvel (decisão do cliente).
@@ -374,7 +342,7 @@ A mentoria deixou explícito: o RAG precisa de **dois catálogos** — o de **im
 
 **Base 1 — Catálogo de imóveis (100–200 ofertas corporativas sintéticas):**
 - Campos de negócio: área útil, área bruta, condomínio R$/m², laje, vagas, entrega, classe A/B, andar, elevadores, CEP, preço venda/locação, disponibilidade, bairro/corredor.
-- Geração com **parâmetros realistas** (ver fontes abaixo) via script + **Mockaroo** (ferramenta indicada na mentoria para gerar bases de MVP).
+- Geração com **parâmetros realistas** (ver fontes abaixo) via script (`seed_properties.py`, catálogo sintético sem fotos); o catálogo real vem do crawler `crawling-imobiliarias` (anúncios reais com fotos), preferido pelo `start.sh` quando existe.
 
 **Base 2 — Catálogo de clientes (CRM simulado):**
 - CSV/XML/Excel com coluna **status** (pré-atendimento, visita, proposta, fechamento, pós-venda) simulando a esteira Kanban; produção trocaria pela API do CRM real (Kenlo/CS).
@@ -387,7 +355,7 @@ A mentoria deixou explícito: o RAG precisa de **dois catálogos** — o de **im
 | **GeoSampa (PMSP)** | Dados georreferenciados (bairros, zonas, eixos) | Geolocalização/região dos imóveis |
 | **Portais públicos** (Zap, VivaReal, OLX, Chaves na Mão) | Anúncios reais (respeitando termos de uso) | Referência de oferta; scraping só se permitido |
 | **CUB (SindusCon-SP)** | Custo unitário básico de construção | Referência de valor para lajes/entrega |
-| **Mockaroo** | Geração de dados sintéticos | Preencher lacunas do catálogo |
+| **Mockaroo** | Geração de dados sintéticos | Citado na mentoria; **não usado** (catálogo vem do crawler ou do `seed_properties.py`) |
 
 > Nota: para a POC, os dados são **sintéticos mas calibrados** pelas fontes acima — evita custo/risco de scraping e mantém realismo para a banca.
 
@@ -409,14 +377,14 @@ A mentoria deixou explícito: o RAG precisa de **dois catálogos** — o de **im
 | `monitor` (observação) | anomalia + alertas |
 
 ### 8.5 Detecção de Anomalias (disciplina da fase)
-- **Features por lead/sessão**: nº mensagens, tamanho médio, sentimento (vader-pt / análise local), presença de termos de urgência, parâmetros fora de padrão (orçamento 10× a média, área imensurável), padrão temporal (todas 3–5h), taxa de erro de OCR (se áudio), semelhança entre leads consecutivos (copy-paste / bot), promessa financeira off-platform.
-- **Algoritmos**: **Isolation Forest** (detecção cross-sectional) + **PCA** (redução e plotagem de outliers) + **Autoencoder** (técnica da aula — reconstrução de sessões normais; erro alto = anomalia).
-- **Output**: alerta no dashboard + gatilho de bloqueio (não oferecer agendamento e requalificação manual).
+- **Features por conversa (implementadas, 4)**: nº de mensagens, tamanho médio, proporção de mensagens com palavras negativas (PT-BR) e proporção de mensagens fora do horário comercial (08:00–18:59, America/Sao_Paulo). As demais ideias do desenho original (termos de urgência, orçamento fora de padrão, erro de OCR, similaridade entre leads, promessa off-platform) não foram implementadas.
+- **Algoritmos**: scorer **heurístico** ponderado (padrão em produção, `ANOMALY_SCORER=heuristic`; pesos 0,3/0,2/0,3/0,2 e limite `ANOMALY_THRESHOLD`=0,7) ou **Isolation Forest + PCA** (`ANOMALY_SCORER=sklearn`; erro de reconstrução do PCA como sinal residual). O **Autoencoder** não foi implementado (desvio aceito, FR9.2). Com o limite 0,7, só dispara à noite com muitas mensagens longas e negativas; o gate de qualidade (ADR-019) usa 0,4.
+- **Output**: alerta no dashboard (sem o payload bruto) + restrição de agendamento do lead, liberada automaticamente quando uma varredura posterior o pontua como normal.
 
 ### 8.6 Segurança de dados (módulo da fase)
-- **PII masking** via expressões regulares de contato (email, fone, CNPJ, nome completo) antes do envio ao LLM, com substituição por placeholders; anamnese reversa no resumo somente no handoff (para uso interno e criptografado).
+- **PII masking** determinístico de contato (e-mail, telefone — digitado ou falado por extenso — e CNPJ) antes do envio ao LLM, com substituição por placeholders; **o nome não é mascarado** (vem do perfil do Telegram, fica cifrado e respostas que o citem são barradas — ADR-017); anamnese reversa no resumo somente no handoff (para uso interno e criptografado).
 - **Criptografia**: KMS at rest (DynamoDB, S3), TLS em trânsito.
-- **Consentimento**: primeira mensagem contextualiza e registra o aceite do tratamento de dados (finalidade comercial) — requisito de base da LGPD.
+- **Consentimento**: a primeira mensagem contextualiza o tratamento de dados (finalidade comercial); só um "sim" explícito registra o aceite — outra resposta reapresenta o pedido (ADR-017), requisito de base da LGPD.
 - **Retenção**: TTL de 90 dias para conversas de leads frios.
 - **Gestão de segredos**: Secrets Manager para token do bot e chaves de integração.
 - **Responsible AI Policy (AWS)**: revisão das saídas antes de validar ambientes.
@@ -429,10 +397,11 @@ A mentoria deixou explícito: o RAG precisa de **dois catálogos** — o de **im
 
 | Dado | Onde nasce/fique | Chega ao LLM? |
 |---|---|---|
-| Nome, e-mail, telefone, CNPJ | DynamoDB (KMS) e CRM/handoff | **Não** — substituído por placeholder no envio |
+| E-mail, telefone, CNPJ | DynamoDB `sdr-pii` (KMS), HubSpot e dashboard (usuário autenticado) | **Não** — substituído por placeholder no envio |
+| Nome | Perfil do Telegram → `sdr-pii` (KMS) e HubSpot | Não é enviado de propósito, mas **não é mascarado** se o lead o digitar; resposta que o cite é barrada |
 | Orçamento, metragem, região, intenção | DynamoDB (atributos estruturados) | **Sim** — como atributos/histórico, sem identificar o lead diretamente |
 | Texto livre da conversa | DynamoDB (TTL 90 dias) | **Sim** — com PII mascarada em tempo real |
-| Contexto RAG (imóveis sintéticos) | S3/FAISS | **Sim** — não contém PII |
+| Contexto RAG (catálogo de imóveis) | DynamoDB `sdr-properties` / FAISS em memória | **Sim** — não contém PII |
 
 **Fluxo real:** quando o lead informa um dado PII no meio do diálogo (ex.: "meu nome é Maria, CNPJ 12.345..."), a camada de parsing local:
 1. detecta e **extrai** o valor → grava no DynamoDB criptografado;
@@ -547,7 +516,7 @@ Por serem leads **reais**, não existe anonimização total da operação; o obj
 
 ## 10. Dashboard (mínimo obrigatório)
 
-> O enunciado pede "dashboard mínimo de acompanhamento" (item obrigatório) — **uma única página atende**. Stack: **Streamlit** (1 página, código Python) hospedado no **Streamlit Community Cloud (grátis)** — única peça fora da AWS; alternativa 100% AWS (S3 estático + HTML/JS) exige muito mais front-end para o mesmo resultado. O dashboard não guarda dados locais: consome `GET /api/kpis` (Lambda `dash-api` + DynamoDB/CloudWatch).
+> O enunciado pede "dashboard mínimo de acompanhamento" (item obrigatório) — **uma única página atende**. Stack: **Streamlit** (1 página, código Python) hospedado em **ECS Fargate** (container, janela 09:00–18:00 BRT, sem domínio/ALB — ADR-005/014); alternativa 100% AWS (S3 estático + HTML/JS) exigiria muito mais front-end para o mesmo resultado. O dashboard não guarda dados de negócio: consome `GET /api/kpis` e `GET /api/leads` (Lambda `dash-api` + DynamoDB/KMS).
 
 ### 10.1 Recursos previstos (1 página)
 
@@ -559,7 +528,7 @@ Por serem leads **reais**, não existe anonimização total da operação; o obj
 
 > O widget de custo LLM (`st.progress` contra meta) foi **removido** da POC: a métrica nunca era emitida e mostrava sempre R$ 0,00. Custo continua acompanhado no painel do OpenRouter.
 
-**Acesso autenticado — Amazon Cognito:** login do time (~5–10 usuários) via **Hosted UI/OIDC (`st.login`)**; a API `GET /api/kpis` valida o JWT com **Cognito authorizer** no API Gateway. Custo **R$ 0** (free tier 50.000 MAUs). A API de leads continua protegida pelo secret do webhook (não passa por Cognito).
+**Acesso autenticado — Amazon Cognito:** login do time (~5–10 usuários) por **usuário e senha (`InitiateAuth`/`USER_PASSWORD_AUTH`, sem Hosted UI; ADR-014)**, com sessão persistente por cookie (12 h); a API (`/api/kpis`, `/api/leads`) valida o JWT com **Cognito authorizer** no API Gateway. Custo **R$ 0** (free tier 50.000 MAUs). Os endpoints internos do router continuam protegidos por secret próprio.
 
 ### 10.2 Sketch do layout (Mermaid `block-beta`)
 
@@ -634,7 +603,7 @@ if st.button("Sair"):
     st.logout()
 ```
 
-> Custos: Streamlit Community Cloud **R$ 0**; `dash-api` e CloudWatch já contabilizados na tabela do §11.
+> Custos: o container do dashboard (ECS Fargate) entra na estimativa do §11; `dash-api` e CloudWatch já estão contabilizados na tabela do §11.
 
 > **Divergência real (ADR-014, §11 item 7)**: este esboço é o desenho original; a implementação real roda em ECS Fargate (não Community Cloud) sem domínio/ALB, então não há `callback_url` estável para `st.login()`/Hosted UI. O login real usa `cognito-idp:InitiateAuth` (`USER_PASSWORD_AUTH`) com formulário usuário/senha direto no Streamlit — ver `apps/dashboard-ui/app.py` e o passo a passo de registro de usuários em §11 item 7.
 
@@ -652,14 +621,15 @@ if st.button("Sair"):
 |---|---|
 | Telegram | R$ 0 |
 | Lambda/API Gateway | ~R$ 0 (free tier; maioria dos casos) |
-| **OpenRouter (Claude 3.5 Haiku, ~5k mensagens/mês com RAG)** | **~R$ 8–15** |
+| **OpenRouter (DeepSeek; fallback Haiku 4.5; ~5k mensagens/mês com RAG)** | **~R$ 8–15** (estimativa, não medida) |
+| **ECS Fargate** — router 0,5 vCPU/1 GB, voice-adapter 1 vCPU/4 GB, dashboard 0,25 vCPU/0,5 GB, 9 h/dia | **~US$ 26** de vCPU/memória + **~US$ 4** de IPv4 público por mês (tabela pública us-east-1; **estimativa a validar na calculadora AWS**) — fora do total abaixo |
 | DynamoDB (on-demand) | < R$ 5 |
 | EventBridge Scheduler | < R$ 1 |
 | CloudWatch/Logs | < R$ 5 |
 | S3 + índices FAISS | < R$ 1 |
 | SQS + SES (filas e ingestão de e-mail) | < R$ 1 |
 | Amazon Cognito (login do dashboard) | R$ 0 (free tier, ~5–10 usuários) |
-| **Total POC** | **~R$ 15–25/mês (~0,03x de um SDR humano)** |
+| **Total POC (sem ECS Fargate)** | **~R$ 15–25/mês** — o ECS Fargate é o custo dominante e soma ≈ US$ 30/mês |
 
 > Controles de custo: modelos menores com free tier para testes; **AWS Budgets Alerts** (R$ 20) caso o Bedrock entre em produção; limite de tokens no código (máx. histórico e saída por turno); `terraform destroy` ao fim (toda a infra é IaC — §7.4) — **sem capacidade provisionada**.
 
@@ -762,9 +732,9 @@ O desenvolvimento será conduzido com a metodologia **AI-DLC (AWS)** — 5 fases
 - **STT (Speech-to-Text)** — transcrição de áudio para texto (faster-whisper); habilita o lead falar no Telegram.
 - **Voice message** — mensagem de áudio do Telegram; tratada pelo `voice-adapter` como texto transcrito.
 - **Amazon Cognito** — serviço AWS de identidade (login/JWT); protege o dashboard e a API de KPIs (free tier).
-- **Streamlit** — framework Python para apps web de dados; hospeda o dashboard no Community Cloud (grátis).
+- **Streamlit** — framework Python para apps web de dados; o dashboard roda em um container no ECS Fargate.
 - **Terraform / IaC** — infraestrutura como código: a infra inteira é declarada em arquivos `.tf` (§7.4) e criada via `terraform apply`; destruição/recriação com um comando.
-- **OpenAPI (Swagger)** — padrão de descrição de APIs REST (YAML/JSON); usado como contrato dos endpoints e importado pelo API Gateway (§7.5).
+- **OpenAPI (Swagger)** — padrão de descrição de APIs REST (YAML/JSON). Não é usado na implementação: as rotas do API Gateway estão declaradas no Terraform (§7.5).
 
 ### Imobiliário corporativo
 - **Laje corporativa** — pavimento inteiro de edifício comercial, dedicado a escritórios (open space ou salas) — típico alvo de empresas B2B.
@@ -790,7 +760,7 @@ O desenvolvimento será conduzido com a metodologia **AI-DLC (AWS)** — 5 fases
 - **PII** — *Personal Identifiable Information* — dados pessoais identificáveis (nome, contato, CNPJ) — alvo do masking e da LGPD.
 - **LGPD** — lei brasileira de proteção de dados; obriga consentimento, minimização e base legal (arts. 7º/11º).
 - **KMS** — *Key Management Service* da AWS, para criptografia dos dados em repouso (DynamoDB/S3).
-- **Detecção de anomalias** — análise (Isolation Forest, PCA, Autoencoder) que isola sessões/leads fora do padrão comercial.
+- **Detecção de anomalias** — análise (scorer heurístico; Isolation Forest e PCA opcionais; autoencoder não implementado) que isola sessões/leads fora do padrão comercial.
 - **Score de prontidão (lead score)** — soma ponderada de atributos (intenção, urgência, orçamento, prazo) que prioriza os leads.
 
 ### AWS / infraestrutura
@@ -828,8 +798,8 @@ Resumo direto das adaptações feitas durante o deploy para estabilizar o bot:
 
 4. **Roteamento Multi-Tier de Modelos LLM (ADR-010)**:
    - **Tier 1 (Primary, 90% do tráfego)**: `deepseek/deepseek-chat` — econômico e rápido — para classificação de intenção, triagem, qualificação e follow-up.
-   - **Tier 2 (Fallback automático)**: `anthropic/claude-3-haiku` — contingência transparente via LiteLLM quando o primário retorna 429/timeout/indisponibilidade.
-   - **Tier 3 (Complex)**: `anthropic/claude-3.5-sonnet` — acionado condicionalmente para negociação sofisticada ou handoff executivo.
+   - **Tier 2 (Fallback automático)**: `anthropic/claude-haiku-4.5` — contingência transparente via LiteLLM quando o primário retorna 429/timeout/indisponibilidade.
+   - **Tier 3 (Complex)**: `anthropic/claude-sonnet-4.5` — acionado condicionalmente para negociação sofisticada ou handoff executivo.
    - Parâmetros gerenciados no AWS SSM Parameter Store: `/sdr/llm-model-primary`, `/sdr/llm-model-fallback`, `/sdr/llm-model-complex`. Troca dinâmica sem redeploy de imagem.
    - **Ganho**: redução de ~75% a 90% no consumo de tokens para o tráfego rotineiro. Resiliência total contra falhas de provedor.
 

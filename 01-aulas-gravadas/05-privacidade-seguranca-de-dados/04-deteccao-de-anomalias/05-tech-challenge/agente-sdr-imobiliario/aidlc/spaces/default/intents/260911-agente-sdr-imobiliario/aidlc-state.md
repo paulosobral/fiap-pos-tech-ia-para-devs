@@ -7,7 +7,7 @@
 - **Scope**: feature
 - **Start Date**: 2026-09-11T01:30:39Z
 - **State Version**: 8
-- **Active Agent**: aidlc-developer-agent
+- **Active Agent**: aidlc-quality-agent
 - **Worktree Path**:
 - **Bolt Refs**:
 - **Practices Affirmed Timestamp**: 2026-09-16T01:31:11Z
@@ -29,7 +29,7 @@
 ## Execution Plan Summary
 - **Total Stages**: 32
 - **Completed**: 10
-- **In Progress**: code-generation
+- **In Progress**: build-and-test
 
 ## Runtime State
 - **Revision Count**:   10
@@ -77,8 +77,8 @@ Per unit: [TBD]
 - [S] nfr-requirements — EXECUTE
 - [S] nfr-design — EXECUTE
 - [S] infrastructure-design — EXECUTE
-- [-] code-generation — EXECUTE (Revisado e alinhado ao PRD: LiteLLM, LangGraph StateGraph, FAISS + TF-IDF embeddings, RAG Imóveis + Clientes CRM, Convite ICS RFC 5545)
-- [ ] build-and-test — EXECUTE (666 testes passando, cobertura >94% no router e >95% nos demais serviços)
+- [S] code-generation — EXECUTE (Revisado e alinhado ao PRD: LiteLLM, LangGraph StateGraph, FAISS + TF-IDF embeddings, RAG Imóveis + Clientes CRM, Convite ICS RFC 5545)
+- [?] build-and-test — EXECUTE (666 testes passando, cobertura >94% no router e >95% nos demais serviços)
 - [ ] ci-pipeline — EXECUTE
 
 ### OPERATION PHASE
@@ -92,10 +92,10 @@ Per unit: [TBD]
 
 ## Current Status
 - **Lifecycle Phase**: CONSTRUCTION
-- **Current Stage**: code-generation
-- **Next Stage**: build-and-test
+- **Current Stage**: build-and-test
+- **Next Stage**: ci-pipeline
 - **Status**: Running
-- **Last Updated**: 2026-09-26T03:02:38Z
+- **Last Updated**: 2026-10-09T21:39:11Z
 
 ## Voice Adapter — Decisão de Arquitetura (Q2 resolvida)
 
@@ -109,5 +109,5 @@ O `voice-adapter` NÃO cabe em Lambda direto:
 
 ## Session Resume Point
 - **Last Completed Stage**: practices-discovery
-- **Next Action**: Execute Code Generation
+- **Next Action**: Execute Build and Test
 - **Pending Artifacts**: none

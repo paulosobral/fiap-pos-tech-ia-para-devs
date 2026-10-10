@@ -31,6 +31,9 @@ Os componentes síncronos (SalesFlow, SecurityLayer, SDR Agent, LeadQualifier, P
 
 ---
 
+**Atualização (2026-10-09)**
+Na implementação o núcleo síncrono roda como **serviço ECS Fargate** (task `sdr-conversation-router`, `server.py` com `http.server`, porta 8080), não como Lambda. O API Gateway o alcança por `HTTP_PROXY` para o IP da task (`router_endpoint`), que o `start.sh` atualiza depois de ligar o serviço; o serviço liga às 09:00 e desliga às 18:00 (BRT). A decisão de manter os módulos internos de um único serviço, sem chamada Lambda→Lambda, continua válida. O motivo da troca de Lambda para ECS não foi registrado na época.
+
 ## ADR-002: Separação de SalesFlow e SDR Agent
 
 **Context**
@@ -105,6 +108,11 @@ AnomalyDetector é uma Lambda própria acionada por EventBridge como job diário
 
 ---
 
+**Atualização (2026-10-09)**
+- A varredura roda pelo EventBridge a cada minuto (`anomaly_schedule = rate(1 minute)`), não uma vez por dia; o `anomaly_id` determinístico (`sessão#data`) mantém o reprocessamento idempotente.
+- O scorer padrão em produção é o **heurístico** (`ANOMALY_SCORER=heuristic`, limite 0,7); Isolation Forest + PCA é opcional (`sklearn`). O **Autoencoder não foi implementado** (desvio aceito, FR9.2).
+- São 4 features: volume, tamanho médio, proporção de mensagens negativas e proporção fora do horário comercial. Ver ADR-019 para o gate de qualidade ponta a ponta.
+
 ## ADR-005: Dashboard como Streamlit Community Cloud (Fora da AWS)
 
 **Context**
@@ -129,6 +137,9 @@ Dashboard é app Streamlit (1 página) no Community Cloud (grátis). Consome GET
 - **Lambda + API Gateway**: Rejeitado por complexidade e custo para POC
 
 ---
+
+**Atualização (2026-10-09)**
+O dashboard **não** roda no Streamlit Community Cloud: é um container no **ECS Fargate** (janela 09:00–18:00 BRT), sem domínio nem ALB, e por isso sem `st.login`/Hosted UI (ADR-014). Ver também ADR-016 (leads e sessão) e ADR-018 (identidade visual).
 
 ## ADR-006: CRMAdapter com MCP e Simulado
 
@@ -177,6 +188,9 @@ VoiceAdapter é uma Lambda própria acionada por SQS. ConversationRouter enfilei
 
 ---
 
+**Atualização (2026-10-09)**
+O `voice-adapter` é um **worker ECS Fargate** que consome a fila SQS de áudio (long-polling) com `faster-whisper` + `ffmpeg`, não uma Lambda: o pacote (~520 MB descompactado) não cabe no limite do Lambda. Liga e desliga na mesma janela 09:00–18:00 BRT; fora dela o áudio fica na fila. A transcrição entra no fluxo como se o lead tivesse digitado, mantendo o aviso "coloquei na fila para transcrição" (ADR-015).
+
 ## ADR-008: SecurityLayer como Módulo Interno (PII Masking)
 
 **Context**
@@ -221,6 +235,9 @@ Parâmetros dinâmicos gerenciados no AWS SSM Parameter Store (`/sdr/llm-model-p
 **Negativos:**
 - Ligeiro aumento na complexidade de configuração e gestão de múltiplos parâmetros no SSM.
 - Necessidade de testes de integração cobrindo os caminhos de fallback.
+
+**Atualização (2026-10-09)**
+Os modelos Tier 2 e Tier 3 citados acima (`anthropic/claude-3-haiku` e `anthropic/claude-3.5-sonnet`) foram **descontinuados no OpenRouter** (a chamada devolve 404). Valores em vigor: Tier 1 `deepseek/deepseek-chat`, Tier 2 `anthropic/claude-haiku-4.5` e Tier 3 `anthropic/claude-sonnet-4.5`, definidos nas variáveis do Terraform e gravados nos parâmetros SSM `/sdr/llm-model-primary|fallback|complex`; também podem ser sobrescritos por `LLM_MODEL_PRIMARY|FALLBACK|COMPLEX`. Em 08/10/2026 o Tier 1 devolveu 429 do provedor (limite upstream) em vários turnos; nesse caso o cliente cai para o Tier 2, ao custo de alguns segundos a mais por turno.
 
 ## ADR-011: Roteamento Conversacional Agentic via LangGraph (LLM decide transição, gates de negócio ficam em código)
 

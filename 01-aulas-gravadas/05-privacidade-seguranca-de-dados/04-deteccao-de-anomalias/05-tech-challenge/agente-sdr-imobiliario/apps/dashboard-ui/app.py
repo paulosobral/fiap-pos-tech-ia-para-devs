@@ -284,6 +284,15 @@ def render_leads(leads: list[dict[str, Any]] | None, error: dict[str, Any] | Non
         (st.success if ok else st.error)(message)
 
 
+def _bar_chart(container: Any, data: dict[str, Any] | None, x_label: str) -> None:
+    """Gráfico de barras na cor da marca. Sem dados, o st.bar_chart com `color` levanta exceção
+    (lista de cores x colunas vazia) e derrubava a tela inteira num ambiente recém-criado."""
+    if not data:
+        container.caption(f"Sem dados de {x_label} ainda.")
+        return
+    container.bar_chart(data, x_label=x_label, y_label="leads", color=BRAND_GOLD)
+
+
 def _render_error(error: dict[str, Any], st: Any) -> None:
     st.error(error.get("message", "Erro inesperado"))
 
@@ -317,8 +326,8 @@ def render(kpis: dict[str, Any] | None, error: dict[str, Any] | None, api_url: s
             column.metric(state, funnel.get(state, 0))
 
     chart_left, chart_right = st.columns(2)
-    chart_left.bar_chart(kpis.get("intents", {}), x_label="intenção", y_label="leads", color=BRAND_GOLD)
-    chart_right.bar_chart(kpis.get("route_distribution", {}), x_label="roleta", y_label="leads", color=BRAND_GOLD)
+    _bar_chart(chart_left, kpis.get("intents"), "intenção")
+    _bar_chart(chart_right, kpis.get("route_distribution"), "roleta")
 
     st.subheader(f"Anomalias (24h) — {len(kpis.get('alerts', []))} alerta(s)")
     alerts = kpis.get("alerts", [])

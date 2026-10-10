@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 import app as dashboard_app
@@ -357,3 +359,38 @@ class TestFavicon:
         source = inspect.getsource(dashboard_app)
         assert source.count("page_icon=page_icon()") == 2
         assert 'page_title="Dashboard SDR' not in source
+
+
+class TestRenderWithoutData:
+    """Infra recém-criada: nenhum lead, nenhuma intenção, nenhuma roleta (bug real no login)."""
+
+    def _run(self, kpis):
+        pytest.importorskip("streamlit")
+        from streamlit.testing.v1 import AppTest
+
+        script = (
+            "import sys, json\n"
+            f"sys.path.insert(0, {str(__import__('pathlib').Path(dashboard_app.__file__).parent)!r})\n"
+            "import app\n"
+            f"app.render(json.loads({json.dumps(kpis)!r}), None, 'http://api.local')\n"
+        )
+        return AppTest.from_string(script).run(timeout=30)
+
+    def test_empty_intents_and_roulette_do_not_crash(self):
+        at = self._run({**KPIS, "intents": {}, "route_distribution": {}, "alerts": [], "funnel": {}})
+        assert not at.exception, at.exception
+        assert any("Sem dados" in c.value for c in at.caption)
+
+    def test_missing_chart_keys_do_not_crash(self):
+        kpis = {k: v for k, v in KPIS.items() if k not in ("intents", "route_distribution")}
+        assert not self._run(kpis).exception
+
+    def test_all_zero_fresh_environment(self):
+        fresh = {"leads_today": 0, "leads_week": 0, "response_time_p90": 0.0, "qualification_rate": 0.0,
+                 "scheduled_visits": 0, "anomalies_count": 0, "cost_monthly": 0.0, "generated_at": "2026-10-09T00:00:00+00:00",
+                 "intents": {}, "route_distribution": {}, "funnel": {}, "alerts": []}
+        assert not self._run(fresh).exception
+
+    def test_populated_charts_still_render(self):
+        at = self._run({**KPIS, "intents": {"compra": 2, "locação": 5}, "route_distribution": {"Ana": 3}})
+        assert not at.exception, at.exception

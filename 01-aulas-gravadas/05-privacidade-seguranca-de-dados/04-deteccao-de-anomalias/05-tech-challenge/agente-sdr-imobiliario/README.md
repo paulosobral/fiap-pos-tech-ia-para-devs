@@ -12,7 +12,7 @@ Este projeto implementa um SDR digital que atende e qualifica leads B2B em conve
 - **Canal Telegram:** custo zero (roadmap: WhatsApp)
 - **Qualificação proprietária:** RAG + score explicável
 - **Segurança:** LGPD + detecção de anomalias desde o design
-- **Custo:** ~R$ 15-25/mês em POC
+- **Custo:** LLM ~R$ 15-25/mês em POC; ECS Fargate à parte (ver Estimativa de Custo)
 
 ## Estrutura de Pastas
 
@@ -26,25 +26,24 @@ agente-sdr-imobiliario/
 ├── apps/                       # Aplicações (1 por componente)
 │   ├── conversation-router/    # Núcleo síncrono: sessão + fluxo + RAG + roleta + scheduler
 │   │   ├── handler.py          # Entrypoint (adapter)
-│   │   ├── server.py           # Servidor FastAPI (para ECS)
+│   │   ├── server.py           # Servidor HTTP da biblioteca padrão (para ECS)
 │   │   ├── service/            # Casos de uso: sales-flow, security-layer, properties-rag, lead-router, scheduler
-│   │   ├── infra/              # Adapters: DynamoDB, S3/FAISS, OpenRouter (LiteLLM), SQS
+│   │   ├── infra/              # Adapters: DynamoDB, OpenRouter (LiteLLM), SQS; FAISS em memória
 │   │   ├── tests/              # Testes unitários e de qualidade
 │   │   ├── data/               # Dados sintéticos (properties.json, clients.json)
 │   │   ├── requirements.txt    # Dependências da aplicação
 │   │   └── Dockerfile          # Imagem container para ECS
 │   ├── voice-adapter/           # Worker ECS Fargate: transcrição de áudio (faster-whisper)
-│   ├── crm-adapter/            # Camada MCP para sincronização com CRM (HubSpot/Kenlo/Facilita)
+│   ├── crm-adapter/            # Sincroniza leads com o HubSpot via MCP (CSV simulado como alternativa)
 │   ├── contact-ingest/         # Ingestão de contatos de e-mail/portais
-│   ├── anomaly-detector/       # Detecção de anomalias (Isolation Forest + PCA)
+│   ├── anomaly-detector/       # Detecção de anomalias (scorer heurístico; Isolation Forest + PCA opcional)
 │   ├── followup/               # Follow-up automático via EventBridge + Step Functions
 │   ├── dashboard-api/          # API Lambda para KPIs do dashboard
 │   └── dashboard-ui/           # Streamlit dashboard (deploy em ECS Fargate)
 ├── infra/                      # Terraform — infraestrutura como código
 │   ├── providers.tf            # Provedores AWS
 │   ├── variables.tf            # Variáveis de entrada
-│   ├── kms.tf                  # Chave KMS para criptografia de PII
-│   ├── s3.tf                   # Bucket S3 (catálogos + índices FAISS)
+│   ├── s3.tf                   # Bucket S3 de catálogos (provisionado; a app lê o catálogo do DynamoDB, ADR-012)
 │   ├── dynamodb.tf             # Tabelas DynamoDB (sessões, leads, properties)
 │   ├── sqs.tf                  # Filas SQS (áudio, CRM)
 │   ├── ses.tf                  # SES para ingestão de e-mail
@@ -129,6 +128,8 @@ O script executa as seguintes etapas:
 7. **Configuração:** Registra webhook Telegram, escala tasks ECS, popula DynamoDB
 8. **Smoke checks:** Verifica endpoints
 
+**Logs:** o `start.sh` e o `stop.sh` mostram tudo na tela e também gravam em `logs/start-AAAAMMDD-HHMMSS.log` / `logs/stop-AAAAMMDD-HHMMSS.log` (sem cores; a pasta `logs/` é ignorada pelo git). Os atalhos `logs/start-latest.log` e `logs/stop-latest.log` apontam para a última execução. O endereço do dashboard aparece no fim do log do `start.sh` (linha `Dashboard:`) — o IP muda a cada subida da task.
+
 ### 4. Configurações Manuais na AWS
 
 #### 4.1 Configurar Região
@@ -166,14 +167,14 @@ aws secretsmanager put-secret-value --secret-id sdr/tg-bot-token --secret-string
 
 Modelos LLM configurados via SSM Parameters:
 
-- `/sdr/llm-model-primary`: Modelo primário (Tier 1)
-- `/sdr/llm-model-fallback`: Modelo de fallback (Tier 2)
-- `/sdr/llm-model-complex`: Modelo premium (Tier 3)
+- `/sdr/llm-model-primary`: Modelo primário (Tier 1; padrão `deepseek/deepseek-chat`)
+- `/sdr/llm-model-fallback`: Modelo de fallback (Tier 2; padrão `anthropic/claude-haiku-4.5`)
+- `/sdr/llm-model-complex`: Modelo premium (Tier 3; padrão `anthropic/claude-sonnet-4.5`)
 
 Para alterar:
 
 ```bash
-aws ssm put-parameter --name "/sdr/llm-model-primary" --value "anthropic/claude-3.5-haiku" --type String --overwrite
+aws ssm put-parameter --name "/sdr/llm-model-primary" --value "anthropic/claude-haiku-4.5" --type String --overwrite
 ```
 
 ### 8. Configurações no HubSpot via MCP
@@ -339,8 +340,8 @@ Ver `requirements-dev.txt`:
 
 Cada app tem seu `requirements.txt`:
 
-- **conversation-router:** litellm, langgraph, faiss-cpu, boto3, fastapi, uvicorn
-- **voice-adapter:** faster-whisper, ffmpeg-python, boto3
+- **conversation-router:** litellm, langgraph, faiss-cpu, boto3 (servidor HTTP da biblioteca padrão)
+- **voice-adapter:** faster-whisper, boto3, requests (o `ffmpeg` é instalado como binário na imagem)
 - **crm-adapter:** mcp, boto3
 - **dashboard-ui:** streamlit, boto3, requests
 - **Outras:** boto3, requests (comum)
@@ -350,7 +351,7 @@ Cada app tem seu `requirements.txt`:
 | Chave | Origem | Uso | Obrigatório? |
 |-------|--------|-----|--------------|
 | `TELEGRAM_BOT_TOKEN` | [@BotFather](https://t.me/botfather) no Telegram | Autenticação do bot | Sim (para bot funcionar) |
-| `LLM_API_KEY` | [OpenRouter](https://openrouter.ai/) | Chamadas LLM (Claude 3.5 Haiku) | Sim (para LLM real) |
+| `LLM_API_KEY` | [OpenRouter](https://openrouter.ai/) | Chamadas LLM (DeepSeek, Haiku 4.5, Sonnet 4.5) | Sim (para LLM real) |
 | `HUBSPOT_MCP_CLIENT_ID` | HubSpot Developers | CRM via MCP | Opcional (POC usa CRM simulado) |
 | `HUBSPOT_MCP_CLIENT_SECRET` | HubSpot Developers | CRM via MCP | Opcional (POC usa CRM simulado) |
 | `HUBSPOT_MCP_REFRESH_TOKEN` | Fluxo OAuth HubSpot | CRM via MCP | Opcional (POC usa CRM simulado) |
@@ -361,11 +362,11 @@ O Terraform cria automaticamente:
 
 - **API Gateway HTTP:** Endpoint para webhook Telegram e API KPIs
 - **ECS Fargate:** 3 serviços (conversation-router, dashboard-ui, voice-adapter)
-- **DynamoDB:** 3 tabelas (sdr-sessions, sdr-leads, sdr-properties)
-- **S3:** Bucket para catálogos e índices FAISS
-- **SQS:** 2 filas (sdr-voice-queue, sdr-crm-queue)
+- **DynamoDB:** 6 tabelas (sdr-sessions, sdr-pii, sdr-alerts, sdr-ingest-dedupe, sdr-followup-state, sdr-properties)
+- **S3:** Bucket de catálogos (provisionado; a app lê o catálogo do DynamoDB)
+- **SQS:** 3 filas, cada uma com DLQ (sdr-voice-queue, sdr-crm-queue, sdr-ingest-queue)
 - **SES:** Configuração para receber e-mails de portais
-- **EventBridge Scheduler:** Agendamento de follow-up e job diário de anomalias
+- **EventBridge Scheduler:** Agendamento do follow-up e varredura de anomalias a cada minuto
 - **Step Functions:** Workflow de follow-up
 - **Cognito User Pool:** Login do dashboard
 - **CloudWatch Logs:** Logs estruturados
@@ -380,14 +381,15 @@ O Terraform cria automaticamente:
 |------|------------|
 | Telegram | R$ 0 |
 | Lambda/API Gateway | ~R$ 0 (free tier) |
-| OpenRouter (Claude 3.5 Haiku) | ~R$ 8-15 |
+| OpenRouter (DeepSeek; fallback Haiku 4.5) | ~R$ 8-15 (estimativa, não medida) |
 | DynamoDB (on-demand) | < R$ 5 |
 | EventBridge Scheduler | < R$ 1 |
 | CloudWatch/Logs | < R$ 5 |
-| S3 + índices FAISS | < R$ 1 |
+| S3 (catálogos) | < R$ 1 |
 | SQS + SES | < R$ 1 |
 | Amazon Cognito | R$ 0 (free tier) |
-| **Total POC** | **~R$ 15-25/mês** |
+| ECS Fargate (router 0,5 vCPU/1 GB, voice-adapter 1 vCPU/4 GB, dashboard 0,25 vCPU/0,5 GB; 9 h/dia) | ~US$ 26 de vCPU/memória + ~US$ 4 de IPv4 público (tabela pública us-east-1; **estimativa a validar na calculadora AWS**), fora do total abaixo |
+| **Total POC (sem ECS)** | **~R$ 15-25/mês** |
 
 ## Arquitetura
 
@@ -399,14 +401,14 @@ A arquitetura completa está descrita no PRD (`documentos/POSTECH - Hacka PRD Ag
 flowchart TD
     subgraph EXT["Serviços externos (fora da AWS)"]
         TG["Telegram Bot API<br/>canal do lead — webhook texto/voice"]
-        OR["OpenRouter API<br/>Claude 3.5 Haiku — LLM da POC (via LiteLLM)"]
-        CRM["CRM via MCP<br/>HubSpot · Kenlo · Facilita — esteira do lead"]
-        CORR["Corretores<br/>Telegram comercial + e-mail (handoff)"]
-        DASHB["Streamlit Dashboard<br/>dashboard SDR — 1 página (ECS Fargate)"]
+        OR["OpenRouter API<br/>DeepSeek (principal) → Haiku 4.5 (fallback) → Sonnet 4.5 (complexo), via LiteLLM"]
+        CRM["HubSpot (MCP remoto, OAuth 2.1 + PKCE)<br/>contato + status do lead"]
+        CORR["Corretores / backoffice<br/>contatam o lead pelo HubSpot e pelo dashboard"]
+        DASHB["Streamlit Dashboard<br/>KPIs, anomalias e leads — 1 página (ECS Fargate)"]
     end
 
     subgraph CORE["AWS — Núcleo síncrono: ECS Fargate"]
-        GW["Amazon API Gateway<br/>POST /webhook · GET /api/kpis"]
+        GW["Amazon API Gateway<br/>POST /webhook · GET /api/kpis · GET /api/leads · POST /api/leads/{id}/crm"]
         ROUTER["ECS Fargate — conversation-router<br/>sessão + security-layer (PII/guardrails)<br/>+ sales-flow LangGraph + properties-rag (FAISS em memória)<br/>+ lead-router + scheduler — módulos internos"]
     end
 
@@ -414,24 +416,24 @@ flowchart TD
         SQSV["Amazon SQS — fila de áudio<br/>desacopla a transcrição (lenta)"]
         VOICE["ECS Fargate — voice-adapter worker<br/>SQS + ffmpeg + faster-whisper — STT PT-BR<br/>janela 09:00–18:00 BRT"]
         SQSC["Amazon SQS — fila CRM (com DLQ)<br/>lead qualificado → CRM"]
-        CRMAD["AWS Lambda — crm-adapter<br/>escreve/consulta lead via MCP"]
-        EB["Amazon EventBridge Scheduler<br/>cadências + job diário"]
-        SFN["AWS Step Functions<br/>wait states do follow-up (dia 2/5/9)"]
+        CRMAD["AWS Lambda — crm-adapter<br/>cria/atualiza contato no HubSpot via MCP"]
+        EB["Amazon EventBridge Scheduler<br/>cadências + varredura de anomalias (1/min)"]
+        SFN["AWS Step Functions<br/>esperas do follow-up (2 h e 24 h)"]
         FU["AWS Lambda — followup<br/>reengaja lead parado"]
-        ANOM["AWS Lambda — anomaly-detector<br/>Isolation Forest + PCA + Autoencoder"]
+        ANOM["AWS Lambda — anomaly-detector<br/>scorer heurístico (padrão) · Isolation Forest + PCA (opcional)"]
         SES["Amazon SES<br/>recebe e-mails dos portais"]
         CING["AWS Lambda — contact-ingest<br/>abre sessão mandando 1ª msg como o lead"]
     end
 
     subgraph DATA["AWS — Dados"]
-        MEM[("Amazon DynamoDB<br/>sessões + leads — TTL 90d · KMS")]
-        RAGS[("Amazon S3<br/>catálogos imóveis/clientes + índice FAISS")]
+        MEM[("Amazon DynamoDB<br/>sessões, PII cifrada (KMS), alertas — TTL 90d")]
+        RAGS[("Amazon DynamoDB sdr-properties<br/>catálogo de imóveis — FAISS montado em memória no router")]
         SM["AWS Secrets Manager<br/>token do bot · chaves de API"]
     end
 
     subgraph OBS["AWS — API, identidade e observabilidade"]
         COG["Amazon Cognito<br/>login do time — protege dashboard e API"]
-        KPI["AWS Lambda — dash-api<br/>agrega KPIs (DynamoDB + CloudWatch)"]
+        KPI["AWS Lambda — dash-api<br/>agrega KPIs e lista leads (DynamoDB + KMS)"]
         CW["Amazon CloudWatch<br/>logs · métricas · alertas"]
     end
 
@@ -445,7 +447,7 @@ flowchart TD
     ROUTER -.->|"índice carregado em memória"| RAGS
     ROUTER --> OR
     ROUTER -.->|"busca segredos"| SM
-    ROUTER -->|"handoff + convite ICS"| CORR
+    ROUTER -->|"resumo do lead"| CORR
     ROUTER -->|"lead qualificado"| SQSC
     SQSC --> CRMAD
     CRMAD --> CRM
@@ -455,10 +457,9 @@ flowchart TD
     SFN --> FU
     FU <--> MEM
     FU -->|"retoma conversa"| TG
-    EB -->|"job diário"| ANOM
+    EB -->|"varredura (1/min)"| ANOM
     ANOM <--> MEM
-    ANOM --> DASHB
-    GW -->|"GET /api/kpis"| KPI
+    GW -->|"/api/kpis · /api/leads"| KPI
     KPI --> MEM
     DASHB -->|"login"| COG
     COG -.->|"authorizer"| GW
@@ -471,7 +472,7 @@ flowchart TD
 - **Canal:** Telegram Bot API (webhook)
 - **Núcleo síncrono:** ECS Fargate (conversation-router) com LangGraph
 - **Assíncrono:** SQS + Lambdas (voice, CRM, anomaly-detector, followup)
-- **Dados:** DynamoDB (sessões, leads) + S3 (catálogos RAG)
+- **Dados:** DynamoDB (sessões, PII cifrada, alertas, catálogo de imóveis)
 - **Orquestração:** EventBridge Scheduler + Step Functions
 - **Segurança:** KMS (PII), Cognito (login), guardrails
 - **Observabilidade:** CloudWatch Logs + métricas

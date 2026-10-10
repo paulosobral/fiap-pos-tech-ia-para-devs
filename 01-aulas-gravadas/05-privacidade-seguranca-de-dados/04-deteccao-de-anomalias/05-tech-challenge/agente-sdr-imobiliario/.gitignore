@@ -52,8 +52,9 @@ aidlc/.aidlc-active-space-*.tmp
 # state keyed by Claude Code session_id, never shared truth.
 aidlc/.aidlc-sessions/
 aidlc/spaces/*/intents/.aidlc-*
-# Engine-shaped sensor caches at any depth, mirroring the #646 fingerprint glob;
-# also covers legacy pre-2.6.94 trees without ignoring every .aidlc-sensors leaf.
+# Framework state at any depth, including the bare space intents root and
+# package-local record trees; keep unrelated application dot folders visible.
+**/aidlc/spaces/*/intents/**/.aidlc-engine/
 **/aidlc/spaces/*/intents/**/.aidlc-sensors/
 # DocumentKB staged-transaction scratch: `onboard` stages a document into
 # `.journal/<txn-id>/` and renames it into place under the audit lock. Per-clone
@@ -81,6 +82,7 @@ aidlc/diagnostics/
 # concurrent appends — there is intentionally NO .gitattributes merge=union,
 # which was proven to corrupt the multi-line audit blocks) ·
 # aidlc/spaces/*/intents/*/<phase>/<stage>/*.md (artifacts + diary).
+.claude/settings.local.json
 # END AI-DLC:gitignore
 
 # Created by https://www.toptal.com/developers/gitignore/api/terraform,python
