@@ -1,0 +1,56 @@
+# Deployment Log — agente SDR imobiliário (POC)
+
+**Estágio:** deployment-execution · **Data:** 2026-09-21 · **Executor:** start.sh (raiz)
+
+## 1. Pipeline executado (start.sh)
+
+| Fase | Conteúdo | Resultado |
+|------|----------|-----------|
+| [1/6] Setup | venv Python 3.11 + deps dev | OK |
+| [2/6] Compile | `compileall` 8 apps | OK |
+| [3/6] Testes | pytest ×8 gates (cov ≥ 80% + UI smoke) | OK (624 tests) |
+| [4/6] Package | dist zips ×7 Lambdas + archive | OK (7 artefatos) |
+| [5/6] Deploy | terraform init → apply1 (base+ECR) → podman build/push → apply2 (imagem ECR) | OK |
+| [5b/6] Imagem | `podman build` + push `sdr-dashboard-ui:poc-20260921185026` | OK |
+| [6/6] Smoke | GET /health · webhook sem secret · GET /api/kpis | OK (3/3) |
+
+**Resultado final:** `SMOKE OK` · API `https://izlmelzop8.execute-api.us-east-1.amazonaws.com` · EXIT=0.
+
+## 2. Iterações e correções durante o deploy
+
+1. **Reempacotamento pelo módulo Lambda** (`poetry_install_step` UnicodeDecodeError no pyproject) → substituído `source_path` por `create_package = false` + `local_existing_package` nos 7 módulos (nome com hífen, não underline).
+2. **SecretString vazio** (Secrets Manager InvalidRequest) → `secret_version` do Telegram token condicional (`count = var.telegram_bot_token == "" ? 0 : 1`); Lambdas leem o token de `var.telegram_bot_token`.
+3. **KMS MalformedPolicyDocumentException** ("will not allow you to update the key policy") → policy com statement root admin (`arn:aws:iam::<account>:root`, `kms:*`) + uso da Lambda.
+4. **Voice zip > limite Lambda 50MB (413)** → zip foi reconstruído sobre o antigo (zip não apaga entradas prévias): `rm -f` do zip antes de regerar; POC empacota voice-adapter só com `requests` (boto3 nativo do runtime) — faster-whisper/ffmpeg/ctranslate2 (~120MB) NÃO cabem no pacote direto; transcrição real fica para pós-POC (layer/Amazon Transcribe).
+5. **Event source mapping "role does not have permissions to call ReceiveMessage"** → módulo `terraform-aws-modules/lambda/aws ~> 7.0`: `attach_policies = true` exige `number_of_policies` (default 0 não attacha). Adicionado `number_of_policies = 1` nos 7 módulos.
+6. **ECS RegisterTaskDefinition "Container.image should not be null or empty"** → default de `dashboard_ui_image` passa a ser imagem pública `public.ecr.aws/docker/library/python:3.11-slim` (permite o apply1 antes do push ECR); start.sh substitui no apply2.
+7. **Smoke 401 em /api/kpis** → handler do dashboard-api exige presença de `Authorization: Bearer` (POC não valida valor); smoke atualizado para enviar o header.
+8. **LLM_API_KEY migrada para Secrets Manager** → nova secret `sdr/llm-api-key` (`recovery_window_in_days = 0`, versão condicional como a do token do Telegram). Env `LLM_API_KEY` da Lambda substituída por `LLM_API_SECRET_ID` (ARN); handler resolve env override (dev/testes) → `get_secret_value`; IAM `secretsmanager:GetSecretValue` inclui o ARN. Sem versão na secret = fallback regex (IA desativada).
+
+## 3. Recursos provisionados (conta 144842881551, us-east-1)
+
+- HTTP API `sdr-http-api` — rotas POST /webhook/telegram, POST /internal/{proxy+}, GET /health, GET /api/{proxy+} ($default auto_deploy).
+- 7 Lambdas `sdr-*` (packages zip em dist/; voice-adapter degradado — ver health-check-report).
+- DynamoDB ×5 (sdr-sessions c/ GSI lead-index + TTL, sdr-pii, sdr-alerts, sdr-ingest-dedupe, sdr-followup-state).
+- SQS ×6 (voice/crm/ingest queues + 3 DLQs maxReceiveCount 3) + 3 event source mappings (ids 0f153c99…, a7f5e9b7…, 8bd25fd1…).
+- EventBridge ×2 (anomaly rate(1 minute), followup rate(1 day)).
+- KMS key `pii` + alias; Secrets Manager `sdr/tg-bot-token` (vazia até o humano preencher) e `sdr/dashboard-api-token` (random_password 32).
+- ECR `sdr-dashboard-ui` + imagem `poc-20260921185026`; ECS cluster `sdr` + task def 256/512 + service desired_count 0; autoscaling scheduled 09:00–17:00 BRT (0→1→0); SG ingress 80; log group 7d.
+- State terraform local (`infra/terraform.tfstate`) — backend local (pós-POC: S3).
+
+## 4. Teardown
+
+`./stop.sh` (terraform destroy; `AUTO=1` para não interativo).
+
+## Atualização (2026-10-11): subida real mais recente (`logs/start-20261010-130721.log`)
+| Fase | Resultado |
+|---|---|
+| [2/6] `compileall` | OK |
+| [3/6] Gates (pytest por aplicação + `tests/infra`) | OK (561, 76, 141, 77, 93, 93, 86, 49 e 4 testes passando) |
+| [3b/6] Gate de qualidade com LLM real | 1 falha na 1ª passada (`test_reply_does_not_promise_photos_when_none_are_sent`, oscilação da LLM); a repetição só dos que falharam passou; 61 passed, ~7 min |
+| [4/6] Build | 7 zips das Lambdas |
+| [5/6] Deploy | `apply` da base, imagens `podman` (router, dashboard, voice-adapter) no ECR, usuário de smoke no Cognito, escala dos 3 serviços ECS (3/3 em execução), seed de 252 imóveis, API Gateway ligado ao router, webhook do Telegram configurado |
+| [6/6] Smoke | `SMOKE OK` (`GET /api/kpis`) · EXIT=0 |
+
+Diferenças em relação à subida de 21/09: router e voice-adapter agora são containers no ECS (o voice-adapter com faster-whisper, não mais degradado); o catálogo é semeado no DynamoDB; a API e o IP do dashboard mudam a cada subida (ver `logs/start-latest.log`).
+Mudanças feitas depois dessa subida (fechamento da conversa, valor do imóvel no lead, nome da bot via SSM, ajustes de prompt) ainda **não** passaram por um deploy novo.

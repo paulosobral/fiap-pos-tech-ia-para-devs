@@ -1,0 +1,33 @@
+{
+  "stage": "code-generation",
+  "unit": "u2-async-voice",
+  "version": 1,
+  "writes": [
+    { "path": "apps/voice-adapter/handler.py" },
+    { "path": "apps/voice-adapter/requirements.txt" },
+    { "path": "apps/voice-adapter/service/" },
+    { "path": "apps/voice-adapter/service/__init__.py" },
+    { "path": "apps/voice-adapter/service/voice_adapter.py" },
+    { "path": "apps/voice-adapter/service/transcriber.py" },
+    { "path": "apps/voice-adapter/service/telegram_gateway.py" },
+    { "path": "apps/voice-adapter/service/router_gateway.py" },
+    { "path": "apps/voice-adapter/service/pii.py" },
+    { "path": "apps/voice-adapter/infra/" },
+    { "path": "apps/voice-adapter/infra/__init__.py" },
+    { "path": "apps/voice-adapter/infra/session_store.py" },
+    { "path": "apps/voice-adapter/tests/" },
+    { "path": "apps/voice-adapter/tests/__init__.py" },
+    { "path": "apps/voice-adapter/tests/conftest.py" },
+    { "path": "apps/voice-adapter/tests/unit/" },
+    { "path": "apps/voice-adapter/tests/unit/__init__.py" },
+    { "path": "apps/voice-adapter/tests/unit/test_voice_adapter.py" },
+    { "path": "apps/voice-adapter/tests/unit/test_telegram_gateway.py" },
+    { "path": "apps/voice-adapter/tests/unit/test_transcriber.py" },
+    { "path": "apps/voice-adapter/tests/unit/test_router_gateway.py" },
+    { "path": "apps/voice-adapter/tests/unit/test_session_store.py" },
+    { "path": "apps/voice-adapter/tests/unit/test_pii.py" },
+    { "path": "apps/voice-adapter/tests/integration/" },
+    { "path": "apps/voice-adapter/tests/integration/__init__.py" },
+    { "path": "apps/voice-adapter/tests/integration/test_voice_adapter_pipeline.py" }
+  ]
+}

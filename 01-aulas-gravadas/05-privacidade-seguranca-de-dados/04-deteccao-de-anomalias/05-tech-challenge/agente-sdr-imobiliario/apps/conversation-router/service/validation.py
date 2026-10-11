@@ -1,0 +1,167 @@
+from __future__ import annotations
+
+import re
+from difflib import SequenceMatcher
+from typing import Any
+
+_FUZZY_THRESHOLD = 0.55
+_MEMORY_KEYS = ("favorite_property", "visit_interest")
+_KNOWN_LEAD_FIELDS = (
+    "intent",
+    "area",
+    "region",
+    "budget",
+    "budget_min",
+    "deadline",
+    "people_count",
+    "decision_maker",
+)
+
+# Ordinais em PT-BR → índice (0-based). Inclui dígitos, "segunda opção", "segundo imóvel", etc.
+_ORDINAL_MAP = {
+    "primeiro": 0,
+    "primeira": 0,
+    "1": 0,
+    "primeira opcao": 0,
+    "primeira opçao": 0,
+    "segundo": 1,
+    "segunda": 1,
+    "2": 1,
+    "segunda opcao": 1,
+    "segunda opçao": 1,
+    "terceiro": 2,
+    "terceira": 2,
+    "3": 2,
+    "terceira opcao": 2,
+    "terceira opçao": 2,
+    "quarto": 3,
+    "quarta": 3,
+    "4": 3,
+    "quinto": 4,
+    "quinta": 4,
+    "5": 4,
+    "sexto": 5,
+    "sexta": 5,
+    "6": 5,
+    "setimo": 6,
+    "setima": 6,
+    "sétimo": 6,
+    "sétima": 6,
+    "7": 6,
+    "oitavo": 7,
+    "oitava": 7,
+    "8": 7,
+    "nono": 8,
+    "nona": 8,
+    "9": 8,
+    "decimo": 9,
+    "decima": 9,
+    "décimo": 9,
+    "décima": 9,
+    "10": 9,
+}
+
+
+def _resolve_ordinal(name: str, shown: list[dict[str, Any]]) -> str | None:
+    """Resolve referências ordinais ('segunda opção', 'o terceiro', 'opção 2') em índice da lista shown."""
+    if not name or not shown:
+        return None
+    target = _norm(name)
+    if not target:
+        return None
+    # Match direto: "segunda opção", "segundo", "2", "opção 2"
+    idx = _ORDINAL_MAP.get(target)
+    if idx is not None and idx < len(shown):
+        return str(shown[idx].get("title") or "")
+    # Match parcial: "segunda opcao", "o segundo", "essa segunda"
+    for key, val in _ORDINAL_MAP.items():
+        if key in target and val < len(shown):
+            return str(shown[val].get("title") or "")
+    return None
+
+
+def _norm(s: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).strip()
+
+
+def _quote_in_message(quote: Any, message: str) -> bool:
+    q = _norm(str(quote or ""))
+    return bool(q) and q in _norm(message or "")
+
+
+def _fuzzy_shown(name: str | None, shown: list[dict[str, Any]]) -> str | None:
+    if not name:
+        return None
+    target = _norm(name)
+    if not target:
+        return None
+    # 1. Tentar resolução ordinal primeiro ("segunda opção", "2", "o segundo", etc.)
+    ordinal_hit = _resolve_ordinal(name, shown)
+    if ordinal_hit:
+        return ordinal_hit
+    # 2. Fuzzy match por similaridade de texto
+    best, best_score = None, 0.0
+    for p in shown:
+        title = _norm(str(p.get("title") or ""))
+        if not title:
+            continue
+        score = SequenceMatcher(None, target, title).ratio()
+        tset, title_set = set(target.split()), set(title.split())
+        if tset and title_set and tset & title_set:
+            score = max(score, len(tset & title_set) / len(tset))
+        if score > best_score:
+            best, best_score = str(p.get("title") or ""), score
+    return best if best is not None and best_score >= _FUZZY_THRESHOLD else None
+
+
+def validate_router_output(
+    raw: dict[str, Any],
+    state: dict[str, Any],
+    message: str = "",
+) -> dict[str, Any]:
+    """Validate single-step tool-call output. LLM never writes state directly.
+
+    favorite_property: fuzzy match ONLY against shown_properties (never catalog).
+    visit_interest: persists only with explicit visit evidence in message.
+    thought is log-only; unknown memory keys dropped.
+    """
+    shown = list(state.get("properties") or [])
+    if not shown:
+        ctx = state.get("context") or {}
+        shown = list(ctx.get("properties") or [])
+
+    mem = raw.get("memory_updates")
+    if not isinstance(mem, dict):
+        mem = {}
+    clean_mem: dict[str, Any] = {}
+    fp = mem.get("favorite_property")
+    clean_mem["favorite_property"] = _fuzzy_shown(
+        str(fp) if fp not in (None, "") else None, shown
+    )
+    # A LLM decide se há intenção de visita e cita o trecho literal da mensagem que mostra
+    # isso; o código só confere que a citação existe (anti-alucinação) — sem lista de frases,
+    # então "queria dar uma olhada no local" vale tanto quanto "quero visitar".
+    want_visit = bool(mem.get("visit_interest"))
+    has_evidence = _quote_in_message(mem.get("visit_quote"), message)
+    clean_mem["visit_interest"] = bool(want_visit and has_evidence)
+    clean_mem = {k: clean_mem[k] for k in _MEMORY_KEYS if k in clean_mem}
+
+    args = raw.get("arguments") if isinstance(raw.get("arguments"), dict) else {}
+    lead = raw.get("lead_info") if isinstance(raw.get("lead_info"), dict) else {}
+    # A LLM às vezes põe o dado de busca só em `arguments` (ex.: request_options com region="São Paulo")
+    # e deixa `lead_info` vazio; sem isso a busca perdia o filtro e o estado nunca guardava a região
+    # (bug real de 09/10). Aproveitamos o que ela mesma estruturou; `lead_info` explícito prevalece.
+    lead = {**{k: v for k, v in args.items() if k in _KNOWN_LEAD_FIELDS and v not in (None, "")}, **lead}
+    clean_lead = {
+        k: v for k, v in lead.items() if k in _KNOWN_LEAD_FIELDS and v not in (None, "")
+    }
+    if clean_lead.get("intent") not in ("purchase", "rent", "investment"):
+        clean_lead.pop("intent", None)
+    tool = raw.get("tool")
+    return {
+        "thought": str(raw.get("thought") or ""),
+        "tool": tool,
+        "arguments": args,
+        "lead_info": clean_lead,
+        "memory_updates": clean_mem,
+    }

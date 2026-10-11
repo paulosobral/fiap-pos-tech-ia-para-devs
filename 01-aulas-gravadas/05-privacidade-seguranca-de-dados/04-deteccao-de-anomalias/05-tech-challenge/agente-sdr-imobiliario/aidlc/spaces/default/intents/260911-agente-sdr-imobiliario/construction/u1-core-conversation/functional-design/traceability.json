@@ -1,0 +1,86 @@
+{
+  "stage": "functional-design",
+  "unit": "u1-core-conversation",
+  "upstream_ids": [
+    "US1.1",
+    "US1.2",
+    "US2.1",
+    "US2.2",
+    "US3.1",
+    "US3.2",
+    "US4.1",
+    "US4.2",
+    "US5.1",
+    "US6.1",
+    "US10.1",
+    "US13.1",
+    "US14.1"
+  ],
+  "coverage": [
+    {
+      "id": "US1.1",
+      "status": "OK",
+      "target": "R6, R8, entities/Lead, entities/Conversation"
+    },
+    {
+      "id": "US1.2",
+      "status": "OK",
+      "target": "R1, R7, functional-spec/SalesFlow"
+    },
+    {
+      "id": "US2.1",
+      "status": "OK",
+      "target": "R2, functional-spec/Intent Detection"
+    },
+    {
+      "id": "US2.2",
+      "status": "OK",
+      "target": "R3, entities/Lead"
+    },
+    {
+      "id": "US3.1",
+      "status": "OK",
+      "target": "R3, functional-spec/Lead Qualification"
+    },
+    {
+      "id": "US3.2",
+      "status": "OK",
+      "target": "R5, functional-spec/Handoff"
+    },
+    {
+      "id": "US4.1",
+      "status": "OK",
+      "target": "R4, functional-spec/Recommendation"
+    },
+    {
+      "id": "US4.2",
+      "status": "OK",
+      "target": "R4, functional-spec/RAG Trigger"
+    },
+    {
+      "id": "US5.1",
+      "status": "OK",
+      "target": "functional-spec/Scheduling"
+    },
+    {
+      "id": "US6.1",
+      "status": "OK",
+      "target": "R5, functional-spec/Handoff"
+    },
+    {
+      "id": "US10.1",
+      "status": "OK",
+      "target": "R5, functional-spec/Handoff Trigger"
+    },
+    {
+      "id": "US13.1",
+      "status": "OK",
+      "target": "R3, functional-spec/Lead Qualification"
+    },
+    {
+      "id": "US14.1",
+      "status": "OK",
+      "target": "R1, R6, R7"
+    }
+  ]
+}

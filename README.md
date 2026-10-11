@@ -14,6 +14,8 @@ Este repositório contém materiais, notebooks e exemplos utilizados ao longo do
 
 * [Fase 4 — Tech Challenge - Monitoramento multimodal de pacientes](https://github.com/paulosobral/fiap-pos-tech-ia-para-devs/tree/main/01-aulas-gravadas/04-analise-de-dados/05-tech-challenge);
 
+* [Fase 5 — Tech Challenge - Agente SDR Imobiliário com Inteligência Artificial](https://github.com/paulosobral/fiap-pos-tech-ia-para-devs/tree/main/01-aulas-gravadas/05-privacidade-seguranca-de-dados/01-aulas-gravadas/05-privacidade-seguranca-de-dados/04-deteccao-de-anomalias/05-tech-challenge/agente-sdr-imobiliario);
+
 ## O que há neste repositório ✅
 - Notebooks com exemplos de Machine Learning e Deep Learning
 - Scripts auxiliares e arquivos de dados usados nas aulas

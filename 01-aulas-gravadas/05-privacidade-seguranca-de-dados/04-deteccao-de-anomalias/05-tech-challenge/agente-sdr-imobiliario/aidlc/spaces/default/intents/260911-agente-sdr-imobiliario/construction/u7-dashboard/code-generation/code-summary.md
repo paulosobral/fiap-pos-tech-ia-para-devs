@@ -1,0 +1,95 @@
+# Code Summary — u7-dashboard
+
+## Files created/modified
+
+Todos os arquivos são novos, sob `apps/dashboard-api/` e `apps/dashboard-ui/` (nenhum app existente foi tocado):
+
+| Arquivo | Papel |
+|---------|-------|
+| `apps/dashboard-api/handler.py` | Entry point Lambda (aws_proxy) do Contrato 2 — `GET /api/kpis`: 200 JSON, 401 sem bearer (CognitoAuthorizer na borda em produção), 404 path, 405 método, 500 em falha de agregação; wiring DI via `build_service` (boto3 preguiçoso com um cliente por serviço — DynamoDB e CloudWatch separados; env: `SESSIONS_TABLE`, `ALERTS_TABLE`, `CW_NAMESPACE`, `CW_RESPONSE_METRIC`, `CW_COST_METRIC`, `DASHBOARD_ALLOWED_ORIGIN`); header CORS para o Community Cloud |
+| `apps/dashboard-api/logs.py` | `log_event` — utilitário de log estruturado JSON (NFR5.1) compartilhado por handler, stores, meter e KpiService (formato único na Lambda) |
+| `apps/dashboard-api/requirements.txt` | Dependência de produção (`boto3>=1.34`) |
+| `apps/dashboard-api/infra/conversation_store.py` | Leitor do Contrato 5: dois scans paginados `begins_with(SK, CONV#)` (conversas) e `begins_with(SK, PROFILE)` (mapa `lead_id → perfil`); unmarshal de tipos/JSON; itens sem identificadores ignorados com log; erros → `ConversationStoreError` |
+| `apps/dashboard-api/infra/alert_store.py` | Leitor do Contrato 7 (tabela `sdr-alerts`, dono U5): scan paginado, ordena `detected_at` desc, itens sem `anomaly_id` ignorados; `project_alert` projeta o alerta sem `features` (payload mínimo, PII-safe); erros → `AlertStoreError` |
+| `apps/dashboard-api/infra/metrics.py` | `CloudWatchMeter` — `get_metric_data` para `response_time_p90` (stat p90) e `cost_monthly` (stat Maximum); datapoint ausente/erro de leitura/valor não numérico → `None` (degradação graciosa, zeros no snapshot) |
+| `apps/dashboard-api/service/kpi_calc.py` | Funções puras determinísticas: `parse_iso8601`, `count_new_leads` (hoje/semana por `created_at`), `latest_conversation_by_lead`, `qualification_rate` (status `qualified` no perfil OU `context.lead_qualified` OU estado pós-qualificação — `followup` não qualifica), `state_funnel` (8 estados da esteira do u1 + `outros`), `scheduled_visits_count`, `intent_volume`, `route_distribution` (roleta u1: ≤ 500 m² → consultores, > 500 m² → diretor; override `route`/`route_target`/`assigned_to`; `parse_area_m2` aceita "1.200 m²" (milhar), "12,5 m²" (vírgula decimal PT-BR), "1.234,56"), `alerts_last_24h` |
+| `apps/dashboard-api/service/kpis.py` | `KpiService.snapshot()` — orquestra conversas + perfis + alertas + meter → snapshot do Contrato 2 (`leads_today`, `leads_week`, `response_time_p90`, `qualification_rate`, `scheduled_visits`, `anomalies_count`, `cost_monthly`) + extensões aditivas (`generated_at`, `intents`, `route_distribution`, `funnel`, `alerts` cap 100); tabela vazia → zeros, item inválido → ignorado, falha de store → propaga (500); logs estruturados `log_event` (NFR5.1) |
+| `apps/dashboard-api/tests/conftest.py` | Bootstrap de path (`sys.path` → `apps/dashboard-api`), padrão flat u1–u6 |
+| `apps/dashboard-api/tests/unit/test_*.py` | 6 suítes unitárias (kpi_calc, conversation_store, alert_store, metrics, kpis, handler) |
+| `apps/dashboard-api/tests/integration/test_kpis_pipeline.py` | Pipeline ponta a ponta: handler + FakeAwsClient (filtro de prefixo honrado) + fake boto3 em `sys.modules`; agregação completa, zeros em tabelas vazias, itens malformados, PII-safe no corpo e nos logs, store fora do ar → 500, CloudWatch fora do ar → 200 com zeros |
+| `apps/dashboard-ui/app.py` | 1 página Streamlit Community Cloud: `fetch_kpis` (GET `/api/kpis` com http injetado, bearer de `DASHBOARD_API_TOKEN`, timeout, 401 → login Cognito, 500/erro → toast), cards FR7.2, esteira Kanban + gráficos de intenções/roleta FR7.3, tabela de alertas 24h FR7.4, callout Cognito `COGNITO_LOGIN_URL`; sem persistência local |
+| `apps/dashboard-ui/requirements.txt` | Dependências de produção (`streamlit>=1.35`, `requests>=2.31`) |
+| `apps/dashboard-ui/tests/conftest.py` + `tests/unit/test_app_smoke.py` | Smoke da UI: fetch_kpis (ok/401/500/rede/JSON inválido/bearer), `cognito_login_url`, render com `importorskip("streamlit")` |
+
+## Key implementation decisions
+
+- **KPI set = Contrato 2 + extensões aditivas**: os 7 campos contratuais (`leads_today`, `leads_week`, `response_time_p90`, `qualification_rate`, `scheduled_visits`, `anomalies_count`, `cost_monthly`) são calculados exatamente como especificados; `intents`, `route_distribution`, `funnel` e `alerts` entram como campos aditivos (política de versionamento: adição não-quebrante) para alimentar FR7.3/FR7.4 sem segunda chamada.
+- **Leitor do Contrato 5 com dois scans**: mesmo padrão dos leitores do u5/u6 (`CONV#` + `PROFILE` sobre `sdr-sessions`); U7 é reader — nunca escreve. A qualificação (u1 não persiste `status="qualified"` no Lead) é derivada de três sinais tolerantes: `status` do perfil, `context.lead_qualified` da conversa mais recente ou estado pós-qualificação da esteira (`recommendation`/`scheduling`/`handoff`) — `followup` NÃO qualifica (u1: `score < threshold` roteia para followup; contar como qualificado inflaria `qualification_rate`).
+- **Roleta (FR10.1/FR10.2) derivada da `area`**: u1 define `AREA_THRESHOLD_M2 = 500` com rodízio para consultores; como nenhum app grava ainda a rota auditada (FR10.3), a distribuição usa a regra do u1 sobre `area` com override por campo de rota quando existir — decisões documentadas como interpretação de POC.
+- **Degradação graciosa vs. 500**: tabela vazia, item malformado (sem identificadores) ou datapoint de métrica ausente → zeros/estado vazio (nunca quebram o snapshot); falha de cliente DynamoDB → `ConversationStoreError`/`AlertStoreError` → 500 (Contrato 2); CloudWatch fora do ar → 200 com zeros (métrica operacional não deve derrubar o dashboard em POC).
+- **Handler estilo Lambda aws_proxy, não FastAPI**: `.venv` não tem fastapi/flask/httpx — o boundary HTTP é a interface `handler(event, context)` do aws_proxy (mesmo padrão dos handlers u1–u6), testado por invocação direta com eventos proxy; autenticação fina fica no CognitoAuthorizer do API Gateway (fase de infra), com guarda de presença de bearer no handler.
+- **PII-safe por projeção**: o snapshot agrega apenas contadores/estados; `messages` e `features` nunca saem dos readers — `project_alert` entrega só os campos do Contrato 7 relevantes à tabela de alertas; verificado ponta a ponta com PII sintética no corpo e no `caplog`.
+- **Logs estruturados em toda a unidade (NFR5.1)**: `log_event` JSON vive em `logs.py` e é usado por handler, stores, meter e KpiService — um único formato na Lambda (evolução da rodada de fix; antes só o KpiService logava JSON).
+- **UI thin e import-light**: toda a lógica fica no dashboard-api; `app.py` só busca, projeta e trata erro; `streamlit`/`requests` importados com preguiça (smoke roda sem streamlit instalado); login Cognito é placeholder por env (`DASHBOARD_API_TOKEN` no fetch, `COGNITO_LOGIN_URL` no botão) — o fluxo real é infra-stage.
+
+## Test coverage summary
+
+- Comando: `COVERAGE_FILE=/tmp/opencode/.cov-fix-u7 .venv/bin/python -m pytest apps/dashboard-api/tests apps/dashboard-ui/tests --cov=apps/dashboard-api --cov-report=term-missing --cov-fail-under=80`
+- Resultado (rodada de fix): **76 coletados — 74 passed, 2 skipped** (smoke de render com `streamlit` ausente), **TOTAL 98.10%** (piso 80% atendido, nenhuma meta relaxada). Rodada 1: 68 passed, 2 skipped, 98.40%.
+- Componentes: `handler.py` 100%, `metrics.py` 100%, `logs.py` 100%, `kpi_calc.py` 98%, `kpis.py` 98%, `conversation_store.py` 94%, `alert_store.py` 91%.
+- Suítes anteriores re-verificadas após a unidade: u1 = 50 passed, u2 = 58 passed, u3 = 86 passed, u4 = 50 passed, u5 = 51 passed + 1 skipped, u6 = 77 passed.
+
+## Rodada de fix (iteration 2 — findings R-01…R-06)
+
+- **R-01 (Critical)**: `build_service(dynamodb_client, cloudwatch_client, env)` agora recebe um cliente por serviço AWS; o handler cria `boto3.client("dynamodb")` para os stores (Contratos 5/7) e `boto3.client("cloudwatch")` para o meter (Contrato 2). Antes, o mesmo cliente dynamodb ia para todos os componentes e o `AttributeError` de `get_metric_data` era engolido pela degradação graciosa — `response_time_p90`/`cost_monthly` ficariam em 0.0 em produção. Teste novo `test_distinct_client_per_service_name` usa fakes com API restrita por serviço (fake dynamodb sem `get_metric_data`, fake cloudwatch sem `scan`) — verificado que o teste falha se o mesmo objeto for usado nos dois componentes (mutação confirmada).
+- **R-02 (Major)**: `followup` removido de `QUALIFIED_STATES` (kpi_calc.py) — no u1, `score < threshold` roteia para followup, então não é qualificação; sinais `status` do perfil e `context.lead_qualified` mantidos. Testes: `test_followup_is_not_qualified`, `test_followup_with_lead_qualified_context_counts`.
+- **R-06 (Minor)**: `parse_area_m2` reescrito — vírgula é decimal PT-BR ("12,5 m²" → 12.5, "1.234,56" → 1234.56), ponto é milhar quando agrupa 3 dígitos ("1.200 m²" → 1200.0) ou decimal com 1–2 casas ("12.5" → 12.5); formatos documentados na docstring. Testes novos cobrem os formatos e a roleta ("600,5 m²" → diretor).
+- **R-05 (Minor)**: `log_event` JSON movido para `logs.py` (novo arquivo) e adotado por handler, `conversation_store`, `alert_store` e `metrics` — formato único de log na Lambda (NFR5.1). Testes de `caplog` atualizados para os novos nomes de evento (ex.: `kpi_aggregation_failed`, `alert_item_missing_anomaly_id`).
+- **R-04 (Minor)**: traceability NFR2.1 remapeada do teste (tests/integration/test_kpis_pipeline.py) para o módulo implementador `apps/dashboard-api/infra/alert_store.py` (`project_alert`, materializador da projeção PII-safe); o teste permanece como evidência complementar e a agregação em `service/kpis.py` (só contadores/estados) reforça a proteção.
+- **R-03 (Minor)**: traceability NFR4.1 passou de `OK` para `Deferred` — DLQ não se aplica ao escopo síncrono da Lambda DashAPI (aws_proxy, sem caminho assíncrono que descarte mensagens); a configuração de DLQ/filas é IaC da fase Build and Test. Justificativa registrada na seção Deviations.
+
+## Deviations from the plan
+
+- **Sem FastAPI no boundary HTTP**: a diretriz admitia "fastapi or serverless-style handler"; como o `.venv` não tem fastapi/flask/httpx (verificado antes da geração), o Contrato 2 foi implementado como handler Lambda aws_proxy (`handler(event, context)`), mesmo padrão de todos os apps existentes — testável por invocação direta com eventos proxy e DI completa.
+- **CloudWatch na POC**: `response_time_p90` e `cost_monthly` vêm de `CloudWatchMeter` (cliente boto3 injetado, nomes/namespace por env). Em POC a Lambda agrega `get_metric_data` (stat p90 para resposta, Maximum para custo); sem datapoint ou com CloudWatch fora do ar o snapshot degrada para zeros — nunca 500. Os emissores dessas métricas (instrumentação dos outros Lambdas) são infra-stage.
+- **KPI set derivado**: além dos 7 campos do Contrato 2, o snapshot carrega `generated_at`, `intents`, `route_distribution`, `funnel` e `alerts` (aditivo, não-quebrante) para cumprir FR7.3/FR7.4 com uma única chamada da UI. `qualification_rate`/`scheduled_visits` derivam do estado da esteira do u1 porque o u1 não persiste status de qualificação no item do Lead.
+- **Roleta sem dado gravado**: FR10.3 (rota auditada no DynamoDB) ainda não é materializado por nenhuma unidade anterior; a distribuição da roleta no dashboard deriva da regra do u1 sobre `area` (≤ 500 m² → consultores; > 500 m² → diretor), com override se um campo `route`/`route_target`/`assigned_to` existir no perfil.
+- **UI/Cognito wiring**: login fica em placeholder configurável por env (`DASHBOARD_API_TOKEN` como bearer POC; `COGNITO_LOGIN_URL` para o botão de login) — o fluxo OAuth real com Cognito User Pools é infra-stage, conforme a diretriz; a UI não guarda nenhum dado local.
+- **Streamlit import-guard**: `streamlit` não está no `.venv`; os testes de render usam `pytest.importorskip("streamlit")` (2 skipped aqui) e `app.py` importa `streamlit`/`requests` com preguiça para manter o smoke import-light.
+- **Sem `__init__.py` nos `tests/`**: a suíte desta unidade roda `apps/dashboard-api/tests` e `apps/dashboard-ui/tests` num único comando; dois pacotes `tests` no mesmo pytest colidem (`ImportPathMismatchError`), então os diretórios de teste ficam sem `__init__.py` e a suíte de integração é self-contained (diferença em relação ao layout u1–u6, que roda uma suíte por comando).
+- **CORS no handler**: o Community Cloud consome a API cross-origin; o header `Access-Control-Allow-Origin` é emitido pelo handler (env `DASHBOARD_ALLOWED_ORIGIN`, default `*`). Configuração de CORS no API Gateway fica para a fase de infra.
+- **NFR4.1 (DLQ) deferida — deviation da rodada de fix**: a exigência "Componentes serverless com DLQ" não é materializada nesta unidade. A DashAPI é uma Lambda síncrona (aws_proxy `GET /api/kpis`): não há caminho assíncrono que descarte mensagens numa DLQ, e os erros de leitura já mapeiam para HTTP 500 (Contrato 2). A configuração real de DLQ (filas/SQS, retry policies) é IaC e pertence à fase **Build and Test**; claim reclassificada de `OK` para `Deferred` no traceability.json.
+
+## Nota pós-construção (ADR-014 — ver `inception/domain-design/decisions.md`)
+
+O item "UI/Cognito wiring" acima (linha 57) descrevia o estado desta unidade no momento da geração: placeholder por env, fluxo OAuth real deferido para a fase de infra. Essa ligação foi completada numa rodada posterior, fora do ciclo desta unidade (ADR-014):
+
+- `infra/apigateway.tf`: rota `dashboard_proxy` passou a usar `authorization_type = "JWT"` + `authorizer_id` do `aws_apigatewayv2_authorizer.cognito` (antes provisionado mas nunca referenciado por nenhuma rota) — o handler (linha 9/30 acima) deixou de ser a única defesa; a validação real do JWT agora ocorre no API Gateway.
+- `apps/dashboard-ui/app.py`: login deixou de ser placeholder por env. Passou a chamar `cognito-idp:InitiateAuth` (`USER_PASSWORD_AUTH`) direto do App Client via formulário usuário/senha no Streamlit, tratando o desafio `NEW_PASSWORD_REQUIRED`; `DASHBOARD_API_TOKEN`/`COGNITO_LOGIN_URL` (placeholder/Hosted UI) foram removidos. **Não** é o fluxo `st.login()`/Hosted UI do PRD §10.3 original — o dashboard roda em ECS Fargate sem domínio/ALB (IP público efêmero), inviabilizando uma `callback_url` estável para OAuth.
+- Testes atualizados em `apps/dashboard-ui/tests/unit/test_app_smoke.py` (login/challenge/token explícito substituem os antigos testes de env var e `cognito_login_url`).
+- Handler (`apps/dashboard-api/handler.py`) **não foi alterado** nesta rodada — a checagem de presença de bearer nele permanece como defesa em profundidade; a validação de verdade agora é redundante entre authorizer (borda) e handler (aplicação), por design.
+
+## Mudanças posteriores — X-Ray (ADR-021, 2026-10-09)
+
+Tracing distribuído acrescentado depois do gate de code-generation. Nenhuma regra de negócio mudou.
+
+- Novo `apps/dashboard-api/tracing.py` (liga o X-Ray no import), chamado no começo de `apps/dashboard-api/handler.py`.
+- `aws-xray-sdk>=2.14` em `apps/dashboard-api/requirements.txt`.
+- Testes: `apps/dashboard-api/tests/unit/test_tracing.py` (idempotência, ausência do SDK, falha ao instrumentar, `LOG_ERROR` por padrão e regressão contra `patch_all`).
+- Terraform: `tracing_mode = "Active"` e `attach_tracing_policy = true` em `infra/lambda-*.tf` da unidade.
+- O `dashboard-ui` (ECS/Streamlit) não recebeu X-Ray.
+
+- Só o `botocore` é instrumentado (nunca `patch_all()`, que gravaria a URL do Telegram com o token do bot); sem o SDK, tudo vira no-op.
+- Verificado com o SDK real e um daemon UDP simulado; **não validado numa subida na AWS** (owner: `deployment-execution`).
+
+## Mudanças posteriores — rótulos em português (ADR-023, 2026-10-09)
+
+- `apps/dashboard-ui/app.py`: dicionários `STATE_LABELS`, `INTENT_LABELS`, `URGENCY_LABELS`, `ALERT_*_LABELS`, `pt()`, `translate_counts()` e `alert_rows()`; a esteira, o gráfico de intenções, a tabela de leads e a tabela de anomalias aparecem em português. A API e o banco continuam com os códigos em inglês; valor desconhecido aparece como veio.
+- Testes: `TestPortugueseLabels` (inclui a tela renderizada com `AppTest`: "Encaminhado ao corretor" no lugar de `handoff`).
+
+## Mudanças posteriores — lead completo (ADR-028, 2026-10-10)
+
+- `dashboard-api/service/leads.py`: campos que o perfil ainda não tem vêm da conversa (`context.lead_info`); novo `property` (imóvel escolhido); o reenvio ao CRM também leva região e imóvel.
+- `dashboard-ui/app.py`: colunas "Prazo" e "Imóvel escolhido" na tabela de leads.
+
+- Valor do imóvel escolhido (ADR-030): `format_price` e `chosen_property_price` em `dashboard-api/service/leads.py`; coluna "Valor do imóvel" no `dashboard-ui`; o reenvio ao CRM também o leva.

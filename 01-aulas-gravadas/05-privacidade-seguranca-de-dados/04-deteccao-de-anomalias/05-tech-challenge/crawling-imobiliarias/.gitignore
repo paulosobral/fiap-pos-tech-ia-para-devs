@@ -1,0 +1,5 @@
+.venv/
+.scrapy/
+output/
+__pycache__/
+*.pyc

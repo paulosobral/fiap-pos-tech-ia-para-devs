@@ -1,0 +1,133 @@
+{
+  "stage": "domain-design",
+  "upstream_ids": [
+    "US1.1",
+    "US1.2",
+    "US1.3",
+    "US2.1",
+    "US2.2",
+    "US3.1",
+    "US3.2",
+    "US4.1",
+    "US4.2",
+    "US5.1",
+    "US6.1",
+    "US7.1",
+    "US9.1",
+    "US11.1",
+    "US10.1",
+    "US8.1",
+    "US12.1",
+    "US13.1",
+    "US14.1",
+    "US15.1",
+    "US16.1"
+  ],
+  "coverage": [
+    {
+      "id": "US1.1",
+      "status": "OK",
+      "target": "ConversationRouter, SecurityLayer"
+    },
+    {
+      "id": "US1.2",
+      "status": "OK",
+      "target": "ConversationRouter, SDR Agent"
+    },
+    {
+      "id": "US1.3",
+      "status": "OK",
+      "target": "VoiceAdapter, ConversationRouter"
+    },
+    {
+      "id": "US2.1",
+      "status": "OK",
+      "target": "LeadQualifier, SDR Agent"
+    },
+    {
+      "id": "US2.2",
+      "status": "OK",
+      "target": "LeadQualifier, SDR Agent"
+    },
+    {
+      "id": "US3.1",
+      "status": "OK",
+      "target": "LeadQualifier"
+    },
+    {
+      "id": "US3.2",
+      "status": "OK",
+      "target": "LeadQualifier, Handoff"
+    },
+    {
+      "id": "US4.1",
+      "status": "OK",
+      "target": "PropertiesRAG"
+    },
+    {
+      "id": "US4.2",
+      "status": "OK",
+      "target": "SDR Agent"
+    },
+    {
+      "id": "US5.1",
+      "status": "OK",
+      "target": "Scheduler"
+    },
+    {
+      "id": "US6.1",
+      "status": "OK",
+      "target": "Handoff"
+    },
+    {
+      "id": "US7.1",
+      "status": "OK",
+      "target": "DashAPI, Dashboard"
+    },
+    {
+      "id": "US9.1",
+      "status": "OK",
+      "target": "AnomalyDetector"
+    },
+    {
+      "id": "US11.1",
+      "status": "OK",
+      "target": "CRMAdapter"
+    },
+    {
+      "id": "US10.1",
+      "status": "OK",
+      "target": "LeadRouter"
+    },
+    {
+      "id": "US8.1",
+      "status": "OK",
+      "target": "Followup"
+    },
+    {
+      "id": "US12.1",
+      "status": "OK",
+      "target": "ContactIngest"
+    },
+    {
+      "id": "US13.1",
+      "status": "OK",
+      "target": "LeadQualifier"
+    },
+    {
+      "id": "US14.1",
+      "status": "OK",
+      "target": "SecurityLayer"
+    },
+    {
+      "id": "US15.1",
+      "status": "OK",
+      "target": "DashAPI"
+    },
+    {
+      "id": "US16.1",
+      "status": "Deferred",
+      "target": "infrastructure-design"
+    }
+  ]
+}

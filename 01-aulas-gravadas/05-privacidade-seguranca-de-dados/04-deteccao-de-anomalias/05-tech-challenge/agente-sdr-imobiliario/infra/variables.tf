@@ -1,0 +1,147 @@
+variable "region" {
+  description = "Região AWS do POC (Q1 do environment-provisioning)"
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "name_prefix" {
+  description = "Prefixo dos recursos"
+  type        = string
+  default     = "sdr"
+}
+
+variable "telegram_bot_token" {
+  description = "Token do bot do Telegram (SecureString). Vazio = telegram desligado até o humano preencher a secret e re-applicar."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "llm_api_key" {
+  description = "Chave OpenRouter p/ o LLM do conversation-router (FR-02). Terraform grava na secret sdr/llm-api-key e a Lambda lê via Secrets Manager. Vazio = secret fica sem versão e o fluxo cai no classificador por regex (POC sem IA)."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "dashboard_ui_image" {
+  description = "URI da imagem ECR do dashboard-ui (build: podman build & push antes do apply). Default = pública python p/ permitir o 1º apply; o start.sh faz o apply2 com a imagem ECR."
+  type        = string
+  default     = "public.ecr.aws/docker/library/python:3.11-slim"
+}
+
+variable "dashboard_schedule_start" {
+  description = "Cron (UTC) escala o ECS p/ 1 task (janela diária p/ Streamlit). Default 12:00 UTC = 09:00 BRT"
+  type        = string
+  default     = "cron(0 12 * * ? *)"
+}
+
+variable "dashboard_schedule_end" {
+  description = "Cron (UTC) escala o ECS p/ 0 tasks (fora da janela). Default 21:00 UTC = 18:00 BRT"
+  type        = string
+  default     = "cron(0 21 * * ? *)"
+}
+
+variable "anomaly_schedule" {
+  description = "Frequência do varrimento de anomalias (u5)"
+  type        = string
+  default     = "rate(1 minute)"
+}
+
+variable "voice_adapter_image" {
+  description = "URI da imagem ECR do voice-adapter (build: podman build & push antes do apply). Default = python p/ permitir o 1º apply; o start.sh faz o apply2 com a imagem ECR."
+  type        = string
+  default     = "public.ecr.aws/docker/library/python:3.11-slim"
+}
+
+variable "voice_schedule_start" {
+  description = "Cron (UTC) escala o ECS voice-adapter p/ 1 task. Default 12:00 UTC = 09:00 BRT"
+  type        = string
+  default     = "cron(0 12 * * ? *)"
+}
+
+variable "voice_schedule_end" {
+  description = "Cron (UTC) escala o ECS voice-adapter p/ 0 tasks. Default 21:00 UTC = 18:00 BRT"
+  type        = string
+  default     = "cron(0 21 * * ? *)"
+}
+
+variable "router_image" {
+  description = "URI da imagem ECR do conversation-router (build: podman build & push antes do apply). Default = python p/ permitir o 1º apply; o start.sh faz o apply2 com a imagem ECR."
+  type        = string
+  default     = "public.ecr.aws/docker/library/python:3.11-slim"
+}
+
+variable "router_schedule_start" {
+  description = "Cron (UTC) escala o ECS conversation-router p/ 1 task. Default 12:00 UTC = 09:00 BRT"
+  type        = string
+  default     = "cron(0 12 * * ? *)"
+}
+
+variable "router_schedule_end" {
+  description = "Cron (UTC) escala o ECS conversation-router p/ 0 tasks. Default 21:00 UTC = 18:00 BRT"
+  type        = string
+  default     = "cron(0 21 * * ? *)"
+}
+
+variable "router_endpoint" {
+  description = "URL HTTP do conversation-router no ECS (IP:8080). Atualizada pelo start.sh apos scale-out."
+  type        = string
+  default     = "http://127.0.0.1:8080"
+}
+
+variable "followup_schedule" {
+  description = "Frequência do follow-up agendado (u6) — cron com hora fixa UTC DENTRO da janela de silêncio 8-18 BRT (12:00 UTC = 09:00 BRT). No dev do rate(1 day), o tick cai fora da janela e o follow-up nunca sai."
+  type        = string
+  default     = "cron(0 12 * * ? *)"
+}
+
+variable "llm_model" {
+  description = "Identificador do modelo LLM no OpenRouter a ser usado pelo conversation-router"
+  type        = string
+  default     = "deepseek/deepseek-chat"
+}
+
+variable "llm_model_fallback" {
+  description = "Modelo de fallback no OpenRouter em caso de indisponibilidade/429/timeout"
+  type        = string
+  default     = "anthropic/claude-haiku-4.5"
+}
+
+variable "llm_model_complex" {
+  description = "Modelo avançado no OpenRouter para casos complexos / negociação sofisticada"
+  type        = string
+  default     = "anthropic/claude-sonnet-4.5"
+}
+
+variable "hubspot_mcp_client_id" {
+  description = "Client ID do MCP connector do HubSpot (OAuth 2.1 + PKCE). Vazio = crm-adapter usa o CRM simulado (CSV)."
+  type        = string
+  default     = ""
+}
+
+variable "hubspot_mcp_client_secret" {
+  description = "Client secret do MCP connector do HubSpot."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "hubspot_mcp_refresh_token" {
+  description = "Refresh token inicial (scripts/hubspot_authorize.py). É de uso único: o crm-adapter regrava o novo na secret a cada renovação."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "xray_daemon_image" {
+  description = "Imagem do X-Ray daemon (sidecar do conversation-router no ECS). Pública, sem build."
+  type        = string
+  default     = "public.ecr.aws/xray/aws-xray-daemon:3.7.0"
+}
+
+variable "bot_name" {
+  description = "Nome da assistente na primeira mensagem do Telegram. Gravado no SSM /sdr/bot-name e lido pelo conversation-router (cache de 5 min)."
+  type        = string
+  default     = "Cecília"
+}

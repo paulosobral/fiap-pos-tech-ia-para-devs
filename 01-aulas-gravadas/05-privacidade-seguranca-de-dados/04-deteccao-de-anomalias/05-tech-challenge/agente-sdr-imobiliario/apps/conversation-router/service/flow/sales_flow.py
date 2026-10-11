@@ -1,0 +1,1525 @@
+"""Sales-flow com LangGraph (PRD §8.1: orquestração via LangGraph).
+
+Substitui o FSM manual por StateGraph do LangGraph: cada estado do fluxo
+(saudação → elicitação → intenção → qualificação → recomendação → agendamento →
+handoff/followup) é um nó do grafo, com areistas condicionais determinadas
+pelo campo `current_state`. A extração de lead_info (regex sobre texto
+mascarado) roda em um nó de pré-processamento; a geração de resposta humanizada
+via LLM roda em um nó de pós-processamento (FR-02).
+
+Fallback: se LangGraph não estiver instalado (ex.: ambiente de teste sem deps),
+o dispatch manual por `current_state` é usado — mantém o mesmo contrato e os
+mesmos testes.
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+from difflib import SequenceMatcher
+from typing import Any, Callable, TypedDict
+
+from service.bot_identity import get_bot_name
+
+logger = logging.getLogger(__name__)
+
+CONFIDENCE_THRESHOLD = 0.6
+# Quantos imóveis de uma lista recebem foto no mesmo turno (1ª foto de cada).
+MAX_PHOTO_PROPERTIES = 4
+INTENT_CONFIRM_QUESTION = "Só pra eu entender melhor: você está pensando em comprar, alugar ou investir em um imóvel comercial?"
+
+# Recusa de consentimento LGPD: determinística (sem LLM), mas tolerante a variações
+# próximas das 4 formas originais ("não", "nao", "não quero", "nao quero").
+# Fases em que o bot ainda não recomendou nada: consentimento e pergunta de intenção (compra/locação/
+# investimento). Nelas a humanização NÃO recebe imóveis guardados de turnos anteriores.
+_PRE_RECOMMENDATION_STATES = ("greeting", "elicitation", "intent")
+_CONSENT_REFUSAL_RE = re.compile(r"^\s*n[ãa]o(\s+quero)?\s*[.!]?\s*$", re.IGNORECASE)
+# Plano B do consentimento (sem LLM ou se ela falhar): aceite só com uma forma clara de "sim" no começo.
+# Com a LLM ligada, quem decide é ela, lendo a conversa inteira (ADR-027).
+_CONSENT_ACCEPT_RE = re.compile(
+    r"^\W*(sim|s|ss|sss|claro|ok|okay|okey|pode|podemos|podem|aceito|concordo|autorizo|"
+    r"beleza|blz|combinado|certo|isso|positivo|yes|uhum|aham|bora|vamos|vamo|"
+    r"com certeza|tudo bem|de acordo|pode ser|pode sim|pode continuar|fechado)\b",
+    re.IGNORECASE,
+)
+
+# Variações do fecho de "mostrei opções, o que achou?" — evita repetir a mesma
+# frase literal em todo ponto do fluxo que lista/reoferece imóveis.
+_FOLLOWUP_PROMPTS = (
+    "Alguma chamou atenção? Posso refinar por metragem, orçamento ou região.",
+    "Alguma dessas te interessou? Posso ajustar por metragem, orçamento ou localização.",
+    "O que achou dessas opções? Consigo refinar por área, preço ou bairro.",
+)
+
+# Extração sobre texto JÁ MASCARADO (placeholders [NOME]/[EMAIL] não colidem com os padrões).
+_BUDGET_NUMBER_RE = r"\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:[.,]\d+)?"
+_BUDGET_UNIT_RE_TEXT = r"mil(?:h[õo]es|h[ãa]o)?|k"
+_AREA_RE = re.compile(
+    r"\b(\d+(?:[.,]\d+)?)\s*(?:m²|m2|metros quadrados|metro quadrado)", re.IGNORECASE
+)
+_BUDGET_PREFIXED_RE = re.compile(
+    rf"(?:r\$\s*|orçamento\s*(?:de|:)?\s*)({_BUDGET_NUMBER_RE})\s*({_BUDGET_UNIT_RE_TEXT})?",
+    re.IGNORECASE,
+)
+_BUDGET_UNIT_RE = re.compile(
+    rf"\b({_BUDGET_NUMBER_RE})\s*({_BUDGET_UNIT_RE_TEXT})\b",
+    re.IGNORECASE,
+)
+_BUDGET_CEILING_RE = re.compile(
+    rf"(?:at[ée]|até\s+r\$?)\s*({_BUDGET_NUMBER_RE})\s*(?:reais|r\$)?",
+    re.IGNORECASE,
+)
+_DEADLINE_RE = re.compile(
+    r"(?:prazo\s*(?:de|:)?\s*)?(\d+)\s*(m[êe]s(?:es)?|semanas?|dias?)", re.IGNORECASE
+)
+_PEOPLE_RE = re.compile(
+    r"(\d+)\s*(?:pessoas|colaboradores|usuários|usuarios|funcionários|funcionarios)",
+    re.IGNORECASE,
+)
+_REGION_RE = re.compile(
+    r"(?:regi[ãa]o|bairro|zona)\s+(?:d[oa]s?|de|em)?\s*([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)*)",
+    re.IGNORECASE,
+)
+_REGION_CONTEXT_RE = re.compile(
+    r"\b(?:em|na|no)\s+([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)?)", re.IGNORECASE
+)
+_DECISOR_YES_RE = re.compile(
+    r"sou\s+(?:o\s+)?(?:decisor|propriet[aá]rio)|eu\s+(?:que\s+)?decido|quem\s+decide\s+sou\s+eu",
+    re.IGNORECASE,
+)
+_DECISOR_NO_RE = re.compile(
+    r"n[ãa]o\s+(?:sou\s+(?:o\s+)?decisor|decido)", re.IGNORECASE
+)
+_OPTIONS_REQUEST_RE = re.compile(
+    r"\b(?:opç(?:ão|ões)|imóveis|imoveis|mostrar|mostre|cad[êe])\b", re.IGNORECASE
+)
+_REGION_STOP_WORDS = (
+    "com",
+    "e",
+    "para",
+    "pra",
+    "no",
+    "na",
+    "do",
+    "da",
+    "até",
+    "por",
+    "ou",
+)
+
+_FAVORITE_LIKE_RE = re.compile(
+    r"(?:gostei\s+da?s?\s+|quero\s+a\s+|prefiro\s+a\s+)(\d+|[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9 \-]+)",
+    re.IGNORECASE,
+)
+_REJECT_LIKE_RE = re.compile(
+    r"(?:n[ãa]o\s+quero\s+(?:a\s+|as\s+)?|descart[ae]\s+(?:a\s+|as\s+)?)(\d+|[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9 \-]+)",
+    re.IGNORECASE,
+)
+
+
+# Sanidade da SAÍDA (não interpreta o lead): a resposta do turno de pedido de contato tem que
+# falar de um canal. Pegou o bug real em que a reescrita virou "qual dia e horário?" e o lead
+# nunca informava telefone/e-mail. O jeito de pedir é livre ("me informe", "pode deixar...").
+_CONTACT_CHANNEL_RE = re.compile(r"telefone|whats|zap|e-?mail|celular|n[úu]mero", re.IGNORECASE)
+
+
+# Linha inteira entre ()/[] (com ou sem *itálico*) é nota de bastidor do modelo
+# ("*(Segue as fotos!)*", "[Fotos enviadas]"), nunca texto pro lead.
+_META_NOTE_LINE_RE = re.compile(r"^\s*\**\s*[\(\[][^\n]*[\)\]]\s*\**\s*$", re.MULTILINE)
+
+
+def _strip_meta_notes(text: str) -> str:
+    return re.sub(r"\n{3,}", "\n\n", _META_NOTE_LINE_RE.sub("", text)).strip()
+
+
+# O Telegram é enviado como texto puro: **negrito** e # títulos aparecem literais pro lead.
+_MD_BOLD_RE = re.compile(r"(\*\*|__)(.+?)\1", re.DOTALL)
+_MD_HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+", re.MULTILINE)
+
+
+def _plain_text(text: str) -> str:
+    return _MD_HEADING_RE.sub("", _MD_BOLD_RE.sub(r"\2", text))
+
+
+# Reescrita que AFIRMA estar mandando fotos ("aqui estão as fotos", "seguem as imagens")
+# quando nenhuma foto vai junto: promessa falsa (bug real). Validação de saída, não leitura do lead.
+_PHOTO_CLAIM_RE = re.compile(
+    r"(aqui\s+(est[ãa]o|vai|v[êe]m)|seguem?|segue|estou\s+(enviando|mandando)|"
+    r"te\s+(envio|mando)|(?<![\wãõ])(envio|mando)\s+(agora|j[áa]|mais|as|essas|outras)|mandei|enviei|enviando)"
+    r"[^.!?\n]{0,60}\b(fotos?|imagens?)\b",
+    re.IGNORECASE,
+)
+
+
+def _claims_photos(text: str) -> bool:
+    return bool(_PHOTO_CLAIM_RE.search(text))
+
+
+# Promessa de trabalho futuro que o bot não cumpre: a busca roda DENTRO do turno (o resultado já
+# está na resposta) e não existe alerta/aviso posterior. "Um momento!", "vou buscar...", "te aviso
+# quando surgir" deixam o lead esperando uma mensagem que nunca vem (bug real: "cade?").
+# Não pega "vou confirmar com o corretor", que é legítimo (regra 3 do prompt de humanização).
+_FUTURE_WORK_RE = re.compile(
+    r"\bum\s+momento(zinho)?\b|\baguard[ea]\b|\bj[áa]\s+(volto|retorno)\b|"
+    r"\bj[áa]\s+te\s+(retorno|aviso|trago|mando|mostro)\b|"
+    r"\bvou\s+(buscar|procurar|pesquisar|refinar|ajustar\s+a\s+(busca|pesquisa))\b|"
+    r"\bestou\s+(buscando|procurando|pesquisando)\b|"
+    r"\bte\s+avis[oe]\s+(assim|quando|se)\b|\bcri(o|e|ar)\s+um\s+alerta\b",
+    re.IGNORECASE,
+)
+
+
+def _promises_future_work(text: str) -> bool:
+    return bool(_FUTURE_WORK_RE.search(text))
+
+
+def _repeats_previous_reply(text: str, history: list[dict[str, str]] | None) -> bool:
+    """Eco: o modelo devolveu (quase) a mensagem anterior do bot em vez de responder
+    o pedido atual — visto no turno "1" depois de uma lista (reenviou a lista)."""
+    last = next((t.get("content") or "" for t in reversed(history or []) if t.get("role") == "assistant"), "")
+    if len(text) < 40 or len(last) < 40:
+        return False
+    norm = lambda s: re.sub(r"\W+", " ", s.lower()).strip()[:400]
+    return SequenceMatcher(None, norm(text), norm(last)).ratio() >= 0.85
+
+
+def _asks_for_contact(text: str) -> bool:
+    return bool(_CONTACT_CHANNEL_RE.search(text))
+
+
+def _photo_key(prop: dict[str, Any]) -> str:
+    # id, não título: o catálogo tem títulos repetidos (ex.: vários
+    # "Apartamento à venda, Santo Antônio - São Caetano do Sul/SP").
+    return str(prop.get("id") or prop.get("title") or "")
+
+
+class FlowState(TypedDict, total=False):
+    """Estado do grafo LangGraph — um turno por invocação."""
+
+    current_state: str
+    message: str
+    conversation_history: list[dict[str, str]]
+    missing_contact_fields: list[str]
+    scheduling_when: str
+    context: dict[str, Any]
+    lead_info: dict[str, Any]
+    intent: str
+    score: Any
+    score_factors: Any
+    lead_qualified: bool
+    route: str
+    properties: list[dict[str, Any]]
+    appointment: dict[str, Any]
+    handoff_summary: str
+    response: str
+    consent_recorded: bool
+    done: bool
+    lead_id: str
+    scheduling_restricted: bool
+    followup_deferred: bool
+    ics_invite: str
+    shown_properties_count: int
+    favorite_property: str
+    visit_interest: bool
+    rejected_properties: list[str]
+    interests: list[str]
+    response_properties: list[dict[str, Any]]
+    response_images: list[str]
+    official_response: str  # texto determinístico do turno, antes da reescrita da LLM
+    _send_photos: bool  # decisão do roteador LLM (arguments.send_photos)
+    _contact_request: bool  # resposta deste turno precisa pedir telefone/e-mail
+    _router_action: str | None  # legacy ADR-011 enum action (compat)
+    _router_tool: str | None  # tool-agent contract (spec 2026-09-23)
+    _tool_result: Any  # ToolResult from execute_tool
+    _last_tool: str | None
+    _legacy_subnode: str
+
+
+def extract_lead_structure(message: str) -> dict[str, Any]:
+    info: dict[str, Any] = {}
+    if area := _AREA_RE.search(message):
+        info["area"] = area.group(0)
+    if budget := (
+        _BUDGET_PREFIXED_RE.search(message)
+        or _BUDGET_UNIT_RE.search(message)
+        or _BUDGET_CEILING_RE.search(message)
+    ):
+        info["budget"] = budget.group(0)
+    if deadline := _DEADLINE_RE.search(message):
+        info["deadline"] = deadline.group(0)
+    if people := _PEOPLE_RE.search(message):
+        info["people_count"] = int(people.group(1))
+    region = _REGION_RE.search(message) or _REGION_CONTEXT_RE.search(message)
+    if region:
+        tokens = region.group(1).split()
+        while tokens and tokens[-1].lower() in _REGION_STOP_WORDS:
+            tokens.pop()
+        if tokens:
+            info["region"] = " ".join(tokens)
+    if _DECISOR_NO_RE.search(message):
+        info["decision_maker"] = "no"
+    elif _DECISOR_YES_RE.search(message):
+        info["decision_maker"] = "yes"
+    return info
+
+
+# --- LangGraph (import opcional; fallback FSM manual se ausente) -------------
+
+try:
+    from langgraph.graph import END, StateGraph
+
+    _HAS_LANGGRAPH = True
+except ImportError:  # pragma: no cover
+    END = "END"  # type: ignore[assignment,misc]
+    StateGraph = None  # type: ignore[assignment]
+    _HAS_LANGGRAPH = False
+
+
+class SalesFlow:
+    def __init__(
+        self,
+        lead_qualifier: Any,
+        properties_rag: Callable[[dict[str, Any]], list[dict[str, Any]]] | None = None,
+        scheduler: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+        handoff_builder: Callable[[dict[str, Any]], str] | None = None,
+        llm_classify_intent: Callable[[str], tuple[str, float]] | None = None,
+        reply_generator: Callable[..., str] | None = None,
+        specialist_rotation: list[str] | None = None,
+        specialist_fallback: str = "diretor",
+        restriction_check: Callable[[str], bool] | None = None,
+        llm_router: Callable[[str, dict[str, Any], str], dict[str, Any]] | None = None,
+        bot_name_provider: Callable[[], str] | None = None,
+        consent_classifier: Callable[..., str] | None = None,
+    ) -> None:
+        self.consent_classifier = consent_classifier
+        self._bot_name = bot_name_provider or get_bot_name
+        self.qualifier = lead_qualifier
+        self.properties_rag = properties_rag
+        self.scheduler = scheduler
+        self.handoff_builder = handoff_builder
+        self._llm_classify = llm_classify_intent or self._default_classify
+        self.reply_generator = reply_generator
+        self.specialist_rotation = specialist_rotation or []
+        self.specialist_fallback = specialist_fallback
+        self.restriction_check = restriction_check
+        self.llm_router = llm_router
+        if _HAS_LANGGRAPH:
+            self._graph = self._build_graph()
+        else:
+            self._graph = None
+
+    def _followup_prompt(self, state: FlowState) -> str:
+        """Escolhe uma variação do fecho de listagem, evitando repetir a mesma frase."""
+        n = state.get("shown_properties_count", 0) or 0
+        return _FOLLOWUP_PROMPTS[n % len(_FOLLOWUP_PROMPTS)]
+
+    # --- Graph construction (LangGraph) ---
+
+    def _build_graph(self):
+        g: StateGraph = StateGraph(FlowState)
+        g.add_node("preprocess", self._node_preprocess)
+        g.add_node("greeting", self._node_greeting)
+        g.add_node("elicitation", self._node_elicitation)
+        g.add_node("conversation", self._node_conversation)
+        g.add_node("scheduling", self._node_scheduling)
+        g.add_node("handoff", self._node_handoff)
+        g.add_node("followup", self._node_followup)
+        g.add_node("postprocess", self._node_postprocess)
+
+        g.set_entry_point("preprocess")
+        g.add_conditional_edges("preprocess", self._route_state)
+        for node in (
+            "greeting",
+            "elicitation",
+            "conversation",
+            "scheduling",
+            "handoff",
+            "followup",
+        ):
+            g.add_edge(node, "postprocess")
+        g.add_edge("postprocess", END)
+        return g.compile()
+
+    def _route_state(self, state: FlowState) -> str:
+        current = state.get("current_state", "greeting")
+        if current in ("greeting", "elicitation"):
+            return current  # LGPD: consentimento sempre determinístico, nunca via LLM
+        tool = state.get("_router_tool")
+        if tool is not None:
+            hint = None
+            tr = state.get("_tool_result")
+            if tr is not None:
+                hint = getattr(tr, "current_state_hint", None)
+            if tool == "request_human":
+                return hint or "handoff"
+            if tool == "decline":
+                return "followup"
+            if tool == "request_schedule":
+                return hint or "conversation"
+            return "conversation"
+        # Legacy ADR-011 action path — destinations only; conversation derives subnode itself
+        # (LangGraph may drop mutations made during conditional-edge routing).
+        action = state.get("_router_action")
+        if action == "request_human" and _OPTIONS_REQUEST_RE.search(
+            state.get("message", "")
+        ):
+            return "conversation"
+        if action == "request_human":
+            return "handoff"
+        if action == "decline":
+            return "followup"
+        if (
+            action in (None, "provide_info", "unclear")
+            and current in ("recommendation", "discovery")
+            and re.search(
+                r"\b(?:estacionamento|vagas?|andar|pre[çc]o|valor|quanto|detalhes?|tem|possui)\b",
+                state.get("message", ""),
+                re.IGNORECASE,
+            )
+        ):
+            return "conversation"
+        if action == "visit_interest":
+            if self.ready_for_scheduling(state):
+                shown = max(
+                    state.get("shown_properties_count", 0) or 0,
+                    len(state.get("properties") or []),
+                )
+                strong_signal = bool(
+                    state.get("visit_interest") and state.get("favorite_property")
+                )
+                if shown >= (1 if strong_signal else 3):
+                    return "scheduling"
+            return "conversation"
+        if action in ("refine_search", "compare_properties"):
+            return "conversation"
+        if current in (
+            "intent",
+            "qualification",
+            "discovery",
+            "recommendation",
+            "conversation",
+        ):
+            return "conversation"
+        return current
+
+    def _legacy_subnode_for(self, state: FlowState) -> str:
+        """Deriva sub-nó legado dentro do conversation (não confiar em mutação do router)."""
+        current = state.get("current_state") or "recommendation"
+        action = state.get("_router_action")
+        message = state.get("message", "")
+        if action == "refine_search" or action == "compare_properties":
+            return "recommendation"
+        if (
+            action in (None, "provide_info", "unclear")
+            and current in ("recommendation", "discovery")
+            and re.search(
+                r"\b(?:estacionamento|vagas?|andar|pre[çc]o|valor|quanto|detalhes?|tem|possui)\b",
+                message,
+                re.IGNORECASE,
+            )
+        ):
+            return "discovery"
+        if action == "request_human" and _OPTIONS_REQUEST_RE.search(message):
+            return (
+                current
+                if current
+                in (
+                    "intent",
+                    "qualification",
+                    "discovery",
+                    "recommendation",
+                    "conversation",
+                )
+                else "recommendation"
+            )
+        if action == "visit_interest":
+            return (
+                current
+                if current
+                in (
+                    "intent",
+                    "qualification",
+                    "discovery",
+                    "recommendation",
+                    "conversation",
+                )
+                else "recommendation"
+            )
+        if current in (
+            "intent",
+            "qualification",
+            "discovery",
+            "recommendation",
+            "conversation",
+        ):
+            return current
+        return "recommendation"
+
+    def _wants_options(self, state: FlowState) -> bool:
+        """Tool-agent: confia em _router_tool; ADR-011: confia em _router_action;
+        senão cai no regex (rede de segurança)."""
+        tool = state.get("_router_tool")
+        if tool is not None:
+            return tool == "request_options"
+        action = state.get("_router_action")
+        if action == "request_human" and _OPTIONS_REQUEST_RE.search(
+            state.get("message", "")
+        ):
+            return True
+        if action is not None:
+            return action == "request_options"
+        return bool(_OPTIONS_REQUEST_RE.search(state.get("message", "")))
+
+    @staticmethod
+    def ready_for_scheduling(state: FlowState) -> bool:
+        return bool(
+            state.get("favorite_property")
+            or state.get("visit_interest")
+            or (state.get("lead_info") or {}).get("deadline")
+        )
+
+    # --- Nodes (cada um processa UM turno e retorna state atualizado) ---
+
+    def _node_preprocess(self, state: FlowState) -> FlowState:
+        message = state.get("message", "")
+        context = state.setdefault("context", {})
+        # Com roteador LLM ativo, SÓ ele interpreta metragem/bairro/orçamento (entende
+        # transcrição de áudio, número por extenso, fala solta). O regex captura lixo
+        # ("em qualquer momento" -> região) e fica como plano B: sem LLM ou se ela falhar.
+        extracted = extract_lead_structure(message) if self.llm_router is None else {}
+        router_failed = False
+        if extracted:
+            stored = dict(context.get("lead_info") or {})
+            stored.update(extracted)
+            context["lead_info"] = stored
+        stored_info = context.get("lead_info") or {}
+        seeded = state.get("lead_info") or {}
+        merged = {**stored_info, **seeded}
+        state["lead_info"] = merged
+        if merged.get("intent") in ("purchase", "rent", "investment"):
+            state["intent"] = merged["intent"]
+
+        if context.get("favorite_property"):
+            state["favorite_property"] = context["favorite_property"]
+        if context.get("visit_interest"):
+            state["visit_interest"] = True
+        if context.get("rejected_properties"):
+            state["rejected_properties"] = list(context["rejected_properties"])
+        if context.get("interests"):
+            state["interests"] = list(context["interests"])
+        # Imóveis já exibidos vivem só no context (handler não reenvia properties).
+        if context.get("properties") and not state.get("properties"):
+            state["properties"] = list(context["properties"])
+            state["shown_properties_count"] = int(
+                context.get("shown_properties_count") or len(state["properties"])
+            )
+
+        state["_router_action"] = None
+        state["_router_tool"] = None
+        state["_tool_result"] = None
+        state["_last_tool"] = None
+        state["_send_photos"] = False
+        state["_contact_request"] = False
+        from service.tools import contact_unreachable
+
+        # Ação (agendar/falar com corretor) que ficou esperando um contato. O
+        # roteador continua rodando normalmente enquanto o contato não chega (a
+        # conversa não trava); quando o telefone/e-mail aparece numa mensagem
+        # (SecurityLayer já capturou antes do fluxo), a ação é retomada sozinha.
+        pending_action = context.get("pending_contact_action") or (
+            "request_schedule" if context.get("pending_schedule_when") is not None else None
+        )
+        resume_pending = pending_action is not None and not contact_unreachable(state)
+        if self.llm_router is not None and not resume_pending:
+            try:
+                result = self.llm_router(
+                    message,
+                    merged,
+                    state.get("current_state", "greeting"),
+                    conversation_history=state.get("conversation_history") or [],
+                    shown_properties=state.get("properties") or [],
+                    favorite_property=state.get("favorite_property"),
+                    photos_sent=[
+                        p.get("title")
+                        for p in (state.get("properties") or [])
+                        if (context.get("photos_sent") or {}).get(_photo_key(p))
+                    ],
+                )
+                if isinstance(result, dict) and "tool" in result:
+                    from service.tools import execute_tool
+                    from service.validation import validate_router_output
+
+                    validated = validate_router_output(result, state, message=message)
+                    # Decisão do roteador no log (sem texto livre do lead além do que já vai em "turno IN"):
+                    # sem isto, "por que ele listou tudo em vez de detalhar o imóvel 1?" não tem resposta.
+                    logger.info(
+                        "roteador: tool=%s (LLM pediu=%s) args=%s lead_info_delta=%s imoveis_exibidos=%d pensamento=%r",
+                        validated["tool"],
+                        result.get("tool"),
+                        {k: (str(v)[:60]) for k, v in (validated.get("arguments") or {}).items()},
+                        sorted((validated.get("lead_info") or {}).keys()),
+                        len(state.get("properties") or []),
+                        str(validated.get("thought") or result.get("thought") or "")[:200],
+                    )
+                    state["_router_tool"] = validated["tool"]
+                    state["_last_tool"] = validated["tool"]
+                    llm_deltas = validated.get("lead_info") or {}
+                    merged = {**merged, **llm_deltas}
+                    state["lead_info"] = merged
+                    if merged.get("intent") in ("purchase", "rent", "investment"):
+                        state["intent"] = merged["intent"]
+                    context["lead_info"] = {
+                        **(context.get("lead_info") or {}),
+                        **llm_deltas,
+                    }
+                    mem = validated.get("memory_updates") or {}
+                    if mem.get("favorite_property"):
+                        state["favorite_property"] = mem["favorite_property"]
+                        context["favorite_property"] = mem["favorite_property"]
+                    if mem.get("visit_interest"):
+                        state["visit_interest"] = True
+                        context["visit_interest"] = True
+                    args = validated.get("arguments") or {}
+                    state["_send_photos"] = bool(args.get("send_photos"))
+
+                    def _search_fn(info, top_k=9):
+                        if self.properties_rag is None:
+                            return []
+                        scope = args.get("list_scope", "filtered")
+                        try:
+                            from service.properties_catalog import search_properties
+
+                            return search_properties(
+                                info, top_k=top_k, list_scope=scope
+                            )
+                        except Exception:
+                            props = self.properties_rag(info) or []
+                            return list(props)[:top_k]
+
+                    has_criteria = any(merged.get(k) for k in ("region", "area", "budget"))
+                    if (
+                        validated["tool"] in ("request_options", "refine_search")
+                        and args.get("ask_criteria")
+                        and not has_criteria
+                        and not context.get("criteria_asked")
+                    ):
+                        # No máximo 1 pergunta de critério por conversa: se o lead segue sem
+                        # dar nada, ele quer ver opções — loop de "em qual região?" é pior.
+                        context["criteria_asked"] = True
+                        # Decisão da LLM, confirmada em código (não há mesmo critério
+                        # nenhum): pergunta antes de buscar — nada é mostrado/memorizado.
+                        from service.tools import ToolResult
+
+                        tr = ToolResult(
+                            ok=False, tool=validated["tool"], refusal="needs_criteria",
+                            raw_arguments=dict(args), current_state_hint="conversation",
+                        )
+                    else:
+                        tr = execute_tool(
+                            validated["tool"],
+                            args,
+                            state,
+                            search_fn=_search_fn
+                            if self.properties_rag is not None
+                            else None,
+                            memory_updates=mem,
+                            message=message,
+                        )
+                    state["_tool_result"] = tr
+                    if tr.properties:
+                        state["properties"] = tr.properties
+                        self._remember_shown(state)
+                else:
+                    # Legacy action contract (ADR-011)
+                    llm_deltas = (result or {}).get("lead_info") or {}
+                    merged = {**merged, **llm_deltas}
+                    state["lead_info"] = merged
+                    context["lead_info"] = {
+                        **(context.get("lead_info") or {}),
+                        **llm_deltas,
+                    }
+                    state["_router_action"] = (result or {}).get("action")
+                    if state["_router_action"] == "visit_interest":
+                        state["visit_interest"] = True
+                        context["visit_interest"] = True
+            except Exception:
+                logger.warning(
+                    "llm_router falhou; usando extração regex + FSM determinístico (fallback ADR-011)",
+                    exc_info=True,
+                )
+                router_failed = True
+                fallback_info = extract_lead_structure(message)
+                if fallback_info:
+                    merged = {**merged, **fallback_info}
+                    context["lead_info"] = {**(context.get("lead_info") or {}), **fallback_info}
+
+        if resume_pending:
+            from service.tools import execute_tool
+
+            pending_when = context.get("pending_schedule_when")
+            if pending_action == "request_schedule" and pending_when is not None:
+                state["scheduling_when"] = str(pending_when)
+            state["_router_tool"] = pending_action
+            state["_last_tool"] = pending_action
+            tool_result = execute_tool(
+                pending_action,
+                {},
+                state,
+                message=str(pending_when or ""),
+            )
+            state["_tool_result"] = tool_result
+            if tool_result.ok:
+                context.pop("pending_schedule_when", None)
+                context.pop("pending_contact_action", None)
+
+        state["lead_info"] = merged
+        if self.llm_router is None or router_failed:
+            # favorito/rejeitado por regex só no plano B; com LLM vem de memory_updates
+            self._apply_commercial_memory(state)
+        return state
+
+    def _apply_commercial_memory(self, state: FlowState) -> None:
+        message = state.get("message", "")
+        properties = state.get("properties") or []
+        context = state.setdefault("context", {})
+
+        fav_match = _FAVORITE_LIKE_RE.search(message)
+        if fav_match:
+            token = fav_match.group(1).strip()
+            resolved = self._match_property_token(token, properties)
+            if resolved:
+                state["favorite_property"] = resolved
+                context["favorite_property"] = resolved
+                state["visit_interest"] = True
+                context["visit_interest"] = True
+
+        rej_match = _REJECT_LIKE_RE.search(message)
+        if rej_match:
+            token = rej_match.group(1).strip()
+            resolved = self._match_property_token(token, properties)
+            if resolved:
+                rejected = list(state.get("rejected_properties") or [])
+                if resolved not in rejected:
+                    rejected.append(resolved)
+                state["rejected_properties"] = rejected
+                context["rejected_properties"] = rejected
+
+    @staticmethod
+    def _match_property_token(
+        token: str, properties: list[dict[str, Any]]
+    ) -> str | None:
+        token_l = token.lower().strip()
+        # 1. Resolução ordinal ("segunda opção", "2", "o segundo")
+        from service.validation import _ORDINAL_MAP as _ORD, _norm as _vnorm
+
+        norm_token = _vnorm(token_l)
+        idx = _ORD.get(norm_token)
+        if idx is not None and idx < len(properties):
+            return properties[idx].get("title") or f"Imóvel {idx + 1}"
+        for key, val in _ORD.items():
+            if key in norm_token and val < len(properties):
+                return properties[val].get("title") or f"Imóvel {val + 1}"
+        # 2. Dígito direto ("1", "2", "3")
+        if token_l.isdigit():
+            i = int(token_l) - 1
+            if 0 <= i < len(properties):
+                return properties[i].get("title") or f"Imóvel {token_l}"
+        # 3. Substring no título
+        for p in properties:
+            title = str(p.get("title") or "")
+            if title and title.lower() in token_l:
+                return title
+            if token_l and token_l in title.lower():
+                return title
+        return None
+
+    def _node_conversation(self, state: FlowState) -> FlowState:
+        """Dispatcher: tool-agent path OR legacy sub-node (intent/qualification/discovery/recommendation)."""
+        if state.get("_router_tool") is not None:
+            return self._conversation_from_tool(state)
+        sub = state.get("_legacy_subnode") or self._legacy_subnode_for(state)
+        if sub == "intent":
+            return self._node_intent(state)
+        if sub == "qualification":
+            return self._node_qualification(state)
+        if sub == "discovery":
+            return self._node_discovery(state)
+        return self._node_recommendation(state)
+
+    def _conversation_from_tool(self, state: FlowState) -> FlowState:
+        tool = state.get("_router_tool")
+        tr = state.get("_tool_result")
+        state["current_state"] = "conversation"
+        if (
+            tool in ("request_schedule", "request_human")
+            and tr is not None
+            and tr.refusal == "missing_contact"
+        ):
+            return self._ask_contact(state, tool)
+        if tr is not None and tr.refusal == "needs_criteria":
+            state["response"] = (
+                "Show! Em qual região você está procurando? Se já tiver uma faixa de "
+                "valor ou tamanho em mente, me conta também que eu filtro melhor."
+            )
+            return state
+        if tool == "property_detail":
+            if tr is not None and len(tr.details) > 1:
+                lines = "\n".join(
+                    f"{i + 1}. {p.get('title', 'Imóvel')} — {p.get('region', '')}, "
+                    f"{p.get('area_util', '')} m², {p.get('price_text') or p.get('price') or 'sob consulta'}"
+                    for i, p in enumerate(tr.details)
+                )
+                state["response_properties"] = list(tr.details)
+                state["response"] = f"{lines}\n\nQuer que eu detalhe algum deles ou compare?"
+                return state
+            if tr is not None and tr.needs_clarification:
+                state["response"] = (
+                    "Qual imóvel específico você quer que eu detalhe? "
+                    "Posso comparar as opções que já mostrei."
+                )
+            elif tr is not None and tr.detail:
+                p = tr.detail
+                price = p.get("price_text") or p.get("price") or "sob consulta"
+                disp = p.get("disponibilidade", "")
+                disp_line = f" Disponibilidade: {disp}." if disp else ""
+                state["response"] = (
+                    f"{p.get('title', 'Imóvel')} — {p.get('region', '')}, "
+                    f"{p.get('area_util', '')} m², {price}.{disp_line} "
+                    "Quer que eu compare com outra opção?"
+                )
+                state["response_properties"] = [p]
+            else:
+                state["response"] = "Qual imóvel específico você quer que eu detalhe?"
+            return state
+        if tool == "compare_properties":
+            if tr is not None and tr.comparison:
+                a = tr.comparison.get("a") or {}
+                b = tr.comparison.get("b") or {}
+                lines = [
+                    f"- {p.get('title', 'Imóvel')}: {p.get('region', '')}, "
+                    f"{p.get('area_util', '')} m², {p.get('price_text') or p.get('price', 'sob consulta')}"
+                    for p in (a, b)
+                ]
+                state["response"] = (
+                    "Comparativo das opções:\n" + "\n".join(lines) + "\n\n"
+                    "Quer que eu detalhe alguma ou ajuste algum critério?"
+                )
+                state["response_properties"] = [p for p in (a, b) if p]
+            elif tr is not None and tr.needs_clarification:
+                state["response"] = (
+                    "Preciso de dois imóveis já mostrados para comparar. "
+                    "Quer que eu mostre mais opções?"
+                )
+            else:
+                state["response"] = (
+                    "Preciso de dois imóveis já mostrados para comparar."
+                )
+            return state
+        if tool in ("request_options", "refine_search"):
+            if tr is not None and tr.properties:
+                state["properties"] = tr.properties
+                if not state.get("shown_properties_count"):
+                    state["shown_properties_count"] = len(tr.properties)
+                self._remember_shown(state)
+                shown = (
+                    state["properties"][:9]
+                    if tool == "request_options"
+                    else state["properties"][:3]
+                )
+                state["response_properties"] = shown
+                listed = "\n".join(
+                    f"{i + 1}. {p.get('title', 'Imóvel')} — {p.get('region', '')}, {p.get('area_util', '')} m²"
+                    for i, p in enumerate(shown)
+                )
+                state["response"] = (
+                    f"Separei algumas opções:\n{listed}\n\n{self._followup_prompt(state)}"
+                )
+                return state
+            if self.properties_rag is not None:
+                return self._node_recommendation(state)
+            state["response"] = (
+                "Não encontrei opções com esses filtros agora. "
+                "Posso ajudar com outra busca?"
+            )
+            return state
+        if tool == "express_visit_interest":
+            from service.tools import contact_unreachable
+
+            if contact_unreachable(state):
+                # Lead quer o imóvel e ainda não passou contato: o próximo passo do SDR é pegar o
+                # WhatsApp/e-mail DELE. Quando chegar, a ação pendente (falar com o corretor) é retomada
+                # sozinha e o lead segue para o corretor e o CRM.
+                return self._ask_contact(state, "request_human")
+            state["response"] = (
+                "Ótimo! Fico à vontade pra ajudar a agendar uma visita "
+                "quando você quiser."
+            )
+            return state
+        if tool == "request_schedule":
+            if tr is not None and not tr.ok:
+                state["current_state"] = "conversation"
+                state["response"] = (
+                    "Antes de agendar, me diga qual imóvel mais te interessou "
+                    "ou se quer refinar a busca. Assim consigo preparar a visita ideal."
+                )
+                return state
+            state["response"] = "Vamos escolher um horário pra visita?"
+            return state
+        if tool == "unclear":
+            if state.get("properties"):
+                state["response"] = (
+                    "Não peguei bem — quer que eu detalhe algum dos imóveis que já mostrei, "
+                    "compare eles ou busque outras opções?"
+                )
+            else:
+                state["response"] = (
+                    "Não entendi bem. Pode reformular? "
+                    "Posso te ajudar a encontrar um imóvel comercial pra compra, locação ou investimento."
+                )
+            return state
+        if tool == "provide_info":
+            state["response"] = (
+                "Essa informação específica eu não tenho aqui comigo, mas posso encaminhar "
+                "sua pergunta para o corretor responsável. Quer que eu faça isso?"
+            )
+            return state
+        return self._node_recommendation(state)
+
+    def _ask_contact(self, state: FlowState, tool: str) -> FlowState:
+        """Pede telefone (WhatsApp) ou e-mail antes de agendar/passar ao corretor.
+
+        O dado nunca passa pela LLM: a SecurityLayer captura e cifra o contato
+        da mensagem seguinte antes do fluxo, e a ação pendente é retomada
+        sozinha em `_node_preprocess`. A LLM só reescreve o tom desta pergunta
+        — e `_node_postprocess` descarta a reescrita se ela perder o pedido."""
+        ctx = state.setdefault("context", {})
+        ctx["pending_contact_action"] = tool
+        if tool == "request_schedule":
+            ctx.setdefault("pending_schedule_when", state.get("message", ""))
+            opening = "Pra eu encaminhar o pedido de visita ao corretor"
+        else:
+            opening = "Claro! Pro corretor falar com você"
+        state["_contact_request"] = True
+        state["response"] = (
+            f"{opening}, me passa seu telefone (WhatsApp) ou seu e-mail?"
+        )
+        return state
+
+    def _node_greeting(self, state: FlowState) -> FlowState:
+        from service.security_layer import REFUSAL_MESSAGE, consent_message
+
+        message = state.get("message", "")
+        if _CONSENT_REFUSAL_RE.match(message):
+            state["response"] = REFUSAL_MESSAGE
+            state["current_state"] = "followup"
+            state["consent_recorded"] = False
+            return state
+        state["response"] = consent_message(self._bot_name())
+        state["current_state"] = "elicitation"
+        return state
+
+    def _node_elicitation(self, state: FlowState) -> FlowState:
+        from service.security_layer import CONSENT_REASK_MESSAGE, REFUSAL_MESSAGE
+
+        message = state.get("message", "")
+        decision = self._consent_decision(message, state.get("conversation_history"))
+        if decision == "refused":
+            state["response"] = REFUSAL_MESSAGE
+            state["current_state"] = "followup"
+            state["consent_recorded"] = False
+            return state
+        if decision != "accepted":
+            # Sem concordância clara não há consentimento: reperguntar, não coletar nada.
+            state["response"] = CONSENT_REASK_MESSAGE
+            state["consent_recorded"] = False
+            return state
+        state["current_state"] = "intent"
+        state["consent_recorded"] = True
+        state["response"] = (
+            "Para indicar as melhores opções, você busca compra, locação ou investimento?"
+        )
+        return state
+
+    def _consent_decision(self, message: str, history: list[dict[str, str]] | None) -> str:
+        """Aceite, recusa ou nenhum dos dois. A LLM decide lendo a conversa inteira; sem LLM, ou se ela
+        falhar, vale o plano B por palavras (o mesmo de antes)."""
+        if self.consent_classifier is not None:
+            try:
+                decision = self.consent_classifier(message, conversation_history=history or [])
+                if decision in ("accepted", "refused", "unclear"):
+                    return decision
+                logger.warning("Consentimento: decisão inválida da LLM (%r); usando plano B", decision)
+            except Exception:
+                logger.warning("Consentimento: LLM falhou; usando plano B", exc_info=True)
+        if _CONSENT_REFUSAL_RE.match(message):
+            return "refused"
+        return "accepted" if _CONSENT_ACCEPT_RE.match(message) else "unclear"
+
+    def _node_intent(self, state: FlowState) -> FlowState:
+        message = state.get("message", "")
+        intent, confidence = self._llm_classify(message)
+        if confidence < CONFIDENCE_THRESHOLD:
+            state["response"] = INTENT_CONFIRM_QUESTION
+            return state
+        state["intent"] = intent
+        state["current_state"] = "qualification"
+        info = state.get("lead_info", {})
+        if self.properties_rag is not None and (info.get("region") or info.get("area")):
+            state["current_state"] = "recommendation"
+            region = info.get("region", "")
+            state["response"] = self._build_early_recommendation(state, region)
+        else:
+            state["response"] = "Ótimo! Em qual região você está buscando?"
+        return state
+
+    def _node_qualification(self, state: FlowState) -> FlowState:
+        info = state.get("lead_info", {})
+        if self._wants_options(state) and self.properties_rag is not None:
+            return self._node_recommendation(state)
+        if self.properties_rag is not None and (info.get("region") or info.get("area")):
+            state["current_state"] = "recommendation"
+            properties = self.properties_rag(info)
+            if properties:
+                state["properties"] = properties[:3]
+                state["response_properties"] = state["properties"]
+                state["shown_properties_count"] = len(properties[:3])
+                listed = "\n".join(
+                    f"{i + 1}. {p.get('title', 'Imóvel')} — {p.get('region', '')}, {p.get('area_util', '')} m²"
+                    for i, p in enumerate(state["properties"])
+                )
+                state["response"] = (
+                    f"Já tenho uma ideia do que você procura. Separei algumas opções:\n{listed}\n\n{self._followup_prompt(state)}"
+                )
+                self._remember_shown(state)
+                return state
+        result = self.qualifier.calculate_score(info)
+        state["score"] = result["score"]
+        state["score_factors"] = result["factors"]
+        if self.qualifier.is_qualified(result["score"]):
+            state["current_state"] = "recommendation"
+            state["lead_qualified"] = True
+            state["route"] = self.qualifier.route(
+                self._area_m2(info.get("area")),
+                self.specialist_rotation,
+                self.specialist_fallback,
+            )
+            state["response"] = self.qualifier.lead_facing_summary(result, qualified=True)
+        else:
+            state["current_state"] = "qualification"
+            state["lead_qualified"] = False
+            missing_labels = self.qualifier.missing_fields_labels(info)
+            if self.properties_rag and (info.get("region") or info.get("area")):
+                state["response"] = (
+                    "Quase lá! Me conta "
+                    + ", ".join(missing_labels)
+                    + " pra eu te mostrar as melhores opções."
+                )
+            else:
+                state["response"] = (
+                    self.qualifier.lead_facing_summary(result, qualified=False)
+                    + " Ainda precisamos de algumas informações: "
+                    + ", ".join(missing_labels)
+                    + "."
+                )
+        return state
+
+    @staticmethod
+    def _area_m2(area: Any) -> float | None:
+        if not area:
+            return None
+        match = re.search(r"(\d+(?:[.,]\d+)?)", str(area))
+        return float(match.group(1).replace(",", ".")) if match else None
+
+    def _build_early_recommendation(self, state: FlowState, region: str) -> str:
+        """Mostra imóveis imediatamente quando a intenção é clara — SDR consultivo."""
+        if self.properties_rag is None:
+            return (
+                f"Perfeito! Tenho opções em {region}. Posso te mostrar agora?"
+                if region
+                else "Perfeito! Posso te mostrar as opções."
+            )
+        properties = self.properties_rag(state.get("lead_info", {}))
+        if not properties:
+            return "Perfeito! Vou buscar as melhores opções pra você."
+        top = properties[:3]
+        listed = "\n".join(
+            f"{i + 1}. {p.get('title', 'Imóvel')} — {p.get('region', '')}, {p.get('area_util', '')} m²"
+            for i, p in enumerate(top)
+        )
+        state["properties"] = top
+        state["response_properties"] = top
+        state["shown_properties_count"] = len(top)
+        self._remember_shown(state)
+        return f"Tenho algumas opções pra você:\n{listed}\n{self._followup_prompt(state)}"
+
+    def _node_discovery(self, state: FlowState) -> FlowState:
+        if self._wants_options(state) and self.properties_rag is not None:
+            return self._show_more_options(state)
+        focus = state.get("favorite_property") or (
+            (state.get("properties") or [{}])[0].get("title")
+            if state.get("properties")
+            else None
+        )
+        message = state.get("message", "").lower()
+        props = state.get("properties") or []
+        focus_prop = next(
+            (
+                p
+                for p in props
+                if focus and str(p.get("title", "")).lower() == str(focus).lower()
+            ),
+            props[0] if props else None,
+        )
+        if focus_prop:
+            detail_bits = []
+            if "estacionamento" in message or "vaga" in message:
+                vagas = focus_prop.get("vagas")
+                detail_bits.append(
+                    f"estacionamento com {vagas} vaga(s)"
+                    if vagas is not None
+                    else "estacionamento sob consulta"
+                )
+            if "andar" in message:
+                detail_bits.append(
+                    f"andar: {focus_prop.get('andar') or 'sob consulta'}"
+                )
+            if "preço" in message or "valor" in message or "quanto" in message:
+                detail_bits.append(
+                    f"valor: {focus_prop.get('price_text') or focus_prop.get('price') or 'sob consulta'}"
+                )
+            if "disponi" in message or "reservad" in message or "livre" in message:
+                disp = focus_prop.get("disponibilidade", "sob consulta")
+                detail_bits.append(f"disponibilidade: {disp}")
+            if "elevador" in message:
+                detail_bits.append(f"elevadores: {focus_prop.get('elevadores') or 'sob consulta'}")
+            if "entrega" in message or "prazo" in message:
+                detail_bits.append(f"entrega: {focus_prop.get('entrega') or 'sob consulta'}")
+            if "classe" in message or "categoria" in message:
+                detail_bits.append(f"classe: {focus_prop.get('class') or 'sob consulta'}")
+            if "laje" in message:
+                detail_bits.append(
+                    "laje corporativa" if focus_prop.get("laje") else "não é laje corporativa"
+                )
+            if detail_bits:
+                detail = "; ".join(detail_bits)
+                state["response"] = (
+                    f"Sobre {focus_prop.get('title', 'o imóvel')}: {detail}. "
+                    "Quer que eu compare com outra opção ou ajuste algum critério?"
+                )
+                state["response_properties"] = [focus_prop]
+            else:
+                state["response"] = (
+                    f"Essa informação específica sobre {focus_prop.get('title', 'esse imóvel')} "
+                    "eu não tenho no cadastro. Posso encaminhar sua pergunta ao corretor ou "
+                    "te mostrar outros detalhes que eu tenho (metragem, vagas, andar, valor)."
+                )
+        else:
+            state["response"] = (
+                "Qual imóvel específico você quer que eu detalhe? "
+                "Posso comparar as opções que já mostrei."
+            )
+        state["current_state"] = "discovery"
+        return state
+
+    def _node_recommendation(self, state: FlowState) -> FlowState:
+        tool = state.get("_router_tool")
+        action = state.get("_router_action")
+        if (
+            tool == "compare_properties" or action == "compare_properties"
+        ) and state.get("properties"):
+            props = state["properties"][:3]
+            state["response_properties"] = props
+            lines = [
+                f"- {p.get('title', 'Imóvel')}: {p.get('region', '')}, "
+                f"{p.get('area_util', '')} m², {p.get('price_text') or p.get('price', 'sob consulta')}"
+                for p in props
+            ]
+            state["response"] = (
+                "Comparativo das opções:\n" + "\n".join(lines) + "\n\n"
+                "Quer que eu detalhe alguma ou ajuste algum critério?"
+            )
+            return state
+        if self._wants_options(state) and self.properties_rag is not None:
+            return self._show_more_options(state)
+        if self.properties_rag is None:
+            state["response"] = (
+                "Sem imóveis disponíveis agora. "
+                "Posso mostrar opções assim que tivermos mais dados, ou ajudar com outra coisa?"
+            )
+            return state
+        properties = self.properties_rag(state.get("lead_info", {}))
+        if not properties:
+            state["response"] = (
+                "Não encontramos imóveis com esses filtros. Sugerimos ajustar metragem, região ou orçamento."
+            )
+            return state
+        state["properties"] = properties[:3]
+        state["response_properties"] = state["properties"]
+        if not state.get("shown_properties_count"):
+            state["shown_properties_count"] = len(state["properties"])
+        listed = "\n".join(
+            f"{i + 1}. {p.get('title', 'Imóvel')} — {p.get('region', '')}, {p.get('area_util', '')} m²"
+            for i, p in enumerate(state["properties"])
+        )
+        state["response"] = (
+            f"Separei algumas opções que parecem próximas do que você procura:\n{listed}\n\n{self._followup_prompt(state)}"
+        )
+        self._remember_shown(state)
+        return state
+
+    def _node_scheduling(self, state: FlowState) -> FlowState:
+        message = state.get("message", "")
+        if self._wants_options(state) and self.properties_rag is not None:
+            return self._show_more_options(state)
+        if not self.ready_for_scheduling(state):
+            state["current_state"] = "recommendation"
+            state["response"] = (
+                "Antes de agendar, me diga qual imóvel mais te interessou "
+                "ou se quer refinar a busca. Assim consigo preparar a visita ideal."
+            )
+            return state
+        shown_count = max(
+            state.get("shown_properties_count", 0) or 0,
+            len(state.get("properties") or []),
+        )
+        # Sinal comercial forte (interesse de visita + imóvel favorito já indicado)
+        # dispensa o mínimo de 3 mostrados, mas nunca dispensa ter mostrado pelo menos 1.
+        strong_signal = bool(state.get("visit_interest") and state.get("favorite_property"))
+        min_shown = 1 if strong_signal else 3
+        if shown_count < min_shown and not state.get("lead_id"):
+            state["current_state"] = "recommendation"
+            state["response"] = (
+                "Antes de pensar em agendar, vou te mostrar mais opções. "
+                "Qualquer uma dessas te interessou?"
+            )
+            return self._show_more_options(state) if self.properties_rag else state
+        if self._is_restricted(state.get("lead_id")):
+            state["scheduling_restricted"] = True
+            state["current_state"] = "handoff"
+            state["response"] = (
+                "O agendamento da visita precisa de confirmação do corretor; em breve ele fará contato."
+            )
+            return state
+        if self.scheduler is None:
+            state["current_state"] = "handoff"
+            state["response"] = (
+                "Agendamento registrado. Vou repassar seu perfil ao corretor."
+            )
+            return state
+        result = self.scheduler(
+            {"lead_info": state.get("lead_info", {}), "when": message}
+        )
+        if not result.get("confirmed"):
+            state["response"] = "Data/hora indisponível. Podemos tentar outro horário?"
+            return state
+        state["appointment"] = result
+        state["current_state"] = "handoff"
+        ics = _build_ics(result)
+        if ics:
+            state["ics_invite"] = ics
+        state["response"] = (
+            "Agendamento confirmado! Enviarei o convite e o resumo ao corretor."
+        )
+        return state
+
+    def _show_more_options(self, state: FlowState) -> FlowState:
+        """Pedido de mais opções: reconsulta RAG excluindo o que já foi exibido."""
+        shown = {p.get("title") for p in (state.get("properties") or [])}
+        properties = self.properties_rag(state.get("lead_info", {}))
+        fresh = [p for p in properties if p.get("title") not in shown][:3]
+        if not fresh:
+            state["response"] = (
+                "Essas são todas as opções que atendem aos seus critérios. "
+                "Posso mostrar outras ou ajudar com mais alguma coisa?"
+            )
+            return state
+        state["properties"] = (state.get("properties") or []) + fresh
+        state["response_properties"] = fresh
+        state["shown_properties_count"] = len(state["properties"])
+        listed = "\n".join(
+            f"- {p.get('title', 'Imóvel')} — {p.get('region', '')}, {p.get('area_util', '')} m²"
+            for p in fresh
+        )
+        state["response"] = (
+            f"Separei mais algumas opções que parecem próximas do que você procura:\n{listed}\n\n{self._followup_prompt(state)}"
+        )
+        self._remember_shown(state)
+        return state
+
+    def _remember_shown(self, state: FlowState) -> None:
+        """Persiste imóveis exibidos no context entre turnos (handler não reenvia properties)."""
+        props = state.get("properties") or []
+        if not props:
+            return
+        ctx = state.setdefault("context", {})
+        ctx["properties"] = list(props)
+        ctx["shown_properties_count"] = int(
+            state.get("shown_properties_count") or len(props)
+        )
+
+    def _node_handoff(self, state: FlowState) -> FlowState:
+        if self.handoff_builder is not None:
+            state["handoff_summary"] = self.handoff_builder(state)
+        state["current_state"] = "handoff"
+        state["done"] = True
+        state.setdefault(
+            "response", "Resumo enviado ao corretor. Obrigado pelo contato!"
+        )
+        return state
+
+    def _node_followup(self, state: FlowState) -> FlowState:
+        if self._wants_options(state) and self.properties_rag is not None:
+            return self._node_recommendation(state)
+        if self._is_restricted(state.get("lead_id")):
+            state["followup_deferred"] = True
+            state["current_state"] = "followup"
+            state["done"] = True
+            state["response"] = (
+                "Anotado! Seu atendimento seguirá com o corretor responsável."
+            )
+            return state
+        state["current_state"] = "followup"
+        state["done"] = True
+        state.setdefault("response", "Anotado! Retomaremos o contato em breve.")
+        return state
+
+    def _node_postprocess(self, state: FlowState) -> FlowState:
+        """FR-02: fotos do turno + resposta humanizada via LLM (exceto LGPD/recusa)."""
+        self._decide_photos(state)
+        if self.reply_generator is None:
+            return state
+        from service.security_layer import CONSENT_REASK_MESSAGE, REFUSAL_MESSAGE, is_consent_message
+
+        canned = state.get("response")
+        if not canned or is_consent_message(canned) or canned in (CONSENT_REASK_MESSAGE, REFUSAL_MESSAGE):
+            return state
+        missing = state.get("missing_contact_fields")
+        contact_channels = (
+            None
+            if missing is None
+            else {"telefone": "phone" not in missing, "email": "email" not in missing}
+        )
+        try:
+            generated = self.reply_generator(
+                state.get("message", ""),
+                canned,
+                state.get("lead_info") or {},
+                self._with_photo_counts(self._properties_for_reply(state), state),
+                favorite_property=state.get("favorite_property"),
+                conversation_stage=state.get("current_state"),
+                shown_properties_count=state.get("shown_properties_count", 0),
+                visit_interest=bool(state.get("visit_interest")),
+                rejected_properties=state.get("rejected_properties"),
+                last_tool=state.get("_last_tool"),
+                conversation_history=state.get("conversation_history") or [],
+                photos_sending=len(state.get("response_images") or []),
+                contact_channels=contact_channels,
+                contact_request=bool(state.get("_contact_request")),
+                bot_name=self._bot_name(),
+            )
+            state["official_response"] = canned
+            generated = _plain_text(_strip_meta_notes(generated or ""))
+            if generated and not state.get("response_images") and _claims_photos(generated) and not _claims_photos(canned):
+                logger.warning("Reescrita da LLM prometeu fotos que não vão; mantendo texto oficial")
+            elif generated and _promises_future_work(generated) and not _promises_future_work(canned):
+                logger.warning("Reescrita da LLM prometeu trabalho futuro inexistente; mantendo texto oficial")
+            elif generated and _repeats_previous_reply(generated, state.get("conversation_history")):
+                logger.warning("Reescrita da LLM repetiu a mensagem anterior; mantendo texto oficial")
+            elif generated:
+                if state.get("_contact_request") and not _asks_for_contact(generated):
+                    # Reescrita perdeu o pedido de contato (bug real: virou pergunta
+                    # de horário) — sem ele o lead nunca chega ao corretor.
+                    logger.warning(
+                        "Reescrita da LLM omitiu o pedido de contato; mantendo texto oficial"
+                    )
+                else:
+                    state["response"] = generated
+        except Exception:
+            logger.warning(
+                "LLM reply falhou; mantendo resposta oficial (fallback)", exc_info=True
+            )
+        return state
+
+    @staticmethod
+    def _with_photo_counts(props: list[dict[str, Any]], state: FlowState) -> list[dict[str, Any]]:
+        """Em detalhe de 1-2 imóveis, marca quantas fotos de cada um já foram enviadas (inclui as deste
+        turno), para a humanização saber se ainda há fotos a enviar. Listas maiores ficam como estão."""
+        if not props or len(props) > 2:
+            return props
+        sent = (state.get("context") or {}).get("photos_sent") or {}
+        return [{**p, "_fotos_enviadas": int(sent.get(_photo_key(p), 0))} for p in props]
+
+    @staticmethod
+    def _properties_for_reply(state: FlowState) -> list[dict[str, Any]]:
+        """Imóveis que a humanização pode citar neste turno.
+
+        Os imóveis do turno (`response_properties`) sempre valem. Já os guardados de turnos anteriores
+        (`properties`) só valem depois da fase de consentimento/intenção: lá a resposta oficial é uma
+        pergunta ("compra, locação ou investimento?"), e com 9 imóveis no payload a LLM saía do roteiro,
+        inventava a intenção do lead ou listava opções (bug real de 09/10; medido com a LLM real:
+        1/8 respostas certas com imóveis no payload, 8/8 sem eles)."""
+        if state.get("response_properties"):
+            return state["response_properties"]
+        if state.get("current_state") in _PRE_RECOMMENDATION_STATES:
+            return []
+        return state.get("properties") or []
+
+    # --- Invocação ---
+
+    def invoke(self, state: dict[str, Any]) -> dict[str, Any]:
+        if self._graph is not None:
+            result = dict(self._graph.invoke(state))
+        else:
+            result = self._invoke_fsm(state)
+        result.setdefault("response_images", [])
+        return result
+
+    def _decide_photos(self, state: FlowState) -> None:
+        """Fotos só vão quando o roteador LLM decidiu (arguments.send_photos) —
+        ele vê a mensagem, o histórico e quais fotos já foram enviadas. Sem
+        roteador configurado (modo degradado), mantém o envio automático."""
+        props = state.get("response_properties") or []
+        if len(props) == 1 and props[0].get("id"):
+            state.setdefault("context", {})["focus_property_id"] = str(props[0]["id"])
+        allow = bool(state.get("_send_photos")) if self.llm_router is not None else True
+        images = self._response_images(state) if allow else []
+        state["response_images"] = images
+        if not images:
+            return
+        ctx = state.setdefault("context", {})
+        sent = dict(ctx.get("photos_sent") or {})
+        props = state.get("response_properties") or []
+        if len(props) == 1:
+            key = _photo_key(props[0])
+            sent[key] = int(sent.get(key, 0)) + len(images)
+        else:
+            for prop in props[:MAX_PHOTO_PROPERTIES]:
+                if prop.get("images"):
+                    key = _photo_key(prop)
+                    sent[key] = max(int(sent.get(key, 0)), 1)
+        ctx["photos_sent"] = sent
+
+    @staticmethod
+    def _response_images(state: dict[str, Any]) -> list[str]:
+        """Fotos dos imóveis citados na resposta em texto deste turno, para o
+        handler enviar via Telegram sendPhoto. Usa `response_properties` (setado
+        por cada nó exatamente com os imóveis que entraram no `listed` da
+        resposta), nunca o acumulado de `properties` — que em `_show_more_options`
+        cresce turno a turno e não reflete o que foi citado agora.
+
+        Com 1 único imóvel em foco (visão de detalhe — inclui o caso de pedido de
+        "mais fotos" sobre o imóvel já detalhado), manda até 3 fotos dele; com 2-3
+        imóveis numa lista, manda só a 1ª foto de cada (evita espamar)."""
+        response_properties = state.get("response_properties") or []
+        sent = (state.get("context") or {}).get("photos_sent") or {}
+        images: list[str] = []
+        if len(response_properties) == 1:
+            prop = response_properties[0]
+            start = int(sent.get(_photo_key(prop), 0))
+            images.extend((prop.get("images") or [])[start : start + 3])
+        else:
+            for prop in response_properties[:MAX_PHOTO_PROPERTIES]:
+                photos = prop.get("images") or []
+                if photos and not sent.get(_photo_key(prop)):
+                    images.append(photos[0])
+        return images
+
+    def _invoke_fsm(self, state: dict[str, Any]) -> dict[str, Any]:
+        """Fallback manual (sem LangGraph) — mesmo contrato, mesmo router tool-agent/ADR-011."""
+        state = self._node_preprocess(state)
+        resolved = self._route_state(state)
+        message = state.get("message", "")
+        if resolved == "conversation":
+            method = self._node_conversation
+        else:
+            method = getattr(self, f"_handle_{resolved}", None)
+        if method is None:
+            state["response"] = "Como posso ajudar?"
+            return state
+        method(state, message)
+        return self._polish_reply(state, message)
+
+    # --- Handlers antigos (fallback FSM) ---
+
+    def _handle_greeting(self, state, message):
+        return self._node_greeting(state)
+
+    def _handle_elicitation(self, state, message):
+        return self._node_elicitation(state)
+
+    def _handle_conversation(self, state, message):
+        return self._node_conversation(state)
+
+    def _handle_intent(self, state, message):
+        return self._node_conversation(state)
+
+    def _handle_qualification(self, state, message):
+        return self._node_conversation(state)
+
+    def _handle_discovery(self, state, message):
+        return self._node_conversation(state)
+
+    def _handle_recommendation(self, state, message):
+        return self._node_conversation(state)
+
+    def _handle_scheduling(self, state, message):
+        return self._node_scheduling(state)
+
+    def _handle_handoff(self, state, message):
+        return self._node_handoff(state)
+
+    def _handle_followup(self, state, message):
+        return self._node_followup(state)
+
+    def _polish_reply(self, state, message):
+        return self._node_postprocess(state)
+
+    # --- Helpers ---
+
+    def _is_restricted(self, lead_id: str | None) -> bool:
+        if self.restriction_check is None or not lead_id:
+            return False
+        try:
+            return bool(self.restriction_check(lead_id))
+        except Exception:
+            logger.warning(
+                "restriction check failed; treating as unrestricted (fail-open)"
+            )
+            return False
+
+    @staticmethod
+    def _default_classify(message: str) -> tuple[str, float]:
+        lowered = message.lower()
+        if any(w in lowered for w in ("alugar", "aluguel", "locação", "locacao", "locar")):
+            return "rent", 0.9
+        if any(w in lowered for w in ("investimento", "investir", "invest", "renda")):
+            return "investment", 0.9
+        if any(w in lowered for w in ("comprar", "compra", "compro", "adquirir")):
+            return "purchase", 0.9
+        return "unknown", 0.3
+
+
+# --- ICS convite (FR-05) -----------------------------------------------------
+
+
+def _build_ics(appointment: dict[str, Any]) -> str | None:
+    """Gera convite .ics (RFC 5545) a partir do dict de agendamento."""
+    if not appointment or not appointment.get("confirmed"):
+        return None
+    when = appointment.get("when", "")
+    summary = appointment.get("summary", "Visita — W Levitt SDR")
+    location = appointment.get("location", "")
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//W Levitt//SDR//PT-BR",
+        "BEGIN:VEVENT",
+        f"SUMMARY:{summary}",
+    ]
+    if location:
+        lines.append(f"LOCATION:{location}")
+    if when:
+        lines.append(f"DTSTART:{when}")
+        lines.append(f"DTEND:{when}")
+    lines.extend(["END:VEVENT", "END:VCALENDAR"])
+    return "\r\n".join(lines)
