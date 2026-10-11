@@ -1,68 +1,31 @@
 # CI Config — Agente SDR Imobiliário (POC)
 
-## Decisão (afirmada pelo humano neste estágio)
-- **Sem ferramenta de CI externa** — GitHub é apenas repositório (sem Actions).
-- **Esteira de integração e deploy = scripts locais `start.sh` / `stop.sh`** conforme PRD e regras do time (`team.md` § Deployment; `project.md` § Forbidden: `NEVER deployar sem passar pelos scripts start.sh/stop.sh`).
-- Integração de código: branch por feature a partir de `feature/...` → **PR → merge** (sem CI no PR; revisão humana).
+## Decisão (afirmada pelo responsável, 2026-09-21; confirmada pela prática)
+- **Sem ferramenta de CI externa**: o GitHub é só repositório; não há `.github/workflows` (conferido em 2026-10-10). GitHub Actions foi proposto e recusado.
+- **A esteira de integração e deploy são os scripts locais `start.sh` e `stop.sh`**, como no PRD e nas regras do time (`team.md` § Deployment; `project.md` § Forbidden: `NEVER` deployar fora deles).
+- **Integração de código**: branch por feature (a partir de `feature/01-aulas-gravadas/05-privacidade-seguranca-de-dados`) → pull request → merge, com revisão humana e sem CI no PR.
 
-## Pipeline local (equivalente CI do projeto)
-`start.sh` executa, nesta ordem:
-
-```bash
-# 1. Setup
-python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"   # deps (cache: venv reuso)
-
-# 2. Build (equivalente compile)
-.venv/bin/python -m compileall -q apps
-
-# 3. Testes (comandos exatos registrados pelo Build and Test — test-results.md)
-for u in conversation-router voice-adapter crm-adapter contact-ingest anomaly-detector followup; do
-  COVERAGE_FILE=/tmp/.cov-$u .venv/bin/python -m pytest apps/$u/tests \
-    --cov=apps/$u --cov-report=term --cov-fail-under=80 -q || exit 1
-done
-COVERAGE_FILE=/tmp/.cov-u7 .venv/bin/python -m pytest apps/dashboard-api/tests \
-  --cov=apps/dashboard-api --cov-report=term --cov-fail-under=80 -q || exit 1
-.venv/bin/python -m pytest apps/dashboard-ui/tests -q || exit 1        # smoke UI
-
-# 4. Build do artefato Lambda (dist.zip por app — design confirmado pelo humano)
-mkdir -p dist
-for a in conversation-router voice-adapter crm-adapter contact-ingest anomaly-detector followup dashboard-api dashboard-ui; do
-  .venv/bin/pip install -r "apps/$a/requirements.txt" -t "dist/$a/" --platform manylinux2014_x86_64 --python-version 3.11 --only-binary=:all: -q
-  ( cd apps/$a && zip -qr "../../dist/$a.zip" . ) && ( cd "dist/$a" && zip -qr "../$a.zip" . )
-  rm -rf "dist/$a"
-done
-# → dist/<app>.zip (handler + dependências pré-compiladas), pronto para o Terraform
-
-# 5. Deploy (após gates) — implementação completa no estágio Deployment Execution
-# terraform apply (NFR9.2 — IaC por serviço; DLQ NFR4.1, autoscaling NFR8.1)
-```
-
-`stop.sh`: `terraform destroy` (NFR9.3) — teardown do ambiente.
-
-## Artefato Lambda e módulos Terraform (decisão do humano neste gate)
-- **Build**: um `dist/<app>.zip` por aplicação (8 apps; dashboard-ui = Streamlit — ver nota) com `handler.py` + dependências pré-compiladas para o runtime **python3.11** (`pip install -t` com `--platform manylinux2014_x86_64`).
-- **IaC**: `infra/` com **um `.tf` por serviço** (NFR9.1) usando **módulos HashiCorp community** para reduzir código próprio:
-  - [`terraform-aws-modules/lambda/aws`](https://registry.terraform.io/modules/terraform-aws-modules/lambda/aws) — as 8 Lambdas, `handler: handler.handler`, `source_path: ../../dist/<app>.zip`
-  - [`terraform-aws-modules/apigateway-v2/aws`](https://registry.terraform.io/modules/terraform-aws-modules/apigateway-v2/aws) — HTTP API + rotas → Lambdas (FR1.x webhook Telegram, FR7.x dashboard API)
-  - [`terraform-aws-modules/dynamodb-table/aws`](https://registry.terraform.io/modules/terraform-aws-modules/dynamodb-table/aws) — tables de sessão/leads/alertas (TTL NFR3.3, GSI lead-index)
-  - [`terraform-aws-modules/sqs/aws`](https://registry.terraform.io/modules/terraform-aws-modules/sqs/aws) — filas async + **DLQ** (NFR4.1)
-  - `aws_eventbridge_*` nativo — scheduler/anomalias (NFR8.1 auto scaling embutido: Lambda + API GW escalam por natureza)
-- **Dashboard-ui (Streamlit)**: container de longa duração (não Lambda) — opção: ECS Fargate 1×t3.micro no POC (módulo [`terraform-aws-modules/ecs/aws`](https://registry.terraform.io/modules/terraform-aws-modules/ecs/aws)) ou rodar local; confirmar no deployment-pipeline.
-- **Onde a implementação acontece**: o *design* é este documento; **`start.sh`/`stop.sh` + `infra/*.tf` + dist são implementados e executados no estágio `deployment-execution`** (após deployment-pipeline + environment-provisioning), que é o estágio operacional que materializa IaC e roda o deploy. Deferreds NFR9.1–9.4 atualizados com owner `deployment-execution` (implementação) sob design do `deployment-pipeline`.
-
-## Triggers
-| Gatilho | Ação |
+## Pipeline do `start.sh` (estado verificado em 2026-10-10)
+| Fase | O que faz |
 |---|---|
-| Manual (humano, local) | `start.sh` (build+testes+deploy) / `stop.sh` (destroy) |
-| PR merge | revisão humana; suítes rodam localmente antes do merge (padrão atual do time) |
-| Push em `main` | nenhum automático (sem CI externo) |
+| 1. Setup | cria o `.venv` e instala `requirements-dev.txt` + dependências do router |
+| 2. `compileall` | valida a sintaxe de `apps/` |
+| Catálogo | usa a saída limpa do crawler (`../crawling-imobiliarias`) ou, sem ela, o catálogo sintético; gera `clients.json` |
+| 3. Gates | `pytest` por aplicação (sem a pasta `quality`), cobertura ≥ 80%, mais `tests/infra` (índices DynamoDB × Terraform) |
+| 3b. Qualidade com LLM real | `pytest apps/conversation-router/tests/quality`, repetido 1x nos que falharem; pulado, com aviso, se não houver chave de LLM |
+| 4. Build | um `dist/<app>.zip` por Lambda (`pip install --platform manylinux2014_x86_64 --python-version 3.11`; o `crm-adapter` mantém os `*.dist-info` por causa do `httpx2`/`mcp`) |
+| 5. Deploy | `terraform apply` em dois passos (o 1º cria o ECR e a base; o 2º aponta as task definitions para as imagens `podman` do router, do dashboard e do voice-adapter), usuário de smoke no Cognito, escala dos serviços ECS, seed do catálogo no DynamoDB, webhook do Telegram |
+| 6. Smoke | `/health` e `GET /api/kpis` com token Cognito |
 
-## Branch strategy (afirmada em team.md)
-- Branch de feature a partir de `feature/01-aulas-gravadas/05-privacidade-seguranca-de-dados` (base do REL atual).
-- Merge via PR. Sem squash direto em `main` (difere do default org.md — especialização do team prevalece).
+Toda a saída vai para a tela e para `logs/start-AAAAMMDD-HHMMSS.log` (atalho `logs/start-latest.log`). O `stop.sh` salva o refresh token do HubSpot, faz o `terraform destroy` e limpa os log groups órfãos.
 
-## Artifact repositories
-- **Nenhum** (afirmado): POC Python/Node; o bundle nasce do `start.sh` no destino. `ECR/CodeArtifact/S3` não aplicáveis.
+## Artefatos e IaC
+- **Lambdas** (7 módulos `terraform-aws-modules/lambda/aws`, `python3.11`): `crm-adapter`, `contact-ingest`, `anomaly-detector`, `followup`, `dashboard-api`, `voice-adapter` (declarada, sem mapping de SQS) e `conversation-router` (declarada; o router roda no ECS).
+- **ECS Fargate** (recursos nativos): `conversation-router`, `voice-adapter` e `dashboard-ui`, com liga/desliga agendado (09:00–18:00 BRT). O router tem o daemon do X-Ray como contêiner auxiliar.
+- **Demais recursos são nativos, sem módulo da comunidade** (diferente do desenho de 2026-09-21): API Gateway HTTP (`aws_apigatewayv2_*`), DynamoDB, SQS com DLQ, EventBridge, Step Functions, Cognito, SES, Secrets Manager, SSM, KMS.
+- **Repositório de artefatos**: nenhum. Os zips nascem do `start.sh`; as imagens vão para o ECR (`podman push`).
 
-<!-- Re-saved após Consolidated Summary Confirmation (2026-09-21, authorization d00a00b3) -->
-
+## O que mudou desde o desenho de 2026-09-21
+- Gate com LLM real e guarda de índices DynamoDB entraram no `start.sh`.
+- Dashboard e router passaram a ser imagens `podman` no ECR (antes: Lambdas e Streamlit à parte).
+- Logs de execução em arquivo; X-Ray; HubSpot via MCP (segredo `sdr/hubspot-mcp` carregado no apply).

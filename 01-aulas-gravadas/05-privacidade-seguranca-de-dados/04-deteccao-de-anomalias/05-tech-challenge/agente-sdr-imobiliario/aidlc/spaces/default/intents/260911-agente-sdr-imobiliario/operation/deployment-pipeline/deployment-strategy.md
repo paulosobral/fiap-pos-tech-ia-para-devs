@@ -25,3 +25,9 @@
 - `terraform plan` antes de cada `apply` mostra o diff; humano revisa (gate de aprovação).
 
 <!-- Re-saved após Consolidated Summary Confirmation (2026-09-21, authorization d8572d71) -->
+
+## Atualização (2026-10-11)
+- Lambdas: `dist/<app>.zip` (7 funções) → atualização in-place; `dist/archive/<app>-<AAAAMMDDHHMMSS>.zip` guarda a versão anterior de cada build.
+- Router, dashboard e voice-adapter (ECS Fargate): imagem nova no ECR + nova task definition; o serviço substitui a task (rolling de 1 task, sem zero-downtime garantido).
+- A janela de execução do ECS é 09:00–18:00 BRT; fora dela os serviços ficam em 0 e o IP é efêmero. O webhook do Telegram é reapontado pelo `start.sh` (fase 5/6).
+

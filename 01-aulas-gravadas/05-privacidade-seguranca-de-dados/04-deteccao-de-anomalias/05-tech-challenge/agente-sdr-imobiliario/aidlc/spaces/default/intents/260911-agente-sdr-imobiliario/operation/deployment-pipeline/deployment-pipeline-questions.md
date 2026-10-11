@@ -41,6 +41,13 @@
 
 ## Consolidated Summary Confirmation
 
-<!-- preenchido antes do approval gate -->
+Resumo do estágio Deployment Pipeline (atualizado em 2026-10-11):
+1. O único caminho de deploy é `start.sh`/`stop.sh`; ambiente `poc` efêmero, sem promoção entre ambientes (Q1–Q3 inalteradas).
+2. Fase 5 em dois passos: `apply` da base, imagens `podman` no ECR, `apply` das task definitions. O `apply` é `-auto-approve`; o gate é rodar o `start.sh` após os gates da fase 3 e 3b.
+3. ECS Fargate com imagens no ECR e recursos nativos (Q6 ajustada); sem feature flags.
+4. Rollback em 4 trilhas (R1–R4) mantido, com checklist pós-rollback atualizado (smoke, Telegram, dashboard).
+
+- Looks correct
+- Request changes
 
 [Answer]: Looks correct

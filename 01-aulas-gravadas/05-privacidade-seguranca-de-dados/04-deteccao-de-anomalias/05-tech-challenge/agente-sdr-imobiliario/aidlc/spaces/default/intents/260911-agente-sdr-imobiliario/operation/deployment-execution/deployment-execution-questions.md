@@ -24,11 +24,12 @@ Perguntas geradas do trabalho de deployment-execution para consolidação com os
 
 ## Consolidated Summary Confirmation
 
-Consolidated work summary built from the question flow and decisions of this stage. Does this look correct? Choose "Looks correct" or "Request changes".
+Resumo do estágio Deployment Execution (revisado em 2026-10-11):
+1. Q1–Q4 inalteradas.
+2. Evidência atualizada com a subida real de 10/10: gates e gate com LLM real OK (1 repetição por oscilação da LLM), deploy em 2 passos, `SMOKE OK`, EXIT=0.
+3. Ressalva: as mudanças posteriores a essa subida ainda não passaram por um deploy novo.
 
-- Q1: Looks correct
-- Q2: Looks correct
-- Q3: Looks correct
-- Q4: Looks correct
+- Looks correct
+- Request changes
 
 [Answer]: Looks correct

@@ -41,3 +41,16 @@
 ## 4. Teardown
 
 `./stop.sh` (terraform destroy; `AUTO=1` para não interativo).
+
+## Atualização (2026-10-11): subida real mais recente (`logs/start-20261010-130721.log`)
+| Fase | Resultado |
+|---|---|
+| [2/6] `compileall` | OK |
+| [3/6] Gates (pytest por aplicação + `tests/infra`) | OK (561, 76, 141, 77, 93, 93, 86, 49 e 4 testes passando) |
+| [3b/6] Gate de qualidade com LLM real | 1 falha na 1ª passada (`test_reply_does_not_promise_photos_when_none_are_sent`, oscilação da LLM); a repetição só dos que falharam passou; 61 passed, ~7 min |
+| [4/6] Build | 7 zips das Lambdas |
+| [5/6] Deploy | `apply` da base, imagens `podman` (router, dashboard, voice-adapter) no ECR, usuário de smoke no Cognito, escala dos 3 serviços ECS (3/3 em execução), seed de 252 imóveis, API Gateway ligado ao router, webhook do Telegram configurado |
+| [6/6] Smoke | `SMOKE OK` (`GET /api/kpis`) · EXIT=0 |
+
+Diferenças em relação à subida de 21/09: router e voice-adapter agora são containers no ECS (o voice-adapter com faster-whisper, não mais degradado); o catálogo é semeado no DynamoDB; a API e o IP do dashboard mudam a cada subida (ver `logs/start-latest.log`).
+Mudanças feitas depois dessa subida (fechamento da conversa, valor do imóvel no lead, nome da bot via SSM, ajustes de prompt) ainda **não** passaram por um deploy novo.

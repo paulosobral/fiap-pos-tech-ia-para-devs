@@ -28,6 +28,12 @@
 
 ## Consolidated Summary Confirmation
 
-<!-- preenchido antes do approval gate -->
+Resumo do estágio Environment Provisioning (artefatos revisados em 2026-10-11):
+1. Ambiente único efêmero `poc`, criado pelo `start.sh` e destruído pelo `stop.sh`; credenciais AWS do operador; segredos no Secrets Manager e chave KMS própria para PII (Q1–Q4 inalteradas).
+2. O inventário (`environment-inventory.md`) já traz X-Ray, SSM `/sdr/bot-name`, o índice `lead-index` também em alertas e as Lambdas atuais.
+3. O relatório de validação (`validation-report.md`) já traz os health checks pós-deploy novos; eles ainda não foram confirmados numa subida real após as últimas mudanças (isso é do `deployment-execution`).
+
+- Looks correct
+- Request changes
 
 [Answer]: Looks correct

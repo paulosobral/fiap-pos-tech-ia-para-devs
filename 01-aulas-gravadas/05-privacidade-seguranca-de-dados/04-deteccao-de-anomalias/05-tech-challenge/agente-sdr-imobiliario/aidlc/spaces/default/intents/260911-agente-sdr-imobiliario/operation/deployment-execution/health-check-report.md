@@ -30,3 +30,11 @@
 2. Transcrição de voz (layer faster-whisper ou Amazon Transcribe) + remover estado DEGRADADO.
 3. Backend terraform remoto (S3+DynamoDB lock) em vez de state local.
 4. Dashboard: dominio/HTTPS (ALB só se necessário — custo ~US$16/mês) e COGNITO_LOGIN_URL.
+
+## Atualização (2026-10-11)
+Estado após a subida de 10/10 (`logs/start-20261010-130721.log`):
+- **voice-adapter**: não está mais degradado; roda como container ECS com faster-whisper e consome `sdr-voice-queue`.
+- **bot Telegram**: webhook configurado pelo `start.sh` (`Telegram: OK`); o token vem de `secrets.local.env` e do Secrets Manager.
+- **conversation-router e dashboard-ui**: serviços ECS com 3/3 tasks em execução ao final do deploy; IP público efêmero, janela 09:00–18:00 BRT.
+- **dashboard-api**: `/api/kpis` exige token Cognito (smoke OK).
+- Ainda sem confirmação numa subida real: X-Ray, SSM `/sdr/bot-name`, índice `lead-index` de alertas e o fluxo de encerramento (alterações posteriores à última subida).

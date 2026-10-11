@@ -10,6 +10,8 @@ Nenhuma atualmente. Proposta para este POC (repo em GitHub: `paulosobral/fiap-po
 
 [Answer]: A
 
+> **Correção (2026-10-10):** a resposta A (GitHub Actions) ficou desatualizada. A decisão afirmada no gate e seguida até hoje é a alternativa B: sem CI externo, a esteira são `start.sh`/`stop.sh`, e não há workflow no repositório. Vale a B; ver `ci-config.md`. Confirmado pelo responsável em 2026-10-10 ("sem CI externo").
+
 ## Q2 — Quality gates obrigatórios antes do merge
 Proposta respeitando `project.md` (cobertura NÃO bloqueante no hackathon) + contrato de testes (suítes verdes):
 - A. **Testes 100% pass** (`pytest` por app, unidade + integração) — bloqueante; cobertura registrada como informativa (Recommended)
@@ -17,6 +19,8 @@ Proposta respeitando `project.md` (cobertura NÃO bloqueante no hackathon) + con
 - C. Sem gates automáticos
 
 [Answer]: A
+
+> **Observação (2026-10-10):** o `start.sh` hoje também aborta com cobertura < 80% (`--cov-fail-under=80`), o que contradiz "cobertura informativa" e o `NEVER` de `project.md`. Decidido em 2026-10-10 (opção A): o bloqueio de 80% fica; ver `quality-gates.md`.
 
 ## Q3 — Triggers e estratégia de branch
 `team.md` afirma: branch por feature → PR → merge. Proposta:
@@ -39,9 +43,12 @@ Proposta respeitando `project.md` (cobertura NÃO bloqueante no hackathon) + con
 
 Summary consolidado do estágio CI Pipeline:
 1. Sem CI externo (GitHub só repositório); esteira local `start.sh`/`stop.sh` conforme PRD
-2. Pipeline: deps → `compileall` → 8 comandos pytest (624/0, cobertura 95.29–100%) → build `dist/<app>.zip` por Lambda (deps compiladas python3.11) → `terraform apply`
-3. Gates bloqueantes: build, testes 100%, segurança estática, smoke UI; cobertura informativa
-4. IaC: um `.tf` por serviço com módulos HashiCorp (lambda, apigateway-v2, dynamodb-table, sqs+DLQ, ecs p/ Streamlit); implementação no `deployment-execution`
-5. Boundary Construction→Operation: PASS (7/7 units, 48/48 findings resolvidos, gates alinhados)
+2. Pipeline (`start.sh`, atualizado em 2026-10-10): deps → `compileall` → pytest das 8 aplicações (1176 passed, cobertura 83,3–100%) + guarda de índices DynamoDB → gate de qualidade com LLM real (62/62) → build `dist/<app>.zip` e imagens `podman` → `terraform apply` em 2 passos → smoke
+3. Gates bloqueantes: build, testes 100%, guarda de índices, gate com LLM real, smoke pós-deploy; cobertura ≥ 80% também bloqueia (decisão A, 2026-10-10)
+4. IaC: um `.tf` por serviço; só as Lambdas usam módulo (`terraform-aws-modules/lambda/aws`), o restante (API Gateway, DynamoDB, SQS, ECS Fargate etc.) são recursos nativos
+5. Boundary Construction→Operation: PASS com ressalvas (ver `verification/phase-check-construction.md`)
+
+- Looks correct
+- Request changes
 
 [Answer]: Looks correct

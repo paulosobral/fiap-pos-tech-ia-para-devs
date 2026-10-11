@@ -45,3 +45,10 @@
 - [ ] DLQ com 0 mensagens (ou investigar em `observability-setup`)
 
 <!-- Re-saved após Consolidated Summary Confirmation (2026-09-21, authorization d8572d71) -->
+
+## Atualização (2026-10-11)
+- R1 a R4 continuam válidos. Ajustes: o `start.sh` não pede confirmação do `apply` (`-auto-approve`); o `stop.sh` faz `terraform destroy -auto-approve`, salva o refresh token do HubSpot e limpa os log groups órfãos.
+- R2 também cobre as imagens: voltar o `podman` para a tag anterior no ECR e rodar o apply 2.
+- Validação pós-rollback: `GET /health`, `GET /api/kpis` com token (smoke da fase 6), enviar uma mensagem de teste no bot do Telegram e abrir o dashboard (lembrar que o IP muda a cada subida; ver `logs/start-latest.log`).
+- Dados em DynamoDB e a sessão de chat somem num `stop.sh`; o lead no HubSpot permanece.
+
